@@ -375,6 +375,7 @@ class AnalysisService:
         telegram_config: Optional[Dict] = None,
         email_config: Optional[Dict] = None,
         webhook_config: Optional[Dict] = None,
+        **kwargs,
     ) -> Tuple[np.ndarray, List[Event], Dict]:
         """
         Xử lý 1 frame camera thời gian thực:

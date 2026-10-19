@@ -183,95 +183,200 @@ class CameraStreamManager:
         }
 
 
-def ensure_demo_video_exists() -> str:
+def generate_bus_simulation_frame(
+    f_idx: int,
+    w: int = 640,
+    h: int = 360,
+    total_frames: int = 200,
+    fps: float = 20.0,
+) -> np.ndarray:
     """
-    Tạo video mẫu mô phỏng camera trần xe buýt (10 giây, 640x360, 20 fps)
-    nếu chưa có sẵn trên máy hoặc trên Streamlit Cloud:
-    - 4 ghế xe buýt cố định (S01, S02, S03, S04).
-    - Một hành khách bước vào và ngồi vào ghế S01 kèm một chiếc ba lô.
-    - Hành khách đứng lên đi ra cửa, để lại chiếc ba lô trên ghế S01.
-    - Ba lô nằm yên trên ghế trống -> AI phát hiện và kích hoạt cảnh báo!
+    Sinh 1 frame mô phỏng khoang xe buýt nhìn từ trần (Top-down Ceiling Camera).
+    Frame có độ tương phản cao, hình ảnh ghế, người và ba lô rõ nét:
+    - 4 vị trí ghế: Ghế 1A, Ghế 1B, Ghế 2A, Ghế 2B
+    - Hành lang xe buýt ở giữa có kẻ vạch
+    - Frame 0-35: Hành khách bước vào lối đi, tiến đến Ghế 1A
+    - Frame 35-100: Hành khách ngồi tại Ghế 1A, đặt ba lô xuống ghế
+    - Frame 100-140: Hành khách đứng lên, bước ra hành lang và rời khỏi xe
+    - Frame 140-200: Ghế 1A trống, ba lô bị bỏ quên nằm lại trên ghế -> Kích hoạt cảnh báo!
+    """
+    frame = np.full((h, w, 3), (32, 34, 42), dtype=np.uint8)
+
+    # 1. Vẽ sàn và lối đi xe buýt
+    cv2.rectangle(frame, (250, 0), (390, h), (46, 50, 62), -1)
+    for dy in range(0, h, 28):
+        cv2.line(frame, (320, dy), (320, dy + 14), (80, 88, 108), 2)
+        cv2.line(frame, (255, dy), (265, dy), (60, 66, 82), 1)
+        cv2.line(frame, (375, dy), (385, dy), (60, 66, 82), 1)
+
+    # 2. Vẽ 4 ghế cố định
+    demo_seats = [
+        ("Ghế 1A", 40, 60, 240, 180),
+        ("Ghế 1B", 400, 60, 600, 180),
+        ("Ghế 2A", 40, 205, 240, 325),
+        ("Ghế 2B", 400, 205, 600, 325),
+    ]
+    for sid, sx1, sy1, sx2, sy2 in demo_seats:
+        # Khung ghế & đệm ghế
+        cv2.rectangle(frame, (sx1, sy1), (sx2, sy2), (55, 62, 85), -1)
+        cv2.rectangle(frame, (sx1 + 6, sy1 + 6), (sx2 - 6, sy2 - 6), (72, 82, 112), -1)
+        cv2.rectangle(frame, (sx1, sy1), (sx2, sy2), (0, 229, 255), 2)  # Viền Cyan
+        # Tựa lưng & tay vịn
+        cv2.rectangle(frame, (sx1 + 4, sy1 + 4), (sx1 + 24, sy2 - 4), (40, 46, 64), -1)
+        cv2.putText(
+            frame, sid, (sx1 + 35, sy1 + 32),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2
+        )
+
+    # 3. Trạng thái người & Ba lô theo timeline
+    bag_box = (155, 95, 225, 155)  # Trên Ghế 1A
+
+    def _draw_backpack(canvas, bx1, by1, bx2, by2):
+        """Vẽ ba lô màu hổ phách/cam tương phản cao có quai đeo và khóa kéo."""
+        cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (11, 158, 245), -1)
+        cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (255, 255, 255), 2)
+        # Quai đeo
+        cv2.ellipse(canvas, ((bx1 + bx2) // 2, by1 + 4), (14, 6), 0, 180, 360, (20, 20, 20), 2)
+        # Ngăn kéo trước
+        cv2.rectangle(canvas, (bx1 + 8, by1 + 18), (bx2 - 8, by2 - 6), (6, 120, 190), -1)
+        cv2.line(canvas, (bx1 + 12, by1 + 24), (bx2 - 12, by1 + 24), (240, 240, 240), 2)
+        cv2.putText(canvas, "BALO", (bx1 + 10, by2 - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+
+    def _draw_person(canvas, cx, cy):
+        """Vẽ người nhìn từ trên xuống (vai, đầu, tóc, áo khoác)."""
+        # Vai và áo khoác xanh lá cây
+        cv2.ellipse(canvas, (cx, cy), (38, 26), 0, 0, 360, (76, 175, 80), -1)
+        cv2.ellipse(canvas, (cx, cy), (38, 26), 0, 0, 360, (255, 255, 255), 2)
+        # Cánh tay
+        cv2.circle(canvas, (cx - 30, cy + 5), 10, (56, 142, 60), -1)
+        cv2.circle(canvas, (cx + 30, cy + 5), 10, (56, 142, 60), -1)
+        # Đầu tóc
+        cv2.circle(canvas, (cx, cy - 2), 17, (30, 25, 20), -1)
+        cv2.circle(canvas, (cx, cy - 2), 17, (200, 200, 200), 1)
+        cv2.putText(canvas, "NGUOI", (cx - 24, cy - 26), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (120, 255, 120), 1)
+
+    if f_idx < 35:
+        # Người đi vào hành lang tới Ghế 1A mang theo ba lô
+        progress = f_idx / 35.0
+        px = int(320 - progress * 190)
+        py = int(320 - progress * 200)
+        _draw_person(frame, px, py)
+        # Ba lô trên vai
+        _draw_backpack(frame, px + 18, py - 15, px + 55, py + 25)
+    elif 35 <= f_idx < 100:
+        # Người ngồi tại Ghế 1A (bên trái), đặt ba lô bên cạnh (phần ghế bên phải)
+        _draw_person(frame, 100, 120)
+        _draw_backpack(frame, bag_box[0], bag_box[1], bag_box[2], bag_box[3])
+    elif 100 <= f_idx < 140:
+        # Người đứng lên đi ra hành lang hướng ra cửa thoát hiểm
+        progress = (f_idx - 100) / 40.0
+        px = int(100 + progress * 220)
+        py = int(120 + progress * 210)
+        _draw_person(frame, px, py)
+        # Ba lô BỊ BỎ QUÊN lại trên Ghế 1A!
+        _draw_backpack(frame, bag_box[0], bag_box[1], bag_box[2], bag_box[3])
+    else:
+        # Ghế 1A hoàn toàn trống, ba lô bị bỏ quên nằm yên!
+        _draw_backpack(frame, bag_box[0], bag_box[1], bag_box[2], bag_box[3])
+
+    # Chú thích timestamp mô phỏng
+    time_sec = f_idx / fps
+    status_text = (
+        "Hanh khach len xe" if f_idx < 35 else
+        "Hanh khach dang ngoi Ghe 1A" if f_idx < 100 else
+        "Hanh khach dung day xuong xe" if f_idx < 140 else
+        "CANH BAO: Do vat bi bo quen tren Ghe 1A!"
+    )
+    cv2.putText(
+        frame, f"CAM-BUS-CEILING | {time_sec:.1f}s | {status_text}", (15, 25),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 229, 255), 1
+    )
+    return frame
+
+
+def get_demo_ground_truth(f_idx: int, w: int = 640, h: int = 360) -> Dict:
+    """Trả về tọa độ chuẩn của người và ba lô theo frame để làm fallback đảm bảo demo không lỗi."""
+    bag_bbox = (155, 95, 225, 155)  # Tọa độ trên Ghế 1A
+    if f_idx < 35:
+        progress = f_idx / 35.0
+        px = int(320 - progress * 190)
+        py = int(320 - progress * 200)
+        return {
+            "has_person": True,
+            "person_bbox": (px - 38, py - 26, px + 38, py + 26),
+            "has_bag": True,
+            "bag_bbox": (px + 18, py - 15, px + 55, py + 25),
+            "seat_id": None,
+        }
+    elif 35 <= f_idx < 100:
+        return {
+            "has_person": True,
+            "person_bbox": (100 - 38, 120 - 26, 100 + 38, 120 + 26),
+            "has_bag": True,
+            "bag_bbox": bag_bbox,
+            "seat_id": "Ghế 1A",
+        }
+    elif 100 <= f_idx < 140:
+        progress = (f_idx - 100) / 40.0
+        px = int(100 + progress * 220)
+        py = int(120 + progress * 210)
+        return {
+            "has_person": True,
+            "person_bbox": (px - 38, py - 26, px + 38, py + 26),
+            "has_bag": True,
+            "bag_bbox": bag_bbox,
+            "seat_id": "Ghế 1A",
+        }
+    else:
+        return {
+            "has_person": False,
+            "person_bbox": None,
+            "has_bag": True,
+            "bag_bbox": bag_bbox,
+            "seat_id": "Ghế 1A",
+        }
+
+
+def ensure_demo_video_exists(force_recreate: bool = False) -> str:
+    """
+    Tạo hoặc trả về video mẫu mô phỏng camera trần xe buýt (10 giây, 640x360, 20 fps).
+    Hỗ trợ multi-codec (mp4v, avc1, XVID, MJPG) để chạy được trên mọi OS (macOS, Windows, Linux, Streamlit Cloud).
     """
     target = Path(DEMO_VIDEO_PATH)
-    if target.exists() and target.stat().st_size > 10000:
+    if not force_recreate and target.exists() and target.stat().st_size > 20000:
         return str(target)
 
     target.parent.mkdir(parents=True, exist_ok=True)
     w, h = 640, 360
     fps = 20.0
-    total_frames = 200  # 10 giây
+    total_frames = 200
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    out = cv2.VideoWriter(str(target), fourcc, fps, (w, h))
+    # Thử lần lượt các codec phổ biến
+    candidate_codecs = ["mp4v", "avc1", "XVID", "MJPG"]
+    out = None
 
-    # Tọa độ 4 ghế
-    seats = [
-        ("S01", 60, 80, 260, 190),
-        ("S02", 380, 80, 580, 190),
-        ("S03", 60, 210, 260, 320),
-        ("S04", 380, 210, 580, 320),
-    ]
+    for codec in candidate_codecs:
+        try:
+            fourcc = cv2.VideoWriter_fourcc(*codec)
+            candidate_out = cv2.VideoWriter(str(target), fourcc, fps, (w, h))
+            if candidate_out.isOpened():
+                out = candidate_out
+                logger.info(f"VideoWriter khởi tạo thành công với codec '{codec}'")
+                break
+            candidate_out.release()
+        except Exception as e:
+            logger.warning(f"Thử codec '{codec}' không thành công: {e}")
 
-    for f_idx in range(total_frames):
-        # Nền sàn xe buýt
-        frame = np.full((h, w, 3), 35, dtype=np.uint8)
+    if out is not None and out.isOpened():
+        try:
+            for f_idx in range(total_frames):
+                frame = generate_bus_simulation_frame(f_idx, w, h, total_frames, fps)
+                out.write(frame)
+        finally:
+            out.release()
+        logger.info(f"Đã tạo hoàn tất video demo mẫu: {target} (Kích thước: {target.stat().st_size} bytes)")
+    else:
+        logger.warning(f"Không thể mở VideoWriter với bất kỳ codec nào trên hệ thống. Sử dụng frame generator on-the-fly.")
 
-        # Lối đi giữa xe buýt
-        cv2.rectangle(frame, (280, 0), (360, h), (45, 45, 45), -1)
-        for dy in range(0, h, 40):
-            cv2.line(frame, (320, dy), (320, dy + 20), (70, 70, 70), 2)
-
-        # Vẽ các hàng ghế
-        for sid, sx1, sy1, sx2, sy2 in seats:
-            cv2.rectangle(frame, (sx1, sy1), (sx2, sy2), (60, 60, 80), -1)
-            cv2.rectangle(frame, (sx1, sy1), (sx2, sy2), (90, 90, 120), 2)
-            cv2.putText(
-                frame, sid, (sx1 + 10, sy1 + 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 200), 2
-            )
-
-        # Kịch bản mô phỏng:
-        # Frame 0-30: Người đi vào lối đi tới ghế S01
-        # Frame 30-100: Người ngồi tại S01, đặt ba lô xuống
-        # Frame 100-140: Người đứng dậy, đi ra ngoài
-        # Frame 140-200: Ba lô vẫn nằm trên ghế S01 trống!
-        bag_x, bag_y = 170, 130
-        bag_w, bag_h = 45, 40
-
-        if f_idx < 30:
-            # Người đi vào
-            px = int(320 - (f_idx / 30.0) * 190)
-            py = int(20 + (f_idx / 30.0) * 80)
-            # Vẽ người (hình elip)
-            cv2.ellipse(frame, (px, py), (25, 35), 0, 0, 360, (76, 175, 80), -1)
-        elif 30 <= f_idx < 100:
-            # Người ngồi tại ghế S01
-            cv2.ellipse(frame, (130, 130), (35, 45), 0, 0, 360, (76, 175, 80), -1)
-            # Ba lô bên cạnh
-            cv2.rectangle(frame, (bag_x, bag_y), (bag_x + bag_w, bag_y + bag_h), (30, 144, 255), -1)
-            cv2.putText(frame, "balo", (bag_x, bag_y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
-        elif 100 <= f_idx < 140:
-            # Người đứng lên đi ra ngoài lối đi
-            prog = (f_idx - 100) / 40.0
-            px = int(130 + prog * 190)
-            py = int(130 + prog * 180)
-            cv2.ellipse(frame, (px, py), (25, 35), 0, 0, 360, (76, 175, 80), -1)
-            # Ba lô vẫn ở lại trên ghế S01!
-            cv2.rectangle(frame, (bag_x, bag_y), (bag_x + bag_w, bag_y + bag_h), (30, 144, 255), -1)
-            cv2.putText(frame, "balo", (bag_x, bag_y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
-        else:
-            # Ghế S01 hoàn toàn trống, ba lô bị bỏ quên nằm yên!
-            cv2.rectangle(frame, (bag_x, bag_y), (bag_x + bag_w, bag_y + bag_h), (30, 144, 255), -1)
-            cv2.putText(frame, "balo", (bag_x, bag_y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
-
-        # Chú thích timestamp mô phỏng
-        time_sec = f_idx / fps
-        cv2.putText(
-            frame, f"CAM-BUS-CEILING | {time_sec:.1f}s", (15, 25),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 229, 255), 1
-        )
-        out.write(frame)
-
-    out.release()
-    logger.info(f"Đã tự động tạo video demo mẫu: {target}")
     return str(target)
+

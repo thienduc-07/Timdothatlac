@@ -129,6 +129,7 @@ class VideoWriter:
         show_event_markers: bool = True,
         privacy_blur_faces: bool = False,
         show_masks: bool = True,
+        **kwargs,
     ) -> np.ndarray:
         """
         Vẽ chú thích toàn diện lên 1 frame tuân thủ nghiêm ngặt chuẩn Part 4:
