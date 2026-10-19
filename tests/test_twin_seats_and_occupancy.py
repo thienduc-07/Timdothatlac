@@ -92,6 +92,7 @@ class TestSeatDetectionAndTwinSeats:
         # Yêu cầu 4 hàng ghế, mỗi hàng có 2 ghế trái và 2 ghế phải (tổng 16 ghế)
         result = detector.detect_seats(
             frame=dummy_frame,
+            allow_fallback=True,
             rows=4,
             left_cols=2,
             right_cols=2,

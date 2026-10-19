@@ -27,6 +27,7 @@ from src.tracking.object_tracker import ObjectTracker
 from src.events.event_manager import EventManager
 from src.events.forgotten_item_detector import ForgottenItemDetector
 from src.seats.seat_config import SeatConfigManager
+from src.seats import SeatDetectionMethod
 from src.models import SeatConfig, SeatState
 from src.utils.file_utils import format_file_size, format_duration
 from src.video.camera_service import CameraSourceType, ensure_demo_video_exists
@@ -343,14 +344,64 @@ def page_dashboard(service: AnalysisService):
 
     stats = service.get_dashboard_stats()
     seat_count = len(service.get_seats())
+    statuses = service.seat_manager.get_all_statuses()
+    occ_count = sum(1 for s in statuses.values() if s.state == SeatState.OCCUPIED)
+    vac_count = sum(1 for s in statuses.values() if s.state == SeatState.VACANT)
+    amb_count = sum(1 for s in statuses.values() if s.state in (SeatState.AMBIGUOUS, SeatState.UNKNOWN))
+
+    # Phương thức nhận diện ghế đang hoạt động
+    active_method = service.seat_manager.active_detection_method
+    method_val = active_method.value if hasattr(active_method, "value") else str(active_method)
+
+    if method_val == "MODEL_DETECTION":
+        method_badge = '<span class="badge" style="background: #065F46; color: #34D399; border: 1px solid #10B981;">AI MODEL DETECTION (Custom Deep Learning)</span>'
+        method_desc = "Ghế được nhận diện trực tiếp từ hình ảnh bằng mô hình Computer Vision chuyên biệt."
+    elif method_val == "GEOMETRY_FALLBACK":
+        method_badge = '<span class="badge" style="background: #78350F; color: #FBBF24; border: 1px solid #F59E0B;">GEOMETRY FALLBACK (Dự phòng kiểm thử, KHÔNG PHẢI AI)</span>'
+        method_desc = "Tọa độ ghế được sinh từ lưới hình học dự phòng để kiểm thử luồng. Không phải kết quả nhận diện của AI."
+    elif method_val == "MANUAL_CONFIGURATION":
+        method_badge = '<span class="badge" style="background: #1E3A8A; color: #60A5FA; border: 1px solid #3B82F6;">MANUAL CONFIGURATION</span>'
+        method_desc = "Sơ đồ ghế do người quản trị thiết lập thủ công."
+    else:
+        method_badge = '<span class="badge" style="background: #374151; color: #9CA3AF; border: 1px solid #6B7280;">CHƯA CẤU HÌNH</span>'
+        method_desc = "Chưa có cấu hình sơ đồ ghế xe buýt."
+
+    # Model & Detector info
+    model_info = service.get_model_info()
+    model_name = model_info.get("model_name", "YOLOv8")
+    classes_supported = model_info.get("classes", [])
+    classes_str = ", ".join(classes_supported[:8]) + ("..." if len(classes_supported) > 8 else "")
+
+    st.markdown(f"""
+    <div style="background: #141E33; border: 1px solid #3A506B; border-radius: 8px; padding: 12px 18px; margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div>
+                <span style="font-size: 0.85rem; color: #94A3B8; text-transform: uppercase; font-weight: 600;">Cơ chế nhận diện ghế hiện tại:</span>
+                <span style="margin-left: 8px;">{method_badge}</span>
+                <div style="font-size: 0.85rem; color: #CBD5E1; margin-top: 4px;">{method_desc}</div>
+            </div>
+            <div style="text-align: right; font-size: 0.8rem; color: #94A3B8;">
+                <div>🧠 Model chính: <b style="color: #F8FAFC;">{model_name}</b></div>
+                <div>Lớp hỗ trợ: <span style="color: #60A5FA;">{classes_str if classes_str else 'person, items'}</span></div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if method_val == "GEOMETRY_FALLBACK":
+        st.warning(
+            "⚠️ **CẢNH BÁO MINH BẠCH**: Hệ thống đang chạy ở chế độ **GEOMETRY FALLBACK** phục vụ kiểm thử. "
+            "Tọa độ các ghế hiện tại KHÔNG PHẢI do AI nhận diện trực tiếp từ hình ảnh. "
+            "Để nhận diện thực tế, cần huấn luyện hoặc nạp weights chuyên biệt vào `models/bus_seat_yolo.pt`."
+        )
 
     # 4 Metric Panels
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(f"""
         <div class="metric-panel">
-            <p>🪑 VÙNG GHẾ ĐÃ ĐỊNH DANH</p>
-            <h3>{seat_count} <span style="font-size: 0.9rem; color: #94A3B8;">ghế</span></h3>
+            <p>🪑 GHẾ ĐÃ ĐỊNH DANH</p>
+            <h3>{seat_count} <span style="font-size: 0.85rem; color: #94A3B8;">(👤 {occ_count} | 🟢 {vac_count} | ⚪ {amb_count})</span></h3>
         </div>
         """, unsafe_allow_html=True)
     with c2:
@@ -364,14 +415,14 @@ def page_dashboard(service: AnalysisService):
         st.markdown(f"""
         <div class="metric-panel">
             <p>👁️ SỰ KIỆN GHI NHẬN</p>
-            <h3>{stats['total_events']}</h3>
+            <h3>{stats.get('total_events', 0)}</h3>
         </div>
         """, unsafe_allow_html=True)
     with c4:
         st.markdown(f"""
         <div class="metric-panel">
             <p>🎬 PHIÊN PHÂN TÍCH</p>
-            <h3>{stats['total_analyses']}</h3>
+            <h3>{stats.get('total_analyses', 0)}</h3>
         </div>
         """, unsafe_allow_html=True)
 
@@ -780,11 +831,37 @@ def page_seats(service: AnalysisService):
     ])
 
     with tab_auto:
-        st.markdown("##### 🚌 Tự động Quét & Phân Tách Từng Ghế (Twin-Seat Decomposition)")
+        st.markdown("##### 🚌 Nhận diện & Phân Tách Từng Ghế (Twin-Seat Decomposition)")
         st.caption(
-            "Hệ thống tự động phát hiện từng chiếc ghế riêng biệt từ góc nhìn camera trần nhìn xuống (top-down view). "
-            "Phân tách chính xác hai ghế nằm cạnh nhau trong cùng một hàng (Ghế A & Ghế B), không gộp cả hàng thành 1 vùng lớn."
+            "Phân tách độc lập từng chiếc ghế trong hàng ghế đôi (Ghế A & Ghế B) từ camera nhìn xuống, không gộp cả hàng thành 1 vùng lớn."
         )
+
+        diag = service.get_seat_diagnostics()
+        custom_ready = diag.get("custom_adapter_ready", False)
+
+        if not custom_ready:
+            st.markdown("""
+            <div style="background: #1C2541; border-left: 4px solid #F59E0B; padding: 14px 16px; border-radius: 6px; margin-bottom: 14px;">
+                <div style="font-weight: 700; color: #FBBF24; font-size: 0.95rem;">
+                    ⚠️ CUSTOM SEAT MODEL NOT CONFIGURED
+                </div>
+                <div style="color: #CBD5E1; font-size: 0.85rem; margin-top: 6px; line-height: 1.5;">
+                    Chưa nạp file weights mô hình chuyên biệt cho ghế xe buýt (mặc định tìm: <code>models/bus_seat_yolo.pt</code>).<br>
+                    • Model YOLO COCO chuẩn (<code>yolov8n.pt</code>) chỉ có lớp <code>chair</code> (ghế tựa văn phòng nhìn ngang), 
+                    <b>tuyệt đối không nhận diện được</b> đệm ghế xe buýt nhìn từ trên xuống (top-down view).<br>
+                    • <b>Minh bạch kỹ thuật:</b> Hệ thống không tự ý sinh sơ đồ hình học rồi mạo nhận là AI. 
+                    Để kiểm thử luồng hệ thống khi chưa có weights, hãy tích chọn cho phép phương án dự phòng bên dưới.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            allow_fallback = st.checkbox(
+                "Cho phép dùng GEOMETRY FALLBACK để kiểm thử luồng (Dự phòng kiểm thử, KHÔNG PHẢI AI)",
+                value=False,
+                key="seat_allow_fallback"
+            )
+        else:
+            allow_fallback = False
+            st.success(f"✅ Đã kết nối Custom Seat Model chuyên biệt (`{diag.get('model_weights')}`). Sẵn sàng nhận diện trực tiếp từ ảnh!")
 
         col_cfg1, col_cfg2, col_cfg3 = st.columns(3)
         with col_cfg1:
@@ -828,17 +905,26 @@ def page_seats(service: AnalysisService):
             cv2.putText(target_frame, "OVERHEAD BUS CABIN SIMULATION", (340, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (200, 200, 200), 2)
 
         if st.button("🚀 Bắt đầu Quét & Nhận diện Từng Ghế", type="primary", use_container_width=True):
-            with st.spinner("Đang chạy mô hình phân tích thị giác & phân rã ghế đôi..."):
-                res = service.auto_detect_seats(
-                    frame=target_frame,
-                    rows=auto_rows,
-                    left_cols=auto_left,
-                    right_cols=auto_right,
-                    naming_format=naming_format,
-                    save_to_disk=True,
-                )
-                st.session_state["last_seat_detection_result"] = res
-                st.success(f"✅ Đã nhận diện thành công {res.total_seats} chiếc ghế riêng biệt bằng {res.method.value}!")
+            if not custom_ready and not allow_fallback:
+                st.error("❌ CUSTOM SEAT MODEL NOT CONFIGURED: Chưa nạp mô hình ghế chuyên biệt và bạn chưa kích hoạt tùy chọn GEOMETRY FALLBACK.")
+            else:
+                with st.spinner("Đang chạy phân tích thị giác..."):
+                    res = service.auto_detect_seats(
+                        frame=target_frame,
+                        allow_fallback=allow_fallback,
+                        rows=auto_rows,
+                        left_cols=auto_left,
+                        right_cols=auto_right,
+                        naming_format=naming_format,
+                        save_to_disk=True,
+                    )
+                    st.session_state["last_seat_detection_result"] = res
+                    if res.method == SeatDetectionMethod.MODEL_DETECTION:
+                        st.success(f"✅ MODEL DETECTION: Đã nhận diện thành công {res.total_seats} ghế bằng mô hình AI chuyên biệt!")
+                    elif res.method == SeatDetectionMethod.GEOMETRY_FALLBACK:
+                        st.warning(f"⚠️ GEOMETRY FALLBACK: Đã sinh {res.total_seats} ghế bằng lưới hình học dự phòng để kiểm thử luồng (KHÔNG PHẢI AI)!")
+                    else:
+                        st.error(f"❌ {res.message}")
 
         if "last_seat_detection_result" in st.session_state:
             res = st.session_state["last_seat_detection_result"]
@@ -863,7 +949,12 @@ def page_seats(service: AnalysisService):
                 cv2.putText(preview_img, s.seat_id, (cx - 35, cy + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
 
             cv2.addWeighted(overlay, 0.25, preview_img, 0.75, 0, preview_img)
-            st.image(cv2.cvtColor(preview_img, cv2.COLOR_BGR2RGB), caption=f"Kết quả nhận diện {res.total_seats} ghế riêng biệt (Phân rã ghế đôi)", use_container_width=True)
+            method_caption = (
+                f"🎯 [MODEL DETECTION - AI CHUYÊN BIỆT] {res.total_seats} ghế được phát hiện trực tiếp từ hình ảnh"
+                if res.method == SeatDetectionMethod.MODEL_DETECTION
+                else f"⚠️ [GEOMETRY FALLBACK - DỰ PHÒNG KIỂM THỬ, KHÔNG PHẢI AI] {res.total_seats} ghế sinh từ lưới tham số"
+            )
+            st.image(cv2.cvtColor(preview_img, cv2.COLOR_BGR2RGB), caption=method_caption, use_container_width=True)
 
             seat_rows_data = []
             for s in res.seats:
@@ -871,6 +962,7 @@ def page_seats(service: AnalysisService):
                 seat_rows_data.append({
                     "Seat ID": s.seat_id,
                     "Vị trí / Loại": s.description,
+                    "Cơ chế phát hiện": "🧠 AI Model" if res.method == SeatDetectionMethod.MODEL_DETECTION else "⚙️ Geometry Fallback (Test Only)",
                     "Tọa độ Pixel (Top-Left → Bottom-Right)": f"({poly[0][0]}, {poly[0][1]}) → ({poly[2][0]}, {poly[2][1]})",
                     "Phân tách độc lập": "✅ Tách biệt hoàn toàn",
                 })
@@ -930,20 +1022,31 @@ def page_seats(service: AnalysisService):
     with tab_diag:
         st.markdown("##### 🧠 Báo cáo Khả năng Model & Hỗ trợ Nhận diện Ghế")
         diag = service.get_seat_diagnostics()
+        custom_ready = diag.get("custom_adapter_ready", False)
+        weights_path = diag.get("model_weights", "models/bus_seat_yolo.pt")
+
+        status_color = "#10B981" if custom_ready else "#EF4444"
+        status_text = "ĐÃ SẴN SÀNG (Custom Weights Found)" if custom_ready else "CUSTOM SEAT MODEL NOT CONFIGURED"
 
         st.markdown(f"""
         <div style="background: #141E33; border: 1px solid #3A506B; padding: 16px; border-radius: 8px; margin-bottom: 12px;">
-            <h4 style="color: #F8FAFC; margin-top: 0;">📊 Phân tích Model Pretrained Hiện tại</h4>
+            <h4 style="color: #F8FAFC; margin-top: 0;">📊 Trạng thái Adapter Nhận diện Ghế Chuyên biệt</h4>
+            <div style="margin-bottom: 10px;">
+                <span style="color: #94A3B8;">Trạng thái Model Ghế:</span> 
+                <span class="badge" style="background: {status_color}22; color: {status_color}; border: 1px solid {status_color}; font-weight: bold;">{status_text}</span>
+            </div>
             <ul style="color: #CBD5E1; line-height: 1.6;">
-                <li><b>Lớp ghế xe buýt góc nhìn trần (Top-down):</b> <span style="color: #EF4444; font-weight: bold;">KHÔNG CÓ TRONG COCO PRETRAINED</span></li>
-                <li><b>Lớp COCO 56 (chair):</b> Ghế tựa văn phòng / phòng khách nhìn ngang. Không nhận diện được đệm ghế xe buýt nhìn từ trên xuống.</li>
-                <li><b>Phương án tự động kích hoạt:</b> <span style="color: #10B981; font-weight: bold;">TopDownVisionSeatDetector & TwinSeatDecomposer</span></li>
-                <li><b>Khả năng phân tách ghế đôi:</b> <span style="color: #10B981; font-weight: bold;">ĐÃ TÍCH HỢP (Tách biệt độc lập Ghế A & Ghế B)</span></li>
+                <li><b>Đường dẫn kiểm tra trọng số:</b> <code>{weights_path}</code></li>
+                <li><b>Lớp COCO 56 (chair):</b> <span style="color: #EF4444; font-weight: bold;">TỪ CHỐI TỰ ĐỘNG</span> (ghế tựa văn phòng nhìn ngang, không nhận diện được đệm ghế trần xe buýt).</li>
+                <li><b>Các lớp ghế xe buýt hợp lệ:</b> <code>bus_seat</code>, <code>seat</code>, <code>seat_cushion</code>, <code>seat_window</code>, <code>seat_aisle</code>.</li>
+                <li><b>Cơ chế fallback hiện hành:</b> <code>{service.seat_manager.active_detection_method.value}</code></li>
+                <li><b>Phân tách ghế đôi (Twin-Seat):</b> <span style="color: #10B981; font-weight: bold;">TÍCH HỢP (Độc lập Ghế A & Ghế B)</span></li>
             </ul>
             <div style="background: #0F172A; padding: 12px; border-radius: 6px; border-left: 4px solid #3B82F6; margin-top: 10px;">
                 <p style="margin: 0; color: #94A3B8; font-size: 0.9rem;">
-                    💡 <b>Mở rộng mô hình chuyên biệt:</b> Đặt file trọng số <code>models/bus_seat_yolov8.pt</code> được huấn luyện trên 
-                    dữ liệu trần xe buýt (nhãn: <code>seat_window</code>, <code>seat_aisle</code>) vào thư mục dự án để hệ thống tự động chuyển sang suy luận bằng Custom Deep Learning Model.
+                    💡 <b>Hướng dẫn nạp model chuyên biệt:</b> Đặt file trọng số <code>models/bus_seat_yolo.pt</code> được huấn luyện trên 
+                    tập dữ liệu camera trần xe buýt vào thư mục dự án. Hệ thống sẽ tự động đọc danh sách class từ file weights và chuyển sang 
+                    nhận diện hoàn toàn bằng AI thực thụ.
                 </p>
             </div>
         </div>
@@ -1109,29 +1212,134 @@ def page_model_management(service: AnalysisService):
                         st.rerun()
 
     with tab_train:
-        st.markdown("##### 🚀 Huấn luyện Model mới (Training Job)")
-        st.caption("Sinh lệnh huấn luyện cho GPU server hoặc chạy giả lập đăng ký Candidate Model.")
+        st.markdown("##### 🚀 Huấn luyện Model mới (Real YOLO Training Pipeline)")
+        st.caption("Khởi chạy huấn luyện thật bằng Ultralytics YOLO trong tiến trình nền, theo dõi nhật ký thực tế và đọc chỉ số mAP50 từ results.csv.")
+
+        hw = service.get_training_hardware_info()
+        dev_type = hw.get("device", "cpu")
+        icon = "⚡" if dev_type in ("cuda", "mps") else "⚠️"
+        st.markdown(f"""
+        <div style="background: #141E33; border: 1px solid #3A506B; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px;">
+            <span style="font-weight: 600; color: #F8FAFC;">{icon} Thiết bị tính toán khả dụng: {hw.get('device_name')} ({dev_type.upper()})</span>
+            <div style="color: #94A3B8; font-size: 0.85rem; margin-top: 2px;">{hw.get('description')}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        yaml_col, val_btn_col = st.columns([3, 1])
+        with yaml_col:
+            dataset_yaml = st.text_input("Đường dẫn file cấu hình data.yaml:", value="data/dataset/exports/data.yaml")
+        with val_btn_col:
+            st.write("")
+            st.write("")
+            run_check = st.button("🔍 Kiểm tra Dataset", use_container_width=True)
+
+        if run_check:
+            ok_val, val_msg, val_details = service.validate_training_dataset(dataset_yaml)
+            if ok_val:
+                st.success(f"✅ {val_msg}")
+                st.json(val_details)
+            else:
+                st.error(f"❌ {val_msg}")
+                if val_details:
+                    st.json(val_details)
 
         tc1, tc2 = st.columns(2)
         with tc1:
-            new_ver = st.text_input("Tên phiên bản mới:", value="v1.1-bus-custom")
-            dver = st.text_input("Phiên bản Dataset:", value="bus-dataset-v1.0")
+            new_ver = st.text_input("Tên phiên bản model mới:", value="v1.1-bus-seats")
+            base_m = st.selectbox("Kiến trúc base model YOLO:", ["yolov8n.pt", "yolov8s.pt", "yolov8m.pt"])
         with tc2:
-            epochs = st.slider("Số Epochs:", 10, 100, 30, 5)
-            batch = st.selectbox("Batch size:", [8, 16, 32], index=1)
+            epochs = st.slider("Số Epochs:", 5, 100, 30, 5)
+            batch = st.selectbox("Batch size:", [4, 8, 16, 32], index=1)
 
-        cmd = service.model_service.generate_training_command("data/dataset/exports/data.yaml", epochs=epochs, batch_size=batch)
+        cmd = service.model_service.generate_training_command(dataset_yaml, epochs=epochs, batch_size=batch, model=base_m)
+        st.caption("Lệnh Ultralytics CLI thực tế được sinh:")
         st.code(cmd, language="bash")
 
-        if st.button("Bắt đầu Huấn luyện Candidate Model"):
-            with st.spinner("Đang chạy validation và đăng ký candidate model..."):
-                ok, met, msg = service.simulate_training_job(new_ver, dver, epochs=epochs)
-                if ok:
-                    st.success(f"✅ {msg}")
-                    st.json(met)
+        if st.button("🚀 Bắt đầu Huấn luyện Thật trong Tiến trình Nền (Background Process)", type="primary", use_container_width=True):
+            ok_val, val_msg, _ = service.validate_training_dataset(dataset_yaml)
+            if not ok_val:
+                st.error(f"❌ Từ chối khởi chạy: Dataset không hợp lệ hoặc thiếu dữ liệu. {val_msg}. Vui lòng kiểm tra lại dataset trước khi train.")
+            else:
+                ok_launch, job_id, launch_info = service.start_real_training_job(
+                    dataset_yaml_path=dataset_yaml,
+                    new_version=new_ver,
+                    base_model=base_m,
+                    epochs=epochs,
+                    batch_size=batch,
+                )
+                if ok_launch:
+                    st.session_state["active_training_job_id"] = job_id
+                    st.session_state["active_training_dataset_ver"] = new_ver
+                    st.success(f"✅ Đã khởi chạy tiến trình huấn luyện ngầm! Job ID: `{job_id}` (PID: {launch_info.get('pid')})")
                     st.rerun()
                 else:
-                    st.error(msg)
+                    st.error(f"❌ Lỗi khởi chạy: {launch_info.get('error', 'Không xác định')}")
+
+        active_job_id = st.session_state.get("active_training_job_id")
+        if active_job_id:
+            st.markdown("---")
+            st.markdown("##### 📡 Theo dõi Tiến trình Huấn luyện Thật (Live Job Monitor)")
+            job_status = service.get_training_job_status(active_job_id)
+
+            st_code = job_status.get("status", "UNKNOWN")
+            stat_color = "#3B82F6" if st_code == "running" else ("#10B981" if st_code == "completed" else "#EF4444")
+
+            st.markdown(f"""
+            <div style="background: #1C2541; border: 1px solid #3A506B; border-radius: 8px; padding: 14px 18px; margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span style="font-weight: 700; color: #F8FAFC;">Job ID: {active_job_id}</span>
+                        <span style="color: #94A3B8; font-size: 0.85rem; margin-left: 8px;">(Phiên bản: {job_status.get('version')})</span>
+                    </div>
+                    <div>
+                        <span class="badge" style="background: {stat_color}22; color: {stat_color}; border: 1px solid {stat_color}; font-weight: bold;">
+                            {st_code.upper()}
+                        </span>
+                    </div>
+                </div>
+                <div style="font-size: 0.85rem; color: #CBD5E1; margin-top: 8px;">
+                    PID: <code>{job_status.get('pid', 'N/A')}</code> • Thời gian chạy: <b>{job_status.get('elapsed_seconds', 0):.1f}s</b> • File Log: <code>{job_status.get('log_file', '')}</code>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                if st.button("🔄 Cập nhật Tiến độ", use_container_width=True):
+                    st.rerun()
+
+            if st_code == "completed":
+                metrics = job_status.get("metrics", {})
+                st.success("🎉 Huấn luyện và Validation thực tế đã HOÀN TẤT!")
+                st.markdown(f"""
+                <b>Kết quả Metrics thực tế từ results.csv:</b><br>
+                • mAP50: <code>{metrics.get('map50', 'N/A')}</code><br>
+                • Precision: <code>{metrics.get('precision', 'N/A')}</code><br>
+                • Recall: <code>{metrics.get('recall', 'N/A')}</code><br>
+                • mAP50-95: <code>{metrics.get('map50_95', 'N/A')}</code><br>
+                • Weights: <code>{job_status.get('best_weights_path')}</code>
+                """, unsafe_allow_html=True)
+
+                if st.button("⭐ Phê duyệt & Đăng ký Candidate Model vào Hệ thống", type="primary"):
+                    ok_app, app_msg = service.approve_and_register_completed_job(
+                        job_id=active_job_id,
+                        dataset_version=st.session_state.get("active_training_dataset_ver", "v1.0"),
+                        notes=f"Huấn luyện thật từ {job_status.get('dataset_yaml')}"
+                    )
+                    if ok_app:
+                        st.success(f"✅ {app_msg}")
+                        st.session_state.pop("active_training_job_id", None)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {app_msg}")
+
+            elif st_code == "failed":
+                st.error(f"❌ Quá trình huấn luyện thất bại: {job_status.get('error', 'Lỗi không xác định')}")
+
+            log_tail = job_status.get("log_tail", [])
+            if log_tail:
+                with st.expander("📜 Xem nhật ký huấn luyện (Log Tail)", expanded=(st_code == "running")):
+                    st.code("".join(log_tail), language="text")
 
 
 # ══════════════════════════════════════════════

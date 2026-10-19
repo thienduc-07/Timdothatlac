@@ -302,14 +302,21 @@ def test_case_n_model_approval_workflow(temp_db):
     mservice = ModelService(m_repo)
 
     # Đăng ký candidate model mới
-    ok, metrics, msg = mservice.simulate_training_job("v2.0-custom", "dataset-v1.0", epochs=20)
+    real_metrics = {"precision": 0.88, "recall": 0.84, "map50": 0.89, "map50_95": 0.65}
+    ok, msg = mservice.register_model_version(
+        version="v2.0-custom",
+        dataset_version="dataset-v1.0",
+        classes=["bus_seat", "person", "backpack"],
+        metrics=real_metrics,
+        status="candidate",
+    )
     assert ok
     active_m = mservice.get_active_model()
     # Model mới phải ở trạng thái candidate, model active ban đầu vẫn là v1.0
     assert active_m["version"] == "v1.0"
 
     # Người quản trị phê duyệt kích hoạt model
-    mservice.activate_model("yolov8-custom-v2.0-custom")
+    mservice.activate_model("yolov8-v2.0-custom")
     active_m_after = mservice.get_active_model()
     assert active_m_after["version"] == "v2.0-custom"
 

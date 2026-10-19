@@ -166,6 +166,7 @@ class AnalysisService:
     def auto_detect_seats(
         self,
         frame: np.ndarray,
+        allow_fallback: bool = False,
         rows: int = 4,
         left_cols: int = 2,
         right_cols: int = 2,
@@ -175,6 +176,7 @@ class AnalysisService:
         """Tự động phát hiện và phân tách từng ghế trên xe buýt từ frame camera."""
         return self._seat_manager.auto_detect_and_configure_seats(
             frame=frame,
+            allow_fallback=allow_fallback,
             rows=rows,
             left_cols=left_cols,
             right_cols=right_cols,
@@ -580,8 +582,61 @@ class AnalysisService:
             return self._model_service.activate_model(model_id)
         return False, "ModelService chưa sẵn sàng"
 
+    @property
+    def model_service(self) -> Optional[ModelService]:
+        return self._model_service
+
+    def get_training_hardware_info(self) -> Dict:
+        """Kiểm tra thông tin phần cứng khả dụng cho huấn luyện."""
+        if self._model_service:
+            return self._model_service.get_training_hardware_info()
+        return {"device": "cpu", "device_name": "CPU", "description": "ModelService chưa sẵn sàng"}
+
+    def validate_training_dataset(self, yaml_path: str) -> Tuple[bool, str, Dict]:
+        """Kiểm tra tính hợp lệ của dataset trước khi huấn luyện."""
+        if self._model_service:
+            return self._model_service.validate_training_dataset(yaml_path)
+        return False, "ModelService chưa sẵn sàng", {}
+
+    def start_real_training_job(
+        self,
+        dataset_yaml_path: str,
+        new_version: str,
+        base_model: str = "yolov8n.pt",
+        epochs: int = 30,
+        batch_size: int = 16,
+        imgsz: int = 640,
+    ) -> Tuple[bool, str, Dict]:
+        """Khởi chạy huấn luyện thật bằng Ultralytics trong tiến trình riêng."""
+        if self._model_service:
+            return self._model_service.start_real_training_job(
+                dataset_yaml_path=dataset_yaml_path,
+                new_version=new_version,
+                base_model=base_model,
+                epochs=epochs,
+                batch_size=batch_size,
+                imgsz=imgsz,
+            )
+        return False, "ModelService chưa sẵn sàng", {}
+
+    def get_training_job_status(self, job_id: str) -> Dict:
+        """Kiểm tra tiến độ và đọc metrics thật của job huấn luyện."""
+        if self._model_service:
+            return self._model_service.get_training_job_status(job_id)
+        return {"status": "NOT_FOUND", "message": "ModelService chưa sẵn sàng"}
+
+    def approve_and_register_completed_job(
+        self, job_id: str, dataset_version: str = "v1.0", notes: str = ""
+    ) -> Tuple[bool, str]:
+        """Phê duyệt và lưu candidate model với metrics thực tế."""
+        if self._model_service:
+            return self._model_service.approve_and_register_completed_job(
+                job_id=job_id, dataset_version=dataset_version, notes=notes
+            )
+        return False, "ModelService chưa sẵn sàng"
+
     def simulate_training_job(self, new_version: str, dataset_version: str, epochs: int = 30) -> Tuple[bool, Dict, str]:
-        """Huấn luyện & tạo candidate model."""
+        """(Vô hiệu hóa) Phương thức giả lập đã bị loại bỏ."""
         if self._model_service:
             return self._model_service.simulate_training_job(new_version, dataset_version, epochs=epochs)
         return False, {}, "ModelService chưa sẵn sàng"

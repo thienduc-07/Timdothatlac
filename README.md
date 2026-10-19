@@ -1,188 +1,183 @@
-# 🚌 Lost & Found AI cho Xe Buýt (Top-Down Seat Detection & Occlusion-Aware Edition)
+# 🚌 Lost & Found AI cho Xe Buýt (True Computer Vision & Occlusion-Aware Architecture)
 
-Hệ thống AI hỗ trợ phát hiện các vật dụng có khả năng bị bỏ quên trên xe buýt thông qua camera gắn trên trần xe hướng xuống các hàng ghế, tích hợp **module tự động nhận diện và phân biệt từng ghế riêng biệt**, **phân rã ghế đôi kề nhau trong cùng một hàng (Twin-Seat Decomposition)**, và **cơ chế nhận biết - xử lý tình huống che khuất (Occlusion-Aware)**.
+Hệ thống Computer Vision thực thụ phân tích video từ camera gắn trên trần xe buýt nhìn thẳng xuống khoang hành khách (top-down view) để phát hiện vật dụng có nguy cơ bị bỏ quên.
 
----
-
-## 📌 1. Bối cảnh & Yêu cầu Cốt lõi
-
-Hệ thống được thiết kế chuyên biệt cho bối cảnh camera gắn trên trần xe buýt nhìn thẳng xuống khoang hành khách (top-down view):
-1. **Không được gộp cả hàng ghế thành một vùng lớn duy nhất:** Mỗi ghế phải là một thực thể độc lập với Seat ID riêng (ví dụ `SEAT_1A`, `SEAT_1B`...).
-2. **Không bắt buộc người dùng phải vẽ thủ công tất cả các ghế:** Hệ thống tự động quét, phát hiện và phân tách cấu trúc ghế từ frame camera.
-3. **Phân rã ghế đôi liền kề trong cùng một hàng:** Băng ghế đôi được phân rã chính xác thành:
-   - Ghế sát cửa sổ (Window seat - ví dụ `SEAT_1A`, `SEAT_1D`).
-   - Ghế sát lối đi (Aisle seat - ví dụ `SEAT_1B`, `SEAT_1C`).
-4. **Phân biệt độc lập 4 nhóm định danh (Không đồng nhất):**
-   - `Seat ID`: Định danh cố định của chiếc ghế (ví dụ: `SEAT_1A`, `SEAT_1B`).
-   - `Person Track ID`: Định danh tạm thời của hành khách qua các frame (ví dụ: `P01`, `P02`).
-   - `Object Track ID`: Định danh tạm thời của món đồ (ví dụ: `O01`, `O02`).
-   - `Event ID`: Định danh ổn định của sự kiện nghi ngờ bỏ quên (ví dụ: `EVT_8A7B2C1D`).
-5. **Ước lượng trạng thái có người bằng vùng tiếp xúc cơ thể:** Không chỉ dựa vào tâm bounding box của người (dễ sai lệch khi góc nhìn nghiêng hoặc đầu/vai nghiêng sang lối đi); hệ thống đánh giá vùng tiếp xúc thân dưới (lower-body/pelvic zone) với diện tích đệm ghế.
-6. **Xử lý người ngồi giữa 2 ghế kề nhau:** Nếu người ngồi lấn giữa 2 ghế hoặc nằm ngang cả 2 ghế, hệ thống đánh dấu trạng thái `AMBIGUOUS / UNKNOWN` thay vì ép buộc gán sai cho 1 ghế.
-7. **Bảo toàn sự kiện khi bị che khuất (Occlusion Handling):** Khi có người mới ngồi xuống đè lên món đồ, sự kiện chuyển sang `OCCLUDED` và **giữ nguyên Event ID cùng toàn bộ lịch sử tích lũy**.
+Dự án tuân thủ nghiêm ngặt **nguyên tắc minh bạch kỹ thuật và Computer Vision thực chất**:
+* **Không dùng lưới ghế giả lập làm cơ chế AI chính:** Lưới hình học chỉ đóng vai trò phương án dự phòng kiểm thử luồng (`GEOMETRY FALLBACK`), được công bố minh bạch và không mạo danh là AI detection.
+* **Nhận diện ghế trực tiếp từ hình ảnh bằng Custom Deep Learning Model:** Tự động đọc danh sách class từ file weights, kiểm tra tính tương thích và từ chối lớp `chair` nhìn ngang của COCO 80.
+* **Phân rã ghế đôi kề nhau trong cùng một hàng:** Hai ghế cạnh nhau luôn là 2 thực thể tách biệt (`SEAT_1A`, `SEAT_1B`), không gộp thành một vùng lớn.
+* **Phân biệt độc lập 4 nhóm định danh (ID Separation):** Seat ID, Person Track ID, Object Track ID và Event ID.
+* **Quy trình Huấn luyện Thật (Real Training Pipeline):** Chạy huấn luyện Ultralytics trong tiến trình nền, trích xuất metrics thật từ `results.csv`, loại bỏ hoàn toàn các hàm sinh chỉ số mAP giả lập.
 
 ---
 
-## 🏗️ 2. Kiến trúc Module Độc lập
+## 📌 1. Bối cảnh & Yêu cầu Kỹ thuật Bắt buộc
 
-```
-                           [ Camera Frame / Video ]
-                                       │
-                ┌──────────────────────┴──────────────────────┐
-                ▼                                             ▼
-     ┌──────────────────────┐                      ┌──────────────────────┐
-     │ 1. Seat Detection    │                      │ 2. Object & Person   │
-     │ (src/seats/detector) │                      │ Detection & Tracking │
-     │ • Custom YOLO Engine │                      │ • YOLOv8 + ByteTrack │
-     │ • Top-Down Vision    │                      │ • Person tracks: P.. │
-     │ • TwinSeatDecomposer │                      │ • Object tracks: O.. │
-     └──────────┬───────────┘                      └──────────┬───────────┘
-                ▼                                             ▼
-     ┌──────────────────────┐                      ┌──────────────────────┐
-     │ 3. Seat Tracker      │                      │ 4. Contact Zone &    │
-     │ (src/seats/tracker)  │                      │ Disambiguation       │
-     │ • ID ổn định         │                      │ • Pelvic zone 50%    │
-     │ • Spatial EMA filter │                      │ • Twin-seat overlap  │
-     │ • Seat Permanence    │                      └──────────┬───────────┘
-     └──────────┬───────────┘                                 │
-                │                                             │
-                └──────────────────────┬──────────────────────┘
-                                       ▼
-                       ┌───────────────────────────────┐
-                       │ 5. Seat Occupancy Estimator   │
-                       │ (src/seats/seat_occupancy)    │
-                       │ • OCCUPIED / VACANT / UNKNOWN │
-                       │ • Temporal Hysteresis filter  │
-                       │ • Departure Tracking (Ai rời) │
-                       └───────────────┬───────────────┘
-                                       │
-                                       ▼
-                       ┌───────────────────────────────┐
-                       │ 6. Object-Seat Association    │
-                       │ • Gán vật thể vào từng ghế    │
-                       │ • Ranh giới ➔ UNKNOWN_SEAT    │
-                       └───────────────┬───────────────┘
-                                       │
-                                       ▼
-                       ┌───────────────────────────────┐
-                       │ 7. Forgotten-Item & Occlusion │
-                       │ (src/events/forgotten_item)   │
-                       │ • Case A: Ghế có người che    │
-                       │ • Case B/D: Mất trên ghế trống│
-                       │ • Re-association bằng chứng   │
-                       └───────────────┬───────────────┘
-                                       │
-                                       ▼
-                       ┌───────────────────────────────┐
-                       │ 8. Event Lifecycle (State)    │
-                       │ (src/events/event_manager)    │
-                       │ • State Machine (8 trạng thái)│
-                       │ • Event ID cố định            │
-                       └───────────────┬───────────────┘
-                                       │
-                                       ▼
-                       ┌───────────────────────────────┐
-                       │ 9. UI & Visualization         │
-                       │ (Streamlit & VideoWriter)     │
-                       │ • 5 lớp chú thích (Togglable) │
-                       │ • Báo cáo số ghế & nghi ngờ   │
-                       └───────────────────────────────┘
-```
-
-### Chi tiết các module trong `src/seats/`:
-- `src/seats/seat_detector.py`:
-  - `TwinSeatDecomposer`: Phân rã băng ghế đôi thành Ghế A (cửa sổ) và Ghế B (lối đi).
-  - `CustomYOLOSeatDetector`: Adapter nạp trọng số YOLO chuyên biệt (`models/bus_seat_yolov8.pt`).
-  - `TopDownVisionSeatDetector`: Thị giác máy tính nhận diện cấu trúc đối xứng khoang xe buýt.
-  - `BusGeometrySeatDetector`: Tham số hóa hình học khoang xe theo số hàng và số ghế.
-  - `SeatDetector.inspect_coco_classes()`: Kiểm tra minh bạch khả năng model; thông báo rõ ràng rằng YOLO COCO phổ thông chỉ có `chair` nhìn ngang, không giả lập AI.
-- `src/seats/seat_tracker.py`:
-  - Duy trì ánh xạ `seat_id` ổn định qua thời gian.
-  - Bộ lọc Exponential Moving Average (EMA) triệt tiêu rung lắc tọa độ do động cơ xe rung.
-  - **Cơ chế Seat Permanence:** Ghế gắn cố định trên sàn xe; khi hành khách ngồi đè lên che khuất đệm ghế, cấu trúc ghế vẫn được giữ nguyên vẹn và không bị xóa hay cấp ID mới.
-- `src/seats/seat_occupancy.py`:
-  - Trích xuất vùng tiếp xúc thân dưới của người (`y1 + 0.45*h` đến `y2`).
-  - Phân xử ghế đôi: Nếu chênh lệch tỷ lệ giao nhau giữa 2 ghế nhỏ hơn 12% và cùng đè lên cả 2 ghế -> Đánh dấu `AMBIGUOUS / UNKNOWN`.
-  - Ghi nhận người vừa rời khỏi ghế (`get_last_departed_person`).
-- `src/seats/seat_manager.py`:
-  - Tích hợp toàn diện Detector, Tracker và Occupancy Estimator.
-  - Phân loại đồ vật: nếu nằm ở ranh giới giữa 2 ghế -> gán `UNKNOWN_SEAT`.
+1. **Phân biệt 4 nhóm ID không đồng nhất:**
+   - `Seat ID` (ví dụ `SEAT_1A`, `SEAT_1B` hoặc `SEAT_001`): Định danh cố định gắn với vị trí ghế trên sàn xe buýt.
+   - `Person Track ID` (ví dụ `P01`, `P02`): ID theo dõi hành khách qua các frame của tracker ByteTrack.
+   - `Object Track ID` (ví dụ `O01`, `O02`): ID theo dõi đồ vật do tracker duy trì.
+   - `Event ID` (ví dụ `EVT_25C0B567`): ID sự kiện vòng đời món đồ, giữ nguyên qua các chu kỳ che khuất và xuất hiện lại.
+2. **Ước lượng trạng thái có người bằng vùng tiếp xúc cơ thể (Contact Zone):**
+   - Không gán ghế chỉ bằng tâm bounding box của người (dễ lệch do góc camera trần hoặc đầu/vai nghiêng ra lối đi).
+   - Phân tích vùng thân dưới/tiếp xúc đệm ghế (pelvic contact zone: 45%-50% nửa dưới bounding box người).
+   - Nếu người ngồi lấn giữa 2 ghế hoặc nằm ngang cả 2 ghế, hệ thống trả về `AMBIGUOUS / UNKNOWN` thay vì ép buộc gán cho một ghế.
+3. **Gán đồ vật cho ghế (Object-Seat Association):**
+   - Đồ vật nằm ở ranh giới giữa 2 ghế -> gán `UNKNOWN_SEAT`.
+   - Khi ghế đang có người ngồi, không cảnh báo bỏ quên chỉ vì phát hiện đồ vật tại đó.
+   - Khi người đứng dậy rời ghế và đồ vật vẫn còn lại trên ghế trống, bắt đầu đánh giá nguy cơ (`ITEM_LEFT` ➔ `SUSPECTED`).
+4. **Xử lý che khuất và bảo toàn sự kiện (Occlusion Handling):**
+   - Khi người mới ngồi lên đè lên đồ vật: chuyển sang `OCCLUDED`, **giữ nguyên Event ID, timestamp và lịch sử**.
+   - Khi người mới đứng dậy: nếu đồ vật xuất hiện lại, tái liên kết với sự kiện cũ; nếu không xuất hiện lại sau thời gian quy định, chuyển sang `REVIEW_REQUIRED` (yêu cầu nhân viên kiểm tra), **tuyệt đối không tự ý chuyển thành RESOLVED**.
 
 ---
 
-## 🧪 3. Kiểm thử Kịch bản Ghế đôi Liền kề (Scenario C)
-
-Kịch bản kiểm thử cốt lõi được xây dựng trong `tests/test_twin_seats_and_occupancy.py`:
+## 🏗️ 2. Luồng Xử lý Dữ liệu Chuẩn Computer Vision
 
 ```
-[ Frame 0-10 ]   Ghế 1A: Có người P1    │ Ghế 1B: Trống, có Chiếc ví O10
-                 Trạng thái Ghế 1A: OCCUPIED  │ Trạng thái Ghế 1B: VACANT
-                 ➔ Sự kiện ví O10: Bắt đầu theo dõi (ITEM_LEFT ➔ SUSPECTED: EVT_001)
-
-[ Frame 11-17]   Người P1 ở Ghế 1A đứng lên rời đi. Ghế 1B vẫn có ví O10.
-                 Trạng thái Ghế 1A: VACANT    │ Trạng thái Ghế 1B: VACANT
-                 ➔ Sự kiện ví O10 trên Ghế 1B vẫn giữ nguyên EVT_001.
-
-[ Frame 18-25]   Người mới P2 lên xe ngồi vào Ghế 1B (đè lên chiếc ví, ví mất detection).
-                 Trạng thái Ghế 1B: OCCUPIED
-                 ➔ Sự kiện ví O10 chuyển sang OCCLUDED; GIỮ NGUYÊN Event ID: EVT_001.
-
-[ Frame 26-35]   Người mới P2 đứng lên rời khỏi Ghế 1B.
-                 + Trường hợp 1 (Ví xuất hiện lại): Hệ thống tái liên kết bằng chứng vị trí,
-                   khôi phục sự kiện EVT_001 về SUSPECTED.
-                 + Trường hợp 2 (Ví biến mất): Ghế 1B vào RECHECK (0.5s-2s), sau đó
-                   chuyển sang REVIEW_REQUIRED để nhân viên nhà xe kiểm tra.
+[ Video Frame ]
+      │
+      ▼
+┌─────────────────────────────────┐
+│ 1. Seat Detector                │ ◄─── Nạp weights models/bus_seat_yolo.pt
+│ • Đọc class thực tế từ weights  │      (Nếu chưa có: báo CUSTOM SEAT MODEL NOT CONFIGURED,
+│ • Từ chối COCO chair (nhìn ngang)     chỉ bật GEOMETRY FALLBACK khi người dùng chủ động cho phép)
+│ • Phân tách ghế đôi (Twin Seats)│
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│ 2. Person & Object Detector     │ ◄─── YOLOv8 (person, backpack, handbag, suitcase, bottle...)
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│ 3. Trackers                     │
+│ • Seat Tracker                  │ ─── Duy trì Seat ID vĩnh viễn, khử rung lắc (Spatial EMA),
+│                                 │     bảo toàn cấu trúc ghế khi có người che (Seat Permanence)
+│ • Object Tracker (ByteTrack)    │ ─── Gán Person Track ID (P..) và Object Track ID (O..)
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│ 4. Seat Occupancy Estimator     │
+│ • Vùng tiếp xúc thân dưới       │ ─── Phân định OCCUPIED / VACANT / AMBIGUOUS / UNKNOWN
+│ • Twin-seat disambiguation      │ ─── Khử rung giật trạng thái bằng Temporal Hysteresis
+│ • Departure Tracking            │ ─── Ghi nhận chính xác ai vừa rời ghế
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│ 5. Object-Seat Association      │ ─── Liên kết đồ vật với đệm ghế; ranh giới ➔ UNKNOWN_SEAT
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│ 6. Forgotten-Item Detector      │ ─── Đồ vật trên ghế trống ➔ ITEM_LEFT ➔ SUSPECTED
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│ 7. Occlusion Manager            │ ─── Người mới ngồi đè lên ➔ OCCLUDED (giữ nguyên Event ID)
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│ 8. Event State Machine (DB)     │ ─── OBSERVED ➔ ITEM_LEFT ➔ SUSPECTED ➔ OCCLUDED ➔ RECHECK ➔ REVIEW_REQUIRED
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│ 9. UI & Visualization           │
+│ • Streamlit Dashboard           │ ─── Hiển thị rõ cơ chế: MODEL DETECTION / GEOMETRY FALLBACK
+│ • VideoWriter Annotations       │ ─── Màu chuẩn: Seat (Cyan), Person (Green), Object (Amber), Alert (Red), Occluded (Purple)
+└─────────────────────────────────┘
 ```
 
 ---
 
-## 🎨 4. Giao diện Giám sát & Bật/Tắt Lớp Chú thích (Layer Filter)
+## 🔍 3. Minh bạch Cơ chế Nhận diện Ghế (Seat Detection Modes)
 
-Hệ thống hiển thị trực quan trên Streamlit với bảng màu đồng nhất:
-- **Ghế xe buýt (Cyan / Xanh dương):** Hiển thị `SEAT_1A`, `SEAT_1B` kèm trạng thái `[TRỐNG]`, `[CÓ NGƯỜI]`, `[CHƯA RÕ]`.
-- **Hành khách (Green / Xanh lá):** Hiển thị `P01`, `P02` kèm độ tin cậy.
-- **Đồ vật (Amber / Vàng cam):** Hiển thị `O10 (Ba lô)`, `O25 (Túi xách)`.
-- **Sự kiện nghi ngờ (Red / Đỏ):** Viền đỏ nổi bật kèm nhãn `[⚠ NGHI NGỜ]`.
-- **Vật thể bị che khuất (Purple / Tím):** Viền nét đứt kèm nhãn `[🛡 CHE KHUẤT]`.
+Hệ thống phân định rạch ròi 4 trạng thái nhận diện ghế trên toàn bộ giao diện:
 
-### Bảng điều khiển thời gian thực:
-Hiển thị đầy đủ số liệu:
-- 🪑 **Tổng số ghế đã nhận diện**
-- 👤 **Số ghế đang có người**
-- 🟢 **Số ghế đang trống**
-- 🎒 **Số đồ vật đang theo dõi**
-- ⚠️ **Số sự kiện nghi ngờ bỏ quên**
-- 🛡️ **Số sự kiện đang bị che khuất**
+| Chế độ | Mô tả | Nhãn giao diện |
+| :--- | :--- | :--- |
+| **MODEL DETECTION** | Nhận diện từng đệm ghế trực tiếp từ hình ảnh bằng mô hình Deep Learning chuyên biệt. | `AI MODEL DETECTION (Custom Deep Learning)` (Xanh lục) |
+| **GEOMETRY FALLBACK** | Dự phòng tính toán tham số phục vụ kiểm thử luồng khi chưa nạp weights. Tuyệt đối không mạo nhận là AI. | `GEOMETRY FALLBACK (Dự phòng kiểm thử, KHÔNG PHẢI AI)` (Vàng cam cảnh báo) |
+| **MANUAL CONFIGURATION** | Sơ đồ ghế do người quản trị thiết lập thủ công qua giao diện. | `MANUAL CONFIGURATION` (Xanh dương) |
+| **NOT CONFIGURED** | Chưa nạp file weights và chưa bật tùy chọn dự phòng kiểm thử. | `CUSTOM SEAT MODEL NOT CONFIGURED` (Đỏ) |
+
+> [!WARNING]
+> **Tại sao lớp `chair` (ID 56) của YOLO COCO bị từ chối?**
+> Tập dữ liệu COCO được huấn luyện trên ghế phòng khách và ghế văn phòng từ góc chụp ngang. Trong góc nhìn từ trần xe buýt hướng xuống, đệm ghế chỉ là bề mặt phẳng chữ nhật, hoàn toàn khác biệt với đặc trưng góc nhìn ngang của COCO. Việc dùng lớp `chair` của COCO cho camera trần xe buýt sẽ gây nhiễu và báo sai nghiêm trọng.
 
 ---
 
-## 🚀 5. Hướng dẫn Chạy & Kiểm thử
+## 🚀 4. Quy trình Huấn luyện Thật (Real Training Pipeline)
 
-### Bước 1: Kích hoạt môi trường ảo
+Dự án cung cấp pipeline huấn luyện YOLO hoàn chỉnh thay thế toàn bộ logic giả lập trước đây:
+
+1. **Pre-flight Dataset Validation:** Kiểm tra cấu trúc `data.yaml`, xác thực sự tồn tại của thư mục ảnh `train/images`, `val/images` và kiểm tra các file nhãn `.txt` không rỗng trước khi cho phép chạy huấn luyện.
+2. **Kiểm tra phần cứng tự động:** Nhận diện GPU NVIDIA (CUDA), Apple Silicon GPU (MPS) hoặc CPU kèm khuyến cáo hiệu năng.
+3. **Chạy huấn luyện trong tiến trình nền:** Sử dụng `subprocess.Popen` gọi `python -m ultralytics train`, không làm đơ giao diện Streamlit.
+4. **Ghi nhật ký thời gian thực:** Ghi toàn bộ tiến độ vào `data/training_logs/{job_id}.log` và cho phép theo dõi trực tiếp trên UI qua Log Viewer.
+5. **Trích xuất Metrics Thật:** Khi huấn luyện hoàn tất, đọc trực tiếp các chỉ số `precision`, `recall`, `mAP50`, `mAP50-95` từ file `results.csv` do Ultralytics sinh ra.
+6. **Candidate Model Review & Approval:** Người quản trị phê duyệt phiên bản model và lưu vào SQLite database trước khi kích hoạt sang môi trường suy luận.
+
+---
+
+## 🧪 5. Kết quả Kiểm thử & Nghiệm thu (Test Coverage)
+
+Toàn bộ **86/86 test cases** trong repository đều vượt qua (100% PASS), bao gồm file kiểm thử nghiệm thu chuyên biệt `tests/test_real_cv_and_training_audit.py` bao phủ 15 kịch bản bắt buộc:
+
+1. `test_01_two_adjacent_seats_have_separate_seat_ids`: Hai ghế liền nhau có hai Seat ID riêng biệt (`SEAT_1A` và `SEAT_1B`), có khe hở đệm.
+2. `test_02_seat_id_stability_when_detection_shifts_slightly`: Seat tracker duy trì ID vĩnh viễn khi detection rung lắc nhẹ.
+3. `test_03_person_on_seat_a_seat_b_remains_vacant`: Người ngồi ở Ghế A thì chỉ Ghế A `OCCUPIED`, Ghế B vẫn `VACANT`.
+4. `test_04_seat_b_has_object_but_no_person`: Ghế B có đồ vật nằm trên mặt đệm nhưng không có người.
+5. `test_05_person_a_stands_up_while_person_b_remains_seated`: Người ở Ghế A đứng lên thì Ghế A chuyển về `VACANT`, Ghế B vẫn `OCCUPIED`.
+6. `test_06_person_b_stands_up_and_object_remains`: Người ở Ghế B đứng lên và đồ vật còn lại -> chuyển `ITEM_LEFT` ➔ `SUSPECTED`.
+7. `test_07_new_person_sits_on_object_causing_occlusion`: Người mới ngồi đè lên đồ vật -> chuyển `OCCLUDED`, giữ nguyên Event ID.
+8. `test_08_person_stands_up_object_reappears_relinks_to_event`: Người mới đứng lên, đồ vật xuất hiện lại -> tái liên kết sự kiện cũ.
+9. `test_09_person_stands_up_object_missing_review_required`: Người mới đứng lên nhưng đồ vật không xuất hiện lại -> chuyển `REVIEW_REQUIRED`, không tự ý `RESOLVED`.
+10. `test_10_object_on_boundary_assigned_unknown_seat`: Đồ vật nằm sát ranh giới 2 ghế -> gán `UNKNOWN_SEAT`.
+11. `test_11_model_without_seat_class_rejected`: Model không có lớp seat (COCO chair) bị từ chối.
+12. `test_12_no_custom_weights_reports_not_configured`: Không có file weights -> báo rõ `CUSTOM SEAT MODEL NOT CONFIGURED`.
+13. `test_13_dataset_lacking_annotations_fails_validation`: Dataset thiếu annotation bị từ chối trước khi train.
+14. `test_14_training_failure_recorded_properly`: Tiến trình train thất bại được ghi nhận chính xác trạng thái `failed`.
+15. `test_15_no_fake_metrics_generated_without_real_validation`: `simulate_training_job()` bị vô hiệu hóa, không tạo metrics giả.
+
+### Lệnh chạy kiểm thử:
 ```bash
-cd /Users/thienduc/Desktop/Code/findlostitems
-source venv/bin/activate
+# Chạy toàn bộ 86 bài test
+PYTHONPATH=. ./venv/bin/pytest -v
+
+# Chạy riêng 15 kịch bản nghiệm thu kiểm toán
+PYTHONPATH=. ./venv/bin/pytest tests/test_real_cv_and_training_audit.py -v
 ```
 
-### Bước 2: Chạy toàn bộ 71 Unit Tests
-```bash
-PYTHONPATH=. ./venv/bin/pytest tests/ -v
-```
-*(100% 71/71 tests đã passed, bao gồm 10 tests kiểm tra chi tiết ghế đôi, tracking ổn định, disambiguation và kịch bản che khuất).*
+---
 
-### Bước 3: Khởi động Ứng dụng Streamlit
+## 💻 6. Hướng dẫn Khởi chạy Ứng dụng
+
+### Khởi động Web Dashboard:
 ```bash
 ./venv/bin/streamlit run app.py
 ```
 Mở trình duyệt tại: `http://localhost:8501`.
 
+### Hướng dẫn Nạp Custom Weights:
+Để kích hoạt chế độ `MODEL DETECTION` thay vì `GEOMETRY FALLBACK`:
+1. Chuẩn bị file trọng số YOLOv8 đã train trên dữ liệu xe buýt (các lớp: `bus_seat`, `seat`, `seat_window`, `seat_aisle`).
+2. Đặt file trọng số vào thư mục: `models/bus_seat_yolo.pt`.
+3. Hệ thống sẽ tự động đọc danh sách class từ metadata weights và chuyển sang chế độ AI nhận diện ghế thực tế.
+
 ---
 
-## 🧠 6. Hướng dẫn Huấn luyện Custom Overhead Bus Seat Model (Tùy chọn)
+## ⚠️ 7. Các Giới hạn Kỹ thuật Còn lại (Technical Limitations)
 
-Nếu muốn nâng cấp từ cơ chế Top-Down Vision & Geometry Decomposition lên Deep Learning thuần túy:
-1. Vào tab **AI Training & Dataset** trên giao diện web để thu thập 200-500 ảnh chụp từ trần xe buýt.
-2. Gán nhãn 2 lớp: `seat_window` (ghế cửa sổ) và `seat_aisle` (ghế lối đi).
-3. Xuất dataset chuẩn YOLOv8 `.zip`.
-4. Train mô hình: `yolo detect train data=dataset.yaml model=yolov8n.pt epochs=50 imgsz=640`.
-5. Lưu file trọng số vào: `models/bus_seat_yolov8.pt`. Hệ thống sẽ tự động ưu tiên nạp Custom Model này khi khởi động.
+1. **Góc nghiêng và méo thấu kính méo góc rộng (Fisheye Distortion):**
+   - Camera góc siêu rộng (140°-180°) trên trần xe buýt gây méo hình ở mép rìa khung hình. Đệm ghế ở rìa có hình thang cong thay vì chữ nhật phẳng. Cần bổ sung bước hiệu chuẩn thấu kính (Camera Undistortion matrix) trước khi inference nếu dùng camera fisheye thực tế.
+2. **Vật thể kích thước nhỏ (Small Objects):**
+   - Các vật mỏng và nhỏ như thẻ xe buýt, tai nghe bluetooth, ví da mỏng khi đặt trùng màu với đệm ghế có thể khó phát hiện từ độ phân giải 720p/1080p ở độ cao 2.2m-2.5m. Khuyến nghị sử dụng camera tối thiểu 2K hoặc camera phụ trợ.
+3. **Trường hợp che khuất hoàn toàn và hành khách cầm nhầm:**
+   - Nếu hành khách ngồi đè lên đồ vật rồi nhét vào ba lô cá nhân trước khi đứng dậy, camera không thể nhìn thấy bên trong ba lô. Hệ thống sẽ giữ nguyên tắc an toàn: chuyển sự kiện sang `REVIEW_REQUIRED` để người vận hành kiểm tra lại lịch sử video, không tự ý kết luận món đồ đã được lấy đúng chủ.

@@ -4,10 +4,11 @@ from src.seats.seat_detector import (
     SeatDetector,
     SeatDetectionResult,
     SeatDetectionMethod,
-    TwinSeatDecomposer,
+    CustomSeatYOLOAdapter,
     CustomYOLOSeatDetector,
-    TopDownVisionSeatDetector,
     BusGeometrySeatDetector,
+    TwinSeatDecomposer,
+    VALID_SEAT_CLASS_NAMES,
 )
 from src.seats.seat_tracker import SeatTracker, TrackedSeat
 from src.seats.seat_occupancy import SeatOccupancyEstimator
@@ -20,9 +21,10 @@ __all__ = [
     "SeatDetectionResult",
     "SeatDetectionMethod",
     "TwinSeatDecomposer",
+    "CustomSeatYOLOAdapter",
     "CustomYOLOSeatDetector",
-    "TopDownVisionSeatDetector",
     "BusGeometrySeatDetector",
+    "VALID_SEAT_CLASS_NAMES",
     "SeatTracker",
     "TrackedSeat",
     "SeatOccupancyEstimator",

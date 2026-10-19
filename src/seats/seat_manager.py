@@ -68,6 +68,10 @@ class SeatManager:
             hold_sec=hold_sec,
         )
 
+        self.active_detection_method: SeatDetectionMethod = (
+            SeatDetectionMethod.MANUAL_CONFIGURATION if seats else SeatDetectionMethod.NOT_CONFIGURED
+        )
+
         if seats is not None:
             self.set_seats(seats)
         else:
@@ -75,6 +79,7 @@ class SeatManager:
             loaded = SeatConfigManager().load_seats()
             if loaded:
                 self.set_seats(loaded)
+                self.active_detection_method = SeatDetectionMethod.MANUAL_CONFIGURATION
 
     @property
     def is_configured(self) -> bool:
@@ -136,6 +141,7 @@ class SeatManager:
     def auto_detect_and_configure_seats(
         self,
         frame: np.ndarray,
+        allow_fallback: bool = False,
         rows: int = 4,
         left_cols: int = 2,
         right_cols: int = 2,
@@ -143,11 +149,14 @@ class SeatManager:
         save_to_disk: bool = True,
     ) -> SeatDetectionResult:
         """
-        Tự động nhận diện từng ghế từ frame camera và phân tách ghế đôi.
-        Cập nhật cấu hình hệ thống và tùy chọn lưu ra file JSON.
+        Tự động nhận diện từng ghế từ frame camera bằng Computer Vision Model:
+        - Nếu có Custom Model: Trả về MODEL DETECTION.
+        - Nếu không có Custom Model và allow_fallback=False: Báo CUSTOM SEAT MODEL NOT CONFIGURED.
+        - Nếu allow_fallback=True: Sinh GEOMETRY FALLBACK được công khai rõ ràng.
         """
         result = self.detector.detect_seats(
             frame=frame,
+            allow_fallback=allow_fallback,
             rows=rows,
             left_cols=left_cols,
             right_cols=right_cols,
@@ -156,11 +165,14 @@ class SeatManager:
 
         if result.seats:
             self.set_seats(result.seats)
+            self.active_detection_method = result.method
             if save_to_disk:
                 SeatConfigManager().save_seats(
                     result.seats,
-                    description=f"Auto-detected seats via {result.method.value}",
+                    description=f"Seats configured via {result.method.value}",
                 )
+        elif result.method == SeatDetectionMethod.NOT_CONFIGURED:
+            self.active_detection_method = SeatDetectionMethod.NOT_CONFIGURED
 
         return result
 
