@@ -5,10 +5,17 @@ Kiến trúc: Occlusion-Aware, Fixed Seat Entities, Multi-Channel Alerts,
 Dataset Annotation & YOLO Export, Model Versioning & Deployment.
 """
 
+import sys
+from pathlib import Path
+
+# Đảm bảo đường dẫn gốc của repository luôn nằm đầu sys.path trên Streamlit Cloud
+ROOT_DIR = Path(__file__).resolve().parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from datetime import datetime
 import json
 import os
-from pathlib import Path
 import time
 import cv2
 import numpy as np
@@ -20,7 +27,7 @@ from src.tracking.object_tracker import ObjectTracker
 from src.events.event_manager import EventManager
 from src.events.forgotten_item_detector import ForgottenItemDetector
 from src.seats.seat_config import SeatConfigManager
-from src.models import SeatConfig, SeatState, AlertPriority, AlertStatus
+from src.models import SeatConfig, SeatState
 from src.utils.file_utils import format_file_size, format_duration
 from src.video.camera_service import CameraSourceType, ensure_demo_video_exists
 from src.video.video_writer import VideoWriter

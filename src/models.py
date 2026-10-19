@@ -7,7 +7,19 @@ Các dataclass dùng chung giữa các module.
 from dataclasses import dataclass, field
 from typing import Optional, List, Tuple
 from enum import Enum
-from config.settings import AlertPriority, AlertStatus
+
+
+class AlertPriority:
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+
+
+class AlertStatus:
+    PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
+    DISMISSED = "DISMISSED"
+    RESOLVED = "RESOLVED"
 
 
 @dataclass
