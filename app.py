@@ -268,6 +268,12 @@ def render_legend():
 def main():
     service = get_service()
 
+    # Tự động xóa cache cũ của Streamlit nếu instance service lưu trong cache từ phiên trước thiếu method
+    if not hasattr(service, "get_training_hardware_info") or not hasattr(service, "start_real_training_job"):
+        st.cache_resource.clear()
+        service = AnalysisService()
+        service.initialize()
+
     # ── Sidebar Navigation ──
     with st.sidebar:
         st.markdown("### 🚌 LOST & FOUND AI")
@@ -1215,7 +1221,16 @@ def page_model_management(service: AnalysisService):
         st.markdown("##### 🚀 Huấn luyện Model mới (Real YOLO Training Pipeline)")
         st.caption("Khởi chạy huấn luyện thật bằng Ultralytics YOLO trong tiến trình nền, theo dõi nhật ký thực tế và đọc chỉ số mAP50 từ results.csv.")
 
-        hw = service.get_training_hardware_info()
+        from src.services.model_service import ModelService
+        ms = getattr(service, "model_service", None) or getattr(service, "_model_service", None)
+
+        if hasattr(service, "get_training_hardware_info"):
+            hw = service.get_training_hardware_info()
+        elif ms and hasattr(ms, "get_training_hardware_info"):
+            hw = ms.get_training_hardware_info()
+        else:
+            hw = ModelService.get_training_hardware_info()
+
         dev_type = hw.get("device", "cpu")
         icon = "⚡" if dev_type in ("cuda", "mps") else "⚠️"
         st.markdown(f"""
@@ -1234,7 +1249,13 @@ def page_model_management(service: AnalysisService):
             run_check = st.button("🔍 Kiểm tra Dataset", use_container_width=True)
 
         if run_check:
-            ok_val, val_msg, val_details = service.validate_training_dataset(dataset_yaml)
+            if hasattr(service, "validate_training_dataset"):
+                ok_val, val_msg, val_details = service.validate_training_dataset(dataset_yaml)
+            elif ms and hasattr(ms, "validate_training_dataset"):
+                ok_val, val_msg, val_details = ms.validate_training_dataset(dataset_yaml)
+            else:
+                ok_val, val_msg, val_details = ModelService.validate_training_dataset(dataset_yaml)
+
             if ok_val:
                 st.success(f"✅ {val_msg}")
                 st.json(val_details)
@@ -1251,22 +1272,50 @@ def page_model_management(service: AnalysisService):
             epochs = st.slider("Số Epochs:", 5, 100, 30, 5)
             batch = st.selectbox("Batch size:", [4, 8, 16, 32], index=1)
 
-        cmd = service.model_service.generate_training_command(dataset_yaml, epochs=epochs, batch_size=batch, model=base_m)
+        if ms and hasattr(ms, "generate_training_command"):
+            cmd = ms.generate_training_command(dataset_yaml, epochs=epochs, batch_size=batch, model=base_m)
+        else:
+            cmd = ModelService(getattr(service, "_model_repo", None)).generate_training_command(dataset_yaml, epochs=epochs, batch_size=batch, model=base_m)
         st.caption("Lệnh Ultralytics CLI thực tế được sinh:")
         st.code(cmd, language="bash")
 
         if st.button("🚀 Bắt đầu Huấn luyện Thật trong Tiến trình Nền (Background Process)", type="primary", use_container_width=True):
-            ok_val, val_msg, _ = service.validate_training_dataset(dataset_yaml)
+            if hasattr(service, "validate_training_dataset"):
+                ok_val, val_msg, _ = service.validate_training_dataset(dataset_yaml)
+            elif ms and hasattr(ms, "validate_training_dataset"):
+                ok_val, val_msg, _ = ms.validate_training_dataset(dataset_yaml)
+            else:
+                ok_val, val_msg, _ = ModelService.validate_training_dataset(dataset_yaml)
+
             if not ok_val:
                 st.error(f"❌ Từ chối khởi chạy: Dataset không hợp lệ hoặc thiếu dữ liệu. {val_msg}. Vui lòng kiểm tra lại dataset trước khi train.")
             else:
-                ok_launch, job_id, launch_info = service.start_real_training_job(
-                    dataset_yaml_path=dataset_yaml,
-                    new_version=new_ver,
-                    base_model=base_m,
-                    epochs=epochs,
-                    batch_size=batch,
-                )
+                if hasattr(service, "start_real_training_job"):
+                    ok_launch, job_id, launch_info = service.start_real_training_job(
+                        dataset_yaml_path=dataset_yaml,
+                        new_version=new_ver,
+                        base_model=base_m,
+                        epochs=epochs,
+                        batch_size=batch,
+                    )
+                elif ms and hasattr(ms, "start_real_training_job"):
+                    ok_launch, job_id, launch_info = ms.start_real_training_job(
+                        dataset_yaml_path=dataset_yaml,
+                        new_version=new_ver,
+                        base_model=base_m,
+                        epochs=epochs,
+                        batch_size=batch,
+                    )
+                else:
+                    m_temp = ModelService(getattr(service, "_model_repo", None))
+                    ok_launch, job_id, launch_info = m_temp.start_real_training_job(
+                        dataset_yaml_path=dataset_yaml,
+                        new_version=new_ver,
+                        base_model=base_m,
+                        epochs=epochs,
+                        batch_size=batch,
+                    )
+
                 if ok_launch:
                     st.session_state["active_training_job_id"] = job_id
                     st.session_state["active_training_dataset_ver"] = new_ver
@@ -1279,7 +1328,12 @@ def page_model_management(service: AnalysisService):
         if active_job_id:
             st.markdown("---")
             st.markdown("##### 📡 Theo dõi Tiến trình Huấn luyện Thật (Live Job Monitor)")
-            job_status = service.get_training_job_status(active_job_id)
+            if hasattr(service, "get_training_job_status"):
+                job_status = service.get_training_job_status(active_job_id)
+            elif ms and hasattr(ms, "get_training_job_status"):
+                job_status = ms.get_training_job_status(active_job_id)
+            else:
+                job_status = ModelService(getattr(service, "_model_repo", None)).get_training_job_status(active_job_id)
 
             st_code = job_status.get("status", "UNKNOWN")
             stat_color = "#3B82F6" if st_code == "running" else ("#10B981" if st_code == "completed" else "#EF4444")
@@ -1321,11 +1375,25 @@ def page_model_management(service: AnalysisService):
                 """, unsafe_allow_html=True)
 
                 if st.button("⭐ Phê duyệt & Đăng ký Candidate Model vào Hệ thống", type="primary"):
-                    ok_app, app_msg = service.approve_and_register_completed_job(
-                        job_id=active_job_id,
-                        dataset_version=st.session_state.get("active_training_dataset_ver", "v1.0"),
-                        notes=f"Huấn luyện thật từ {job_status.get('dataset_yaml')}"
-                    )
+                    if hasattr(service, "approve_and_register_completed_job"):
+                        ok_app, app_msg = service.approve_and_register_completed_job(
+                            job_id=active_job_id,
+                            dataset_version=st.session_state.get("active_training_dataset_ver", "v1.0"),
+                            notes=f"Huấn luyện thật từ {job_status.get('dataset_yaml')}"
+                        )
+                    elif ms and hasattr(ms, "approve_and_register_completed_job"):
+                        ok_app, app_msg = ms.approve_and_register_completed_job(
+                            job_id=active_job_id,
+                            dataset_version=st.session_state.get("active_training_dataset_ver", "v1.0"),
+                            notes=f"Huấn luyện thật từ {job_status.get('dataset_yaml')}"
+                        )
+                    else:
+                        ok_app, app_msg = ModelService(getattr(service, "_model_repo", None)).approve_and_register_completed_job(
+                            job_id=active_job_id,
+                            dataset_version=st.session_state.get("active_training_dataset_ver", "v1.0"),
+                            notes=f"Huấn luyện thật từ {job_status.get('dataset_yaml')}"
+                        )
+
                     if ok_app:
                         st.success(f"✅ {app_msg}")
                         st.session_state.pop("active_training_job_id", None)
