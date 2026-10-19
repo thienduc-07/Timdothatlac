@@ -16,6 +16,7 @@ from src.models import SeatConfig, SeatState, SeatStatus, TrackedObject
 from src.seats.seat_config import (
     SeatConfigManager,
     calculate_overlap_ratio,
+    calculate_polygon_overlap_ratio,
     is_point_in_seat,
 )
 from src.seats.seat_detector import (
@@ -31,6 +32,7 @@ from config.settings import (
     SEAT_OCCUPIED_CONFIRM_SECONDS,
     SEAT_VACANT_CONFIRM_SECONDS,
     SEAT_HOLD_SECONDS,
+    CUSTOM_SEGMENTATION_WEIGHTS_PATH,
 )
 
 logger = get_logger(__name__)
@@ -48,7 +50,8 @@ class SeatManager:
         occupied_confirm_sec: float = SEAT_OCCUPIED_CONFIRM_SECONDS,
         vacant_confirm_sec: float = SEAT_VACANT_CONFIRM_SECONDS,
         hold_sec: float = SEAT_HOLD_SECONDS,
-        custom_weights_path: Optional[str] = "models/bus_seat_yolov8.pt",
+        custom_weights_path: Optional[str] = None,
+        shared_model=None,
     ):
         self.overlap_threshold = overlap_threshold
         self.occupied_confirm_sec = occupied_confirm_sec
@@ -59,7 +62,10 @@ class SeatManager:
         self._statuses: Dict[str, SeatStatus] = {}
 
         # Khởi tạo các module con chuyên biệt
-        self.detector = SeatDetector(custom_weights_path=custom_weights_path)
+        self.detector = SeatDetector(
+            custom_weights_path=custom_weights_path,
+            shared_model=shared_model,
+        )
         self.tracker = SeatTracker()
         self.occupancy_estimator = SeatOccupancyEstimator(
             overlap_threshold=overlap_threshold,
@@ -80,6 +86,13 @@ class SeatManager:
             if loaded:
                 self.set_seats(loaded)
                 self.active_detection_method = SeatDetectionMethod.MANUAL_CONFIGURATION
+
+    def set_shared_model(self, model_instance) -> bool:
+        """Chia sẻ model instance cho detector của SeatManager."""
+        ok = self.detector.set_shared_model(model_instance)
+        if ok:
+            self.active_detection_method = SeatDetectionMethod.MODEL_DETECTION
+        return ok
 
     @property
     def is_configured(self) -> bool:
@@ -212,6 +225,9 @@ class SeatManager:
             frame_height=frame_height,
         )
 
+    # Alias để tương thích với các module và test gọi update_occupancy
+    update_occupancy = update
+
     def find_seat_for_bbox(
         self,
         bbox: Tuple[int, int, int, int],
@@ -274,6 +290,91 @@ class SeatManager:
             return top1_id
 
         return None
+
+    def find_seat_for_polygon(
+        self,
+        polygon: List[Tuple[float, float]],
+        frame_width: int,
+        frame_height: int,
+        min_overlap: float = 0.08,
+        ambiguity_diff_threshold: float = 0.08,
+    ) -> Optional[str]:
+        """
+        Xác định vùng ghế mà một vật thể có segmentation mask polygon đang thuộc về:
+        - Sử dụng calculate_polygon_overlap_ratio trực tiếp giữa đa giác vật thể và đa giác ghế.
+        - Trả về seat_id, 'UNKNOWN_SEAT' nếu nằm ở ranh giới mơ hồ, hoặc None nếu nằm ngoài.
+        """
+        if not self._seats or len(polygon) < 3:
+            return None
+
+        # Chuyển đổi polygon sang pixel
+        is_norm = all(0.0 <= pt[0] <= 1.0 and 0.0 <= pt[1] <= 1.0 for pt in polygon)
+        if is_norm:
+            obj_pts = [(int(pt[0] * frame_width), int(pt[1] * frame_height)) for pt in polygon]
+        else:
+            obj_pts = [(int(pt[0]), int(pt[1])) for pt in polygon]
+
+        cx = sum(p[0] for p in obj_pts) / len(obj_pts)
+        cy = sum(p[1] for p in obj_pts) / len(obj_pts)
+        center = (cx, cy)
+
+        seat_scores: List[Tuple[str, float, bool]] = []
+        for seat_id, config in self._seats.items():
+            poly_pts = config.get_pixel_polygon(frame_width, frame_height)
+            is_inside = is_point_in_seat(center, poly_pts)
+            overlap_seat, overlap_obj = calculate_polygon_overlap_ratio(obj_pts, poly_pts)
+            score = max(overlap_seat, overlap_obj)
+
+            if is_inside or score >= min_overlap:
+                effective_score = score + (0.35 if is_inside else 0.0)
+                seat_scores.append((seat_id, effective_score, is_inside))
+
+        if not seat_scores:
+            return None
+
+        seat_scores.sort(key=lambda x: x[1], reverse=True)
+        if len(seat_scores) == 1:
+            return seat_scores[0][0]
+
+        top1_id, top1_score, top1_center = seat_scores[0]
+        top2_id, top2_score, top2_center = seat_scores[1]
+
+        diff = abs(top1_score - top2_score)
+        if diff < ambiguity_diff_threshold and top2_score >= min_overlap:
+            logger.debug(
+                f"Đồ vật (polygon) nằm ở ranh giới giữa {top1_id} và {top2_id} (diff {diff:.2f}) -> UNKNOWN_SEAT"
+            )
+            return "UNKNOWN_SEAT"
+
+        if top1_center and not top2_center:
+            return top1_id
+
+        if top1_score >= min_overlap:
+            return top1_id
+
+        return None
+
+    def find_seat_for_object(
+        self,
+        tracked_obj: TrackedObject,
+        frame_width: int,
+        frame_height: int,
+        min_overlap: float = 0.10,
+    ) -> Optional[str]:
+        """
+        Tìm ghế cho một đối tượng TrackedObject.
+        Ưu tiên sử dụng segmentation polygon nếu có, fallback về bounding box.
+        """
+        if getattr(tracked_obj, "polygon", None) is not None and len(tracked_obj.polygon) >= 3:
+            seat_by_poly = self.find_seat_for_polygon(
+                tracked_obj.polygon, frame_width, frame_height, min_overlap=min_overlap
+            )
+            if seat_by_poly is not None:
+                return seat_by_poly
+
+        return self.find_seat_for_bbox(
+            tracked_obj.bbox, frame_width, frame_height, min_overlap=min_overlap
+        )
 
     def get_last_departed_person(self, seat_id: str) -> Optional[Tuple[int, float]]:
         """Lấy thông tin người vừa rời khỏi ghế (person_track_id, departure_time_sec)."""

@@ -22,6 +22,10 @@ import numpy as np
 
 from src.models import SeatConfig
 from src.utils.logger import get_logger
+from config.settings import (
+    CUSTOM_SEGMENTATION_WEIGHTS_PATH,
+    SUPPORTED_CUSTOM_WEIGHTS_PATHS,
+)
 
 logger = get_logger(__name__)
 
@@ -72,14 +76,35 @@ class CustomSeatYOLOAdapter:
     từ camera gắn trên trần nhìn xuống (Top-down overhead bus seat).
     """
 
-    def __init__(self, weights_path: str = "models/bus_seat_yolo.pt"):
-        self.weights_path = Path(weights_path)
+    def __init__(
+        self,
+        weights_path: Optional[str] = None,
+        shared_model=None,
+    ):
         self.model = None
         self._is_available = False
         self._supported_seat_classes: List[str] = []
         self._all_model_classes: Dict[int, str] = {}
         self._inspection_status: str = "NOT_INSPECTED"
         self._inspection_error: str = ""
+        self.task: str = "detect"
+        self.is_segmentation: bool = False
+
+        if shared_model is not None:
+            self.weights_path = Path(getattr(shared_model, "weights_path", "shared_model"))
+            self._inspect_model_instance(shared_model)
+            return
+
+        if weights_path is not None:
+            self.weights_path = Path(weights_path)
+        else:
+            # Tự động tìm kiếm file weights ưu tiên (models/best.pt, sau đó các alias khác)
+            chosen_path = None
+            for p in SUPPORTED_CUSTOM_WEIGHTS_PATHS:
+                if Path(p).exists():
+                    chosen_path = Path(p)
+                    break
+            self.weights_path = chosen_path if chosen_path is not None else Path(CUSTOM_SEGMENTATION_WEIGHTS_PATH)
 
         self.inspect_weights()
 
@@ -111,6 +136,53 @@ class CustomSeatYOLOAdapter:
         valid = CustomSeatYOLOAdapter.inspect_classes(class_dict_or_list)
         return len(valid) > 0
 
+    def set_shared_model(self, model_instance) -> bool:
+        """Thiết lập instance model dùng chung để không phải tải lại từ file."""
+        if model_instance is None:
+            return False
+        res = self._inspect_model_instance(model_instance)
+        return bool(res.get("is_valid_seat_model", False))
+
+    def _inspect_model_instance(self, model) -> Dict[str, Union[bool, str, List[str]]]:
+        """Kiểm tra một model instance đã được nạp sẵn (shared model)."""
+        names = getattr(model, "names", {})
+        self._all_model_classes = names
+        self.task = getattr(model, "task", "detect")
+        self.is_segmentation = (self.task == "segment")
+        class_names_list = list(names.values())
+
+        detected_seat_classes = [
+            cname for cname in class_names_list
+            if cname.lower() in VALID_SEAT_CLASS_NAMES or "seat" in cname.lower()
+        ]
+
+        is_generic_coco = len(names) == 80 and "chair" in class_names_list and not detected_seat_classes
+        if is_generic_coco:
+            self._is_available = False
+            self._inspection_status = "COCO_GENERIC_CHAIR_ONLY"
+            self._inspection_error = (
+                "Shared model là COCO pretrained (chỉ có lớp 'chair' nhìn ngang). "
+                "Không có lớp nhận diện đệm ghế xe buýt nhìn từ trần xuống."
+            )
+            return {"is_valid_seat_model": False, "status": "COCO_CHAIR_REJECTED", "message": self._inspection_error}
+
+        if not detected_seat_classes:
+            self._is_available = False
+            self._inspection_status = "NO_SEAT_CLASSES"
+            self._inspection_error = f"Model có {len(names)} lớp nhưng không chứa lớp ghế xe buýt."
+            return {"is_valid_seat_model": False, "status": "INVALID_CLASSES", "message": self._inspection_error}
+
+        self.model = model
+        self._is_available = True
+        self._supported_seat_classes = detected_seat_classes
+        self._inspection_status = "VALID_SEAT_MODEL"
+        return {
+            "is_valid_seat_model": True,
+            "supported_seat_classes": detected_seat_classes,
+            "status": "READY",
+            "message": f"Đã kết nối shared model ({self.task}) với các lớp ghế: {detected_seat_classes}",
+        }
+
     def inspect_weights(self) -> Dict[str, Union[bool, str, List[str]]]:
         """
         Kiểm tra file weights trước khi sử dụng:
@@ -125,6 +197,8 @@ class CustomSeatYOLOAdapter:
             "is_valid_seat_model": False,
             "supported_seat_classes": [],
             "all_classes": [],
+            "task": "unknown",
+            "is_segmentation": False,
             "status": "CUSTOM SEAT MODEL NOT CONFIGURED",
             "message": "",
         }
@@ -132,7 +206,10 @@ class CustomSeatYOLOAdapter:
         if not self.weights_path.exists() or not self.weights_path.is_file():
             self._is_available = False
             self._inspection_status = "FILE_NOT_FOUND"
-            self._inspection_error = f"Chưa tìm thấy file weights tại: {self.weights_path}"
+            self._inspection_error = (
+                f"Chưa tìm thấy file weights tại: '{self.weights_path}'. "
+                "Hướng dẫn: Sau khi huấn luyện YOLO26 Instance Segmentation, hãy đặt file weights vào models/best.pt."
+            )
             result["status"] = "CUSTOM SEAT MODEL NOT CONFIGURED"
             result["message"] = self._inspection_error
             return result
@@ -144,8 +221,13 @@ class CustomSeatYOLOAdapter:
 
             # Tải metadata model
             model = YOLO(str(self.weights_path))
-            names = model.names  # Dict {id: name}
+            names = model.names if hasattr(model, "names") else {}
             self._all_model_classes = names
+            self.task = getattr(model, "task", "detect")
+            self.is_segmentation = (self.task == "segment")
+            result["task"] = self.task
+            result["is_segmentation"] = self.is_segmentation
+
             class_names_list = list(names.values())
             result["all_classes"] = class_names_list
 
@@ -187,7 +269,7 @@ class CustomSeatYOLOAdapter:
             self._is_available = True
             self._supported_seat_classes = detected_seat_classes
             self._inspection_status = "VALID_SEAT_MODEL"
-            msg = f"Đã nạp thành công Custom Seat Model với các lớp: {detected_seat_classes}"
+            msg = f"Đã nạp thành công Custom Seat Model ({self.task}) với các lớp: {detected_seat_classes}"
             result["is_valid_seat_model"] = True
             result["supported_seat_classes"] = detected_seat_classes
             result["status"] = "READY"
@@ -207,7 +289,8 @@ class CustomSeatYOLOAdapter:
     def detect(self, frame: np.ndarray, confidence: float = 0.35) -> List[SeatConfig]:
         """
         Thực hiện inference trên frame camera để nhận diện từng chiếc đệm ghế thực tế.
-        Mỗi bounding box/polygon được sinh trực tiếp từ dự đoán của neural network trên ảnh.
+        Ưu tiên trích xuất đa giác phân đoạn (segmentation mask polygon) của từng ghế.
+        Chỉ fallback về bounding box khi model không hỗ trợ mask hoặc mask rỗng.
         """
         if not self.is_available or self.model is None:
             return []
@@ -219,43 +302,105 @@ class CustomSeatYOLOAdapter:
 
         for r in results:
             boxes = r.boxes
-            if boxes is None:
+            if boxes is None or len(boxes) == 0:
                 continue
 
-            for b in boxes:
-                class_id = int(b.cls[0])
+            has_masks = (
+                hasattr(r, "masks")
+                and r.masks is not None
+                and hasattr(r.masks, "xy")
+                and r.masks.xy is not None
+            )
+
+            for i, b in enumerate(boxes):
+                try:
+                    class_id = int(b.cls[0])
+                except Exception:
+                    try:
+                        class_id = int(boxes.cls[i])
+                    except Exception:
+                        class_id = int(b.cls)
+
                 class_name = self.model.names.get(class_id, f"class_{class_id}")
 
                 # Chỉ nhận các lớp ghế thực sự
                 if class_name.lower() not in VALID_SEAT_CLASS_NAMES and "seat" not in class_name.lower():
                     continue
 
-                conf = float(b.conf[0])
-                xyxy = b.xyxy[0].cpu().numpy()
-                x1, y1, x2, y2 = xyxy
+                try:
+                    conf = float(b.conf[0])
+                except Exception:
+                    try:
+                        conf = float(boxes.conf[i])
+                    except Exception:
+                        conf = float(b.conf)
 
-                # Tọa độ chuẩn hóa [0, 1] cho đệm ghế nhận diện được
-                norm_poly = [
-                    (round(float(x1) / w, 4), round(float(y1) / h, 4)),
-                    (round(float(x2) / w, 4), round(float(y1) / h, 4)),
-                    (round(float(x2) / w, 4), round(float(y2) / h, 4)),
-                    (round(float(x1) / w, 4), round(float(y2) / h, 4)),
-                ]
+                raw_xy = getattr(b, "xyxy", None)
+                if raw_xy is None:
+                    raw_xy = getattr(boxes, "xyxy", None)
+                    if raw_xy is not None and len(raw_xy) > i:
+                        raw_xy = raw_xy[i]
+                if raw_xy is None:
+                    continue
 
-                # Nếu nhãn là seat_window hoặc seat_aisle -> gán ID có ngữ nghĩa
+                if hasattr(raw_xy, "cpu"):
+                    raw_xy = raw_xy.cpu().numpy()
+                else:
+                    raw_xy = np.asarray(raw_xy)
+
+                if raw_xy.ndim > 1:
+                    raw_xy = raw_xy[0]
+                if len(raw_xy) < 4:
+                    continue
+                x1, y1, x2, y2 = [int(v) for v in raw_xy[:4]]
+
+                # Trích xuất polygon từ segmentation mask nếu có
+                mask_poly = None
+                if has_masks and i < len(r.masks.xy):
+                    poly_raw = r.masks.xy[i]
+                    if poly_raw is not None and len(poly_raw) >= 3:
+                        norm_pts = []
+                        for pt in poly_raw:
+                            nx = round(max(0.0, min(1.0, float(pt[0]) / w)), 4)
+                            ny = round(max(0.0, min(1.0, float(pt[1]) / h)), 4)
+                            norm_pts.append((nx, ny))
+                        if len(norm_pts) >= 3:
+                            mask_poly = norm_pts
+
+                # Ưu tiên segmentation polygon
+                if mask_poly is not None:
+                    seat_poly = mask_poly
+                    method_str = "AI Segmentation Mask"
+                else:
+                    # Bounding box fallback
+                    seat_poly = [
+                        (round(float(x1) / w, 4), round(float(y1) / h, 4)),
+                        (round(float(x2) / w, 4), round(float(y1) / h, 4)),
+                        (round(float(x2) / w, 4), round(float(y2) / h, 4)),
+                        (round(float(x1) / w, 4), round(float(y2) / h, 4)),
+                    ]
+                    method_str = "AI Bounding Box Fallback"
+
+                # Kiểm tra trường hợp cụm ghế đôi nếu model dự đoán 1 mask cho cả cụm
+                box_w = x2 - x1
+                box_h = y2 - y1
+                is_wide_bench = (box_h > 0 and (box_w / box_h) > 1.45) or ("double" in class_name or "bench" in class_name)
+                cluster_note = " (Cụm ghế đôi)" if is_wide_bench else ""
+
+                # Gán ID có ngữ nghĩa
                 if "window" in class_name.lower():
                     seat_id = f"SEAT_W{counter:02d}"
-                    desc = f"Ghế cửa sổ (AI Detection conf {conf:.0%})"
+                    desc = f"Ghế cửa sổ ({method_str} conf {conf:.0%}){cluster_note}"
                 elif "aisle" in class_name.lower():
                     seat_id = f"SEAT_A{counter:02d}"
-                    desc = f"Ghế lối đi (AI Detection conf {conf:.0%})"
+                    desc = f"Ghế lối đi ({method_str} conf {conf:.0%}){cluster_note}"
                 else:
                     seat_id = f"SEAT_{counter:03d}"
-                    desc = f"Ghế {counter} (AI Detection conf {conf:.0%})"
+                    desc = f"Ghế {counter} ({method_str} conf {conf:.0%}){cluster_note}"
 
                 detected_seats.append(SeatConfig(
                     seat_id=seat_id,
-                    polygon=norm_poly,
+                    polygon=seat_poly,
                     is_normalized=True,
                     description=desc,
                 ))
@@ -435,12 +580,20 @@ class SeatDetector:
 
     def __init__(
         self,
-        custom_weights_path: str = "models/bus_seat_yolo.pt",
+        custom_weights_path: Optional[str] = None,
+        shared_model=None,
         aisle_ratio: float = 0.18,
     ):
         self.custom_weights_path = custom_weights_path
-        self.model_adapter = CustomSeatYOLOAdapter(weights_path=custom_weights_path)
+        self.model_adapter = CustomSeatYOLOAdapter(
+            weights_path=custom_weights_path,
+            shared_model=shared_model,
+        )
         self.geometry_detector = BusGeometrySeatDetector(aisle_ratio=aisle_ratio)
+
+    def set_shared_model(self, model_instance) -> bool:
+        """Thiết lập model instance dùng chung cho SeatDetector."""
+        return self.model_adapter.set_shared_model(model_instance)
 
     @staticmethod
     def inspect_coco_classes() -> Dict[str, Union[bool, str, List[str]]]:

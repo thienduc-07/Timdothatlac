@@ -100,16 +100,53 @@ class ObjectTracker:
                 if result.boxes is None or result.boxes.id is None:
                     continue
 
+                has_masks = (
+                    hasattr(result, "masks")
+                    and result.masks is not None
+                    and hasattr(result.masks, "xy")
+                    and result.masks.xy is not None
+                )
+
                 for i, box in enumerate(result.boxes):
-                    track_id = int(box.id[i]) if box.id is not None else -1
+                    try:
+                        track_id = int(box.id[0]) if box.id is not None else -1
+                    except Exception:
+                        track_id = int(result.boxes.id[i]) if result.boxes.id is not None else -1
+
                     if track_id == -1:
                         continue
 
-                    class_id = int(box.cls[i])
+                    try:
+                        class_id = int(box.cls[0])
+                    except Exception:
+                        class_id = int(result.boxes.cls[i])
+
                     class_name = model.names.get(class_id, f"class_{class_id}")
-                    confidence = float(box.conf[i])
-                    x1, y1, x2, y2 = [int(v) for v in box.xyxy[i].tolist()]
+
+                    try:
+                        confidence = float(box.conf[0])
+                    except Exception:
+                        confidence = float(result.boxes.conf[i])
+
+                    try:
+                        x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
+                    except Exception:
+                        x1, y1, x2, y2 = [int(v) for v in result.boxes.xyxy[i].tolist()]
                     bbox = (x1, y1, x2, y2)
+
+                    # Trích xuất polygon nếu có mask
+                    polygon: Optional[List[Tuple[float, float]]] = None
+                    if has_masks and i < len(result.masks.xy):
+                        poly_pts = result.masks.xy[i]
+                        if poly_pts is not None and len(poly_pts) >= 3:
+                            h, w = frame.shape[:2]
+                            valid_pts = []
+                            for pt in poly_pts:
+                                px = max(0.0, min(float(w), float(pt[0])))
+                                py = max(0.0, min(float(h), float(pt[1])))
+                                valid_pts.append((px, py))
+                            if len(valid_pts) >= 3:
+                                polygon = valid_pts
 
                     obj = TrackedObject(
                         track_id=track_id,
@@ -117,14 +154,15 @@ class ObjectTracker:
                         confidence=confidence,
                         bbox=bbox,
                         class_id=class_id,
+                        polygon=polygon,
                     )
                     tracked_objects.append(obj)
 
-                    # Ghi nhận vị trí người
+                    # Ghi nhận vị trí người và đồ vật
                     center = ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
                     if class_name == PERSON_CLASS:
                         current_person_positions[track_id] = center
-                    elif class_name in ITEM_CLASSES:
+                    elif class_name in ITEM_CLASSES or class_name == "item":
                         current_item_ids.append(track_id)
 
                     # Cập nhật lịch sử quan sát
@@ -135,6 +173,7 @@ class ObjectTracker:
                         bbox=bbox,
                         frame_index=frame_index,
                         current_time=current_time,
+                        polygon=polygon,
                     )
 
             # Cập nhật thông tin người gần đồ vật
@@ -158,6 +197,7 @@ class ObjectTracker:
         bbox: Tuple[int, int, int, int],
         frame_index: int,
         current_time: float,
+        polygon: Optional[List[Tuple[float, float]]] = None,
     ):
         """Cập nhật hoặc tạo mới TrackObservation cho một track."""
         if track_id in self._observations:
@@ -166,6 +206,10 @@ class ObjectTracker:
             obs.last_seen_time = current_time
             obs.positions.append(bbox)
             obs.confidence_history.append(confidence)
+            if hasattr(obs, "polygons"):
+                obs.polygons.append(polygon)
+                if len(obs.polygons) > 300:
+                    obs.polygons = obs.polygons[-200:]
             # Giới hạn số lượng positions lưu trữ (tiết kiệm bộ nhớ)
             if len(obs.positions) > 300:
                 obs.positions = obs.positions[-200:]
@@ -180,6 +224,7 @@ class ObjectTracker:
                 first_seen_time=current_time,
                 last_seen_time=current_time,
                 positions=[bbox],
+                polygons=[polygon],
                 confidence_history=[confidence],
             )
 

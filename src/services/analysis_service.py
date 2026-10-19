@@ -28,11 +28,12 @@ from config.settings import (
     MIN_STATIONARY_TIME_SEC,
     STATIONARY_MOVEMENT_THRESHOLD,
     ITEM_CLASSES,
+    EventStatus,
 )
 
 from src.seats.seat_config import SeatConfigManager
 from src.seats.seat_manager import SeatManager
-from src.models import AnalysisResult, VideoMetadata, SeatConfig, SeatStatus, Event, Alert
+from src.models import SeatConfig, SeatStatus, Event, Alert
 from src.database.alert_repository import AlertRepository
 from src.database.dataset_repository import DatasetRepository
 from src.database.model_repository import ModelRepository
@@ -96,6 +97,15 @@ class AnalysisService:
             logger.error("Không thể tải model YOLO")
             return False
 
+        # Nếu model có chứa lớp ghế (như custom model YOLO26: seat, person, item),
+        # chia sẻ instance đã nạp cho SeatManager để tránh tốn RAM tải trùng model
+        if self._detector.is_loaded and self._detector.model is not None:
+            c_names = getattr(self._detector.model, "names", {})
+            has_seat = any("seat" in str(c).lower() for c in c_names.values())
+            if has_seat:
+                self._seat_manager.set_shared_model(self._detector.model)
+                logger.info("Đã tự động chia sẻ model instance cho SeatManager")
+
         # Tải cấu hình vùng ghế nếu có
         saved_seats = self._seat_config_mgr.load_seats()
         if saved_seats:
@@ -141,6 +151,11 @@ class AnalysisService:
     def seat_manager(self) -> SeatManager:
         """Trả về instance SeatManager."""
         return self._seat_manager
+
+    @property
+    def detector(self) -> Optional[YOLODetector]:
+        """Trả về instance YOLODetector."""
+        return self._detector
 
     def is_seat_configured(self) -> bool:
         """Kiểm tra xem vùng ghế đã được thiết lập chưa."""
@@ -356,6 +371,7 @@ class AnalysisService:
         show_confidence: bool = True,
         show_event_markers: bool = True,
         privacy_blur_faces: bool = False,
+        show_masks: bool = True,
         telegram_config: Optional[Dict] = None,
         email_config: Optional[Dict] = None,
         webhook_config: Optional[Dict] = None,
@@ -461,6 +477,7 @@ class AnalysisService:
             show_confidence=show_confidence,
             show_event_markers=show_event_markers,
             privacy_blur_faces=privacy_blur_faces,
+            show_masks=show_masks,
         )
 
         summary = event_manager.get_summary()
@@ -598,6 +615,28 @@ class AnalysisService:
             return self._model_service.validate_training_dataset(yaml_path)
         return False, "ModelService chưa sẵn sàng", {}
 
+    def generate_training_command(
+        self,
+        dataset_yaml_path: str,
+        epochs: int = 30,
+        batch_size: int = 16,
+        imgsz: int = 640,
+        model: str = "yolov8n.pt",
+        task: str = "detect",
+    ) -> str:
+        """Sinh lệnh CLI Ultralytics cho huấn luyện."""
+        if self._model_service:
+            return self._model_service.generate_training_command(
+                dataset_yaml_path=dataset_yaml_path,
+                epochs=epochs,
+                batch_size=batch_size,
+                imgsz=imgsz,
+                # pyrefly: ignore[unexpected-keyword]
+                model=model,
+                task=task,
+            )
+        return ""
+
     def start_real_training_job(
         self,
         dataset_yaml_path: str,
@@ -606,6 +645,7 @@ class AnalysisService:
         epochs: int = 30,
         batch_size: int = 16,
         imgsz: int = 640,
+        task: str = "detect",
     ) -> Tuple[bool, str, Dict]:
         """Khởi chạy huấn luyện thật bằng Ultralytics trong tiến trình riêng."""
         if self._model_service:
@@ -616,6 +656,7 @@ class AnalysisService:
                 epochs=epochs,
                 batch_size=batch_size,
                 imgsz=imgsz,
+                task=task,
             )
         return False, "ModelService chưa sẵn sàng", {}
 

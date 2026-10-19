@@ -132,12 +132,17 @@ class ForgottenItemDetector:
             bbox = item.bbox
             confidence = item.confidence
 
-            # Xác định ghế cho đồ vật
+            # Xác định ghế cho đồ vật (ưu tiên dùng mask polygon nếu có)
             seat_id = ""
             if self.seat_manager and self.seat_manager.is_configured:
-                seat_id = self.seat_manager.find_seat_for_bbox(
-                    bbox, frame_width, frame_height
-                ) or ""
+                if hasattr(self.seat_manager, "find_seat_for_object"):
+                    seat_id = self.seat_manager.find_seat_for_object(
+                        item, frame_width, frame_height
+                    ) or ""
+                else:
+                    seat_id = self.seat_manager.find_seat_for_bbox(
+                        bbox, frame_width, frame_height
+                    ) or ""
 
             # Kiểm tra xem có sự kiện nào đã tồn tại gắn với track_id này không
             existing_event = None

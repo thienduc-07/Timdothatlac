@@ -113,6 +113,63 @@ def calculate_overlap_ratio(
     return min(1.0, overlap_wrt_seat), min(1.0, overlap_wrt_bbox)
 
 
+def calculate_polygon_overlap_ratio(
+    polygon_a_pts: List[Tuple[int, int]],
+    polygon_b_pts: List[Tuple[int, int]],
+) -> Tuple[float, float]:
+    """
+    Tính tỷ lệ giao thoa giữa hai đa giác (ví dụ mask của vật thể và polygon của ghế).
+
+    Returns:
+        (overlap_wrt_a, overlap_wrt_b)
+    """
+    if len(polygon_a_pts) < 3 or len(polygon_b_pts) < 3:
+        return 0.0, 0.0
+
+    pts_a = np.array(polygon_a_pts, dtype=np.int32)
+    pts_b = np.array(polygon_b_pts, dtype=np.int32)
+
+    min_a = np.min(pts_a, axis=0)
+    max_a = np.max(pts_a, axis=0)
+    min_b = np.min(pts_b, axis=0)
+    max_b = np.max(pts_b, axis=0)
+
+    # AABB check
+    if max_a[0] <= min_b[0] or min_a[0] >= max_b[0] or max_a[1] <= min_b[1] or min_a[1] >= max_b[1]:
+        return 0.0, 0.0
+
+    area_a = calculate_polygon_area(polygon_a_pts)
+    area_b = calculate_polygon_area(polygon_b_pts)
+    if area_a <= 0 or area_b <= 0:
+        return 0.0, 0.0
+
+    union_min = np.minimum(min_a, min_b)
+    union_max = np.maximum(max_a, max_b)
+
+    mask_w = int(union_max[0] - union_min[0]) + 1
+    mask_h = int(union_max[1] - union_min[1]) + 1
+
+    if mask_w <= 0 or mask_h <= 0 or mask_w > 4000 or mask_h > 4000:
+        return 0.0, 0.0
+
+    mask_a = np.zeros((mask_h, mask_w), dtype=np.uint8)
+    mask_b = np.zeros((mask_h, mask_w), dtype=np.uint8)
+
+    shifted_a = pts_a - union_min
+    shifted_b = pts_b - union_min
+
+    cv2.fillPoly(mask_a, [shifted_a.reshape((-1, 1, 2))], 1)
+    cv2.fillPoly(mask_b, [shifted_b.reshape((-1, 1, 2))], 1)
+
+    inter_mask = cv2.bitwise_and(mask_a, mask_b)
+    intersection_area = float(np.sum(inter_mask))
+
+    overlap_wrt_a = intersection_area / area_a
+    overlap_wrt_b = intersection_area / area_b
+
+    return min(1.0, overlap_wrt_a), min(1.0, overlap_wrt_b)
+
+
 class SeatConfigManager:
     """
     Quản lý việc lưu, nạp và xác thực cấu hình vùng ghế từ file JSON.

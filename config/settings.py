@@ -30,12 +30,26 @@ for _dir in [DATA_DIR, OUTPUTS_DIR, MODELS_DIR, LOGS_DIR, ASSETS_DIR, SNAPSHOTS_
 DATABASE_PATH = PROJECT_ROOT / "lost_and_found.db"
 
 # ──────────────────────────────────────────────
-# YOLO Model
+# YOLO Model & Instance Segmentation (YOLO26 / YOLO-seg)
 # ──────────────────────────────────────────────
-# Model nhỏ nhất, phù hợp máy cá nhân. Lần đầu chạy sẽ tự tải từ Ultralytics.
+# Đường dẫn weights custom ưu tiên cho model Instance Segmentation (3 lớp: seat, person, item)
+CUSTOM_SEGMENTATION_WEIGHTS_PATH = MODELS_DIR / "best.pt"
+
+# Danh sách các file weights custom được hỗ trợ tìm kiếm
+SUPPORTED_CUSTOM_WEIGHTS_PATHS = [
+    MODELS_DIR / "best.pt",
+    MODELS_DIR / "bus_seat_yolo.pt",
+    MODELS_DIR / "bus_seat_yolov8.pt",
+]
+
+# Model fallback phát hiện cơ bản (nếu chưa có custom weights)
 YOLO_MODEL_NAME = "yolov8n.pt"
 
-# Confidence threshold mặc định cho object detection
+# Cấu hình hiển thị Segmentation Mask
+DEFAULT_SHOW_SEGMENTATION_MASKS = True
+SEGMENTATION_MASK_ALPHA = 0.35
+
+# Confidence threshold mặc định cho object detection & segmentation
 DEFAULT_CONFIDENCE_THRESHOLD = 0.35
 
 # Thiết bị: "cpu" hoặc "cuda" (tự động fallback về cpu nếu không có GPU)
@@ -80,6 +94,7 @@ COLOR_ALERT_HEX = "#EF4444"
 # Các lớp vật thể COCO & Mở rộng (Flexible Object Detection)
 # ──────────────────────────────────────────────
 ITEM_CLASSES = [
+    "item",         # Đồ vật tổng quát (từ custom model YOLO26 Instance Segmentation: seat, person, item)
     "backpack",     # Ba lô
     "handbag",      # Túi xách
     "suitcase",     # Vali
@@ -88,7 +103,6 @@ ITEM_CLASSES = [
     "cell phone",   # Điện thoại
     "laptop",       # Máy tính xách tay
     "book",         # Sách / Vở
-    "handbag",      # Túi cầm tay
 ]
 
 # Các lớp mở rộng hỗ trợ nhận diện bổ sung hoặc human review
@@ -103,10 +117,13 @@ EXTENDED_ITEM_CLASSES = [
 ]
 
 PERSON_CLASS = "person"
+SEAT_CLASS = "seat"
 
 # Tên tiếng Việt hiển thị
 CLASS_NAMES_VI = {
     "person": "Người",
+    "item": "Đồ vật / Hành lý",
+    "seat": "Ghế xe buýt",
     "backpack": "Ba lô",
     "handbag": "Túi xách",
     "suitcase": "Vali",

@@ -34,6 +34,8 @@ from src.video.camera_service import CameraSourceType, ensure_demo_video_exists
 from src.video.video_writer import VideoWriter
 from config.settings import (
     DEFAULT_CONFIDENCE_THRESHOLD,
+    DEFAULT_SHOW_SEGMENTATION_MASKS,
+    CUSTOM_SEGMENTATION_WEIGHTS_PATH,
     MIN_STATIONARY_TIME_SEC,
     STATIONARY_MOVEMENT_THRESHOLD,
     ITEM_CLASSES,
@@ -375,8 +377,13 @@ def page_dashboard(service: AnalysisService):
     # Model & Detector info
     model_info = service.get_model_info()
     model_name = model_info.get("model_name", "YOLOv8")
-    classes_supported = model_info.get("classes", [])
+    is_seg = model_info.get("is_segmentation", False)
+    task_name = model_info.get("task", "detect")
+    classes_supported = model_info.get("classes", []) or model_info.get("tracked_class_names", [])
     classes_str = ", ".join(classes_supported[:8]) + ("..." if len(classes_supported) > 8 else "")
+    has_custom_weights = CUSTOM_SEGMENTATION_WEIGHTS_PATH.exists()
+
+    seg_badge = '<span class="badge" style="background: #0284C7; color: #E0F2FE; border: 1px solid #38BDF8;">TASK: SEGMENTATION (Polygon Masks)</span>' if is_seg else '<span class="badge" style="background: #334155; color: #94A3B8;">TASK: DETECTION (BBox)</span>'
 
     st.markdown(f"""
     <div style="background: #141E33; border: 1px solid #3A506B; border-radius: 8px; padding: 12px 18px; margin-bottom: 16px;">
@@ -387,18 +394,27 @@ def page_dashboard(service: AnalysisService):
                 <div style="font-size: 0.85rem; color: #CBD5E1; margin-top: 4px;">{method_desc}</div>
             </div>
             <div style="text-align: right; font-size: 0.8rem; color: #94A3B8;">
-                <div>🧠 Model chính: <b style="color: #F8FAFC;">{model_name}</b></div>
-                <div>Lớp hỗ trợ: <span style="color: #60A5FA;">{classes_str if classes_str else 'person, items'}</span></div>
+                <div>🧠 Model chính: <b style="color: #F8FAFC;">{model_name}</b> {seg_badge}</div>
+                <div>Lớp nhận diện: <span style="color: #60A5FA;">{classes_str if classes_str else 'seat, person, item'}</span></div>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
+    if not has_custom_weights:
+        st.info(
+            "⏳ **Chờ nạp weights YOLO26 Instance Segmentation:**\n\n"
+            "Mô hình 3 lớp (`seat`, `person`, `item`) hiện đang được huấn luyện trên Ultralytics Platform. "
+            "Sau khi hoàn tất, hãy tải file weights và đặt tại đường dẫn: **`models/best.pt`**.\n\n"
+            "Hệ thống đã sẵn sàng 100% về kiến trúc Instance Segmentation, tự động trích xuất polygon masks, "
+            "dùng chung model duy nhất cho ghế & tracking đối tượng mà không cần tải lại model hai lần."
+        )
+
     if method_val == "GEOMETRY_FALLBACK":
         st.warning(
             "⚠️ **CẢNH BÁO MINH BẠCH**: Hệ thống đang chạy ở chế độ **GEOMETRY FALLBACK** phục vụ kiểm thử. "
             "Tọa độ các ghế hiện tại KHÔNG PHẢI do AI nhận diện trực tiếp từ hình ảnh. "
-            "Để nhận diện thực tế, cần huấn luyện hoặc nạp weights chuyên biệt vào `models/bus_seat_yolo.pt`."
+            "Để nhận diện thực tế bằng AI, hãy đặt weights segmentation đã train vào `models/best.pt`."
         )
 
     # 4 Metric Panels
@@ -502,6 +518,7 @@ def _run_browser_camera_analysis(
     show_persons: bool,
     show_objects: bool,
     privacy_blur: bool,
+    show_masks: bool = DEFAULT_SHOW_SEGMENTATION_MASKS,
 ):
     """Xử lý hình ảnh chụp từ webcam trình duyệt và hiển thị trực quan chi tiết."""
     if not photo:
@@ -536,6 +553,7 @@ def _run_browser_camera_analysis(
                 show_persons=show_persons,
                 show_objects=show_objects,
                 privacy_blur_faces=privacy_blur,
+                show_masks=show_masks,
             )
 
         rgb_res = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
@@ -593,15 +611,14 @@ def page_camera_monitor(service: AnalysisService):
 
     with src_col1:
         source_mode = st.radio(
-            "Chọn nguồn video:",
+            "Chọn nguồn video / camera:",
             [
-                "🚌 Video Mẫu Xe Buýt (Demo Mode - Khuyên dùng trên Cloud)",
-                "📁 Tải lên Video từ máy tính",
-                "📸 Webcam Trình duyệt (Dùng Camera MacBook / Điện thoại trên Cloud & Web)",
-                "🎥 Live Webcam máy tính (OpenCV / Chỉ dùng khi chạy Local)",
+                "🎥 Live Camera Thời Gian Thực (FaceTime HD / Webcam Máy Tính / Realtime Stream)",
+                "🚌 Video Mẫu Xe Buýt (Demo Mode - Khuyên dùng kiểm thử)",
+                "📁 Tải lên Video từ máy tính (.mp4, .avi, .mov)",
                 "🌐 Luồng IP / RTSP Camera",
             ],
-            index=2 if is_cloud_env else 0,
+            index=0,
             horizontal=False,
         )
 
@@ -614,6 +631,7 @@ def page_camera_monitor(service: AnalysisService):
         show_seats = st.checkbox("🪑 Vùng ghế (Seats)", value=True)
         show_persons = st.checkbox("👤 Người (Persons)", value=True)
         show_objects = st.checkbox("🎒 Đồ vật (Objects)", value=True)
+        show_masks = st.checkbox("🎭 Mặt nạ Segmentation (Masks)", value=DEFAULT_SHOW_SEGMENTATION_MASKS)
         privacy_blur = st.checkbox("🛡️ Làm mờ mặt (Privacy Blur)", value=False)
 
     st.markdown("---")
@@ -670,6 +688,7 @@ def page_camera_monitor(service: AnalysisService):
                     show_confidence=True,
                     show_event_markers=True,
                     privacy_blur_faces=privacy_blur,
+                    show_masks=show_masks,
                 )
 
                 latency_ms = (time.time() - t0) * 1000.0
@@ -716,77 +735,71 @@ def page_camera_monitor(service: AnalysisService):
                     else:
                         st.error(f"Lỗi: {result.error_message}")
 
-    elif "Live Webcam máy tính" in source_mode or "Live Stream Webcam" in source_mode:
-        if is_cloud_env:
-            st.warning(
-                "☁️ **Bạn đang truy cập qua máy chủ Streamlit Cloud.**\n\n"
-                "Máy chủ đám mây không có cổng USB hay FaceTime vật lý để OpenCV kết nối trực tiếp đến camera máy tính của bạn.\n\n"
-                "👉 **Để sử dụng Camera MacBook/Laptop của bạn trên Web:**\n"
-                "• Vui lòng chuyển sang mục **'📸 Webcam Trình duyệt'** ở menu trên, hoặc dùng khung chụp ảnh nhanh ngay bên dưới.\n"
-                "• Trình duyệt sẽ tự động xin quyền truy cập Camera của bạn và truyền hình ảnh an toàn đến AI."
-            )
-            st.markdown("##### 📸 Dùng ngay Camera MacBook / Laptop qua Trình duyệt:")
-            cloud_quick_photo = st.camera_input("Chụp ảnh phân tích tức thì qua Camera thiết bị", key="cloud_cam_quick_snap")
-            if cloud_quick_photo:
-                _run_browser_camera_analysis(
-                    photo=cloud_quick_photo,
-                    service=service,
-                    conf_thresh=conf_thresh,
-                    min_stat_time=min_stat_time,
-                    show_seats=show_seats,
-                    show_persons=show_persons,
-                    show_objects=show_objects,
-                    privacy_blur=privacy_blur,
-                )
-        else:
-            wcol1, wcol2 = st.columns([2, 1])
-            with wcol1:
-                cam_idx = st.number_input("Cổng Camera (0 = FaceTime HD / Mặc định, 1, 2 = USB / Continuity)", 0, 5, 0)
-                run_cam = st.toggle("🔴 BẬT / TẮT CAMERA THỜI GIAN THỰC", value=False)
-            with wcol2:
-                st.caption("⚡ Trên macOS: Đảm bảo cấp quyền Camera cho Terminal / Ứng dụng trong Cài đặt hệ thống.")
+    elif "Live Camera" in source_mode or "Live Webcam" in source_mode:
+        wcol1, wcol2 = st.columns([2, 1])
+        with wcol1:
+            run_cam = st.toggle("🔴 BẬT LIVE CAMERA THỜI GIAN THỰC", value=False, key="toggle_live_camera")
+        with wcol2:
+            cam_idx = st.number_input("Cổng Camera (0 = Mặc định / FaceTime HD, 1 = USB / Continuity)", 0, 5, 0)
 
-            if run_cam:
-                cap = cv2.VideoCapture(int(cam_idx))
-                if not cap.isOpened() and sys.platform == "darwin":
-                    cap = cv2.VideoCapture(int(cam_idx), cv2.CAP_AVFOUNDATION)
+        if run_cam:
+            # Tự động dò tìm và mở camera khả dụng
+            def _open_working_camera(preferred: int):
+                for port in [preferred, 0, 1, 2]:
+                    cap_candidate = cv2.VideoCapture(port)
+                    if cap_candidate.isOpened():
+                        ret, test_f = cap_candidate.read()
+                        if ret and test_f is not None:
+                            cap_candidate.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                            cap_candidate.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                            return cap_candidate, port
+                        cap_candidate.release()
+                    if sys.platform == "darwin":
+                        cap_candidate = cv2.VideoCapture(port, cv2.CAP_AVFOUNDATION)
+                        if cap_candidate.isOpened():
+                            ret, test_f = cap_candidate.read()
+                            if ret and test_f is not None:
+                                cap_candidate.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                                cap_candidate.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                                return cap_candidate, port
+                            cap_candidate.release()
+                return None, -1
 
-                if not cap.isOpened():
+            cap, active_port = _open_working_camera(int(cam_idx))
+
+            if cap is None:
+                if is_cloud_env:
+                    st.warning(
+                        "☁️ **Môi trường Streamlit Cloud (Linux Container):**\n\n"
+                        "Máy chủ đám mây không có phần cứng webcam vật lý. "
+                        "Để trải nghiệm **Live Stream 30 FPS thật với FaceTime HD của bạn**, "
+                        "hãy mở Terminal máy tính và chạy: `streamlit run app.py`."
+                    )
+                else:
                     st.error(
                         f"❌ **Không thể mở camera cổng {cam_idx}.**\n\n"
-                        "🔍 **Cách khắc phục:**\n"
-                        "1. **Quyền riêng tư macOS:** Vào `Cài đặt hệ thống > Quyền riêng tư & Bảo mật > Camera` và bật quyền cho Terminal / Python / VS Code.\n"
-                        "2. **Thử đổi cổng:** Đổi sang cổng `1` hoặc `2` (nếu đang dùng iPhone Continuity Camera hoặc webcam ngoài).\n"
-                        "3. **Tắt ứng dụng khác:** Đảm bảo FaceTime, Zoom, Teams, Photo Booth không chiếm quyền camera.\n"
-                        "4. **Dự phòng:** Dùng khung **Webcam trình duyệt** bên dưới để chụp quét mà không cần OpenCV."
+                        "🔍 **Cách khắc phục trên macOS:**\n"
+                        "1. Mở `Cài đặt hệ thống > Quyền riêng tư & Bảo mật > Camera` và bật quyền cho Terminal / Python / VS Code.\n"
+                        "2. Đảm bảo các ứng dụng khác (FaceTime, Zoom, Teams, Photo Booth) không chiếm quyền camera."
                     )
-                    st.markdown("##### 📸 Chụp quét dự phòng qua Camera trình duyệt:")
-                    fallback_snap = st.camera_input("Chụp ảnh qua Camera trình duyệt", key="local_fallback_cam")
-                    if fallback_snap:
-                        _run_browser_camera_analysis(
-                            photo=fallback_snap,
-                            service=service,
-                            conf_thresh=conf_thresh,
-                            min_stat_time=min_stat_time,
-                            show_seats=show_seats,
-                            show_persons=show_persons,
-                            show_objects=show_objects,
-                            privacy_blur=privacy_blur,
-                        )
-                else:
-                    cam_view = st.empty()
-                    cam_metrics = st.empty()
-                    tracker = ObjectTracker()
-                    event_manager = EventManager()
-                    event_detector = ForgottenItemDetector(
-                        min_stationary_time=min_stat_time,
-                        movement_threshold=STATIONARY_MOVEMENT_THRESHOLD,
-                        watched_classes=ITEM_CLASSES,
-                        seat_manager=service.seat_manager,
-                        event_manager=event_manager,
-                    )
+            else:
+                st.success(f"🟢 Đã kết nối thành công Camera cổng {active_port}! Đang truyền luồng hình ảnh thời gian thực...")
+                cam_view = st.empty()
+                cam_metrics = st.empty()
+                tracker = ObjectTracker()
+                event_manager = EventManager()
+                event_detector = ForgottenItemDetector(
+                    min_stationary_time=min_stat_time,
+                    movement_threshold=STATIONARY_MOVEMENT_THRESHOLD,
+                    watched_classes=ITEM_CLASSES,
+                    seat_manager=service.seat_manager,
+                    event_manager=event_manager,
+                )
 
-                    frame_idx = 0
+                frame_idx = 0
+                alert_fired = False
+
+                try:
                     while run_cam:
                         t0 = time.time()
                         ret, frame = cap.read()
@@ -806,6 +819,7 @@ def page_camera_monitor(service: AnalysisService):
                             show_persons=show_persons,
                             show_objects=show_objects,
                             privacy_blur_faces=privacy_blur,
+                            show_masks=show_masks,
                         )
 
                         lat_ms = (time.time() - t0) * 1000.0
@@ -820,29 +834,18 @@ def page_camera_monitor(service: AnalysisService):
                         cam_metrics.markdown(
                             f"🪑 **Ghế:** `{total_seats}` (👤 Có người: `{occ_seats}` | 🟢 Trống: `{vac_seats}`) | "
                             f"🎒 **Đồ theo dõi:** `{len(events)}` | "
-                            f"⚠️ **Nghi ngờ:** `{summary.get('suspected', 0)}` | "
+                            f"⚠️ **Nghi ngờ bỏ quên:** `{summary.get('suspected', 0)}` | "
                             f"🛡️ **Che khuất:** `{summary.get('occluded', 0)}` | "
                             f"⏱️ **FPS:** `{1000.0/max(1.0, lat_ms):.1f}` (`{lat_ms:.1f}ms`)"
                         )
+
+                        if summary.get("suspected", 0) > 0 and not alert_fired:
+                            play_audio_alert()
+                            alert_fired = True
+
                         frame_idx += 1
-
+                finally:
                     cap.release()
-
-    elif "Webcam Trình duyệt" in source_mode or "Webcam trình duyệt" in source_mode:
-        st.markdown("##### 📸 Chụp ảnh từ Camera MacBook / Điện thoại / Trình duyệt:")
-        st.info("💡 **Hỗ trợ trực tiếp trên Streamlit Cloud & Mọi thiết bị:** Nhấn nút camera bên dưới, cấp quyền truy cập Camera khi trình duyệt hỏi để bắt đầu phân tích tức thì.")
-        photo = st.camera_input("Chụp ảnh phân tích tức thì qua Camera thiết bị", key="main_browser_cam")
-        if photo:
-            _run_browser_camera_analysis(
-                photo=photo,
-                service=service,
-                conf_thresh=conf_thresh,
-                min_stat_time=min_stat_time,
-                show_seats=show_seats,
-                show_persons=show_persons,
-                show_objects=show_objects,
-                privacy_blur=privacy_blur,
-            )
 
     elif "Luồng IP / RTSP" in source_mode:
         rtsp_url = st.text_input("Nhập URL luồng RTSP (ví dụ: rtsp://admin:123456@192.168.1.100:554/stream1):")
@@ -1298,8 +1301,22 @@ def page_model_management(service: AnalysisService):
     tab_list, tab_train = st.tabs(["📋 Danh sách các Model", "⚙️ Huấn luyện & Đăng ký Candidate Model"])
 
     with tab_list:
+        st.markdown("##### 🎯 Model YOLO26 Instance Segmentation (Ultralytics Platform)")
+        custom_weights_p = CUSTOM_SEGMENTATION_WEIGHTS_PATH
+        if custom_weights_p.exists():
+            st.success(f"✅ Đã tìm thấy weights: `{custom_weights_p}` ({format_file_size(custom_weights_p.stat().st_size)})")
+            st.caption("Model này được ưu tiên nạp tự động cho cả nhánh nhận diện ghế (`seat`) và tracking đồ vật (`item, person`).")
+        else:
+            st.info(
+                "⏳ **Chưa có file weights `models/best.pt` (Đang train trên Ultralytics Platform):**\n\n"
+                "• **Tác vụ:** Instance Segmentation (3 classes: `seat`, `person`, `item`).\n"
+                "• **Cách tích hợp:** Sau khi training hoàn tất trên Ultralytics, tải file `best.pt` về và lưu vào thư mục `models/best.pt`.\n"
+                "• **Cơ chế tự động:** Hệ thống đã được lập trình sẵn sàng để nhận diện task `segment`, tự trích xuất polygon masks và dùng chung một instance model duy nhất để tối ưu hiệu năng."
+            )
+        st.markdown("---")
+
         if not models:
-            st.info("Chưa có model nào được ghi nhận.")
+            st.info("Chưa có candidate model nào được đăng ký trong database.")
         else:
             for m in models:
                 is_active = (m["status"] == "active")
@@ -1370,18 +1387,23 @@ def page_model_management(service: AnalysisService):
                 if val_details:
                     st.json(val_details)
 
+        task_choice = st.selectbox("Tác vụ huấn luyện (Task):", ["segment (Instance Segmentation - Phân đoạn đối tượng)", "detect (Object Detection - Khung bao Bounding Box)"], index=0)
+        task_val = "segment" if "segment" in task_choice else "detect"
+
         tc1, tc2 = st.columns(2)
         with tc1:
-            new_ver = st.text_input("Tên phiên bản model mới:", value="v1.1-bus-seats")
-            base_m = st.selectbox("Kiến trúc base model YOLO:", ["yolov8n.pt", "yolov8s.pt", "yolov8m.pt"])
+            new_ver = st.text_input("Tên phiên bản model mới:", value=f"v1.1-bus-seats-{task_val}")
+            seg_bases = ["yolov8n-seg.pt", "yolov8s-seg.pt", "yolov8m-seg.pt"]
+            det_bases = ["yolov8n.pt", "yolov8s.pt", "yolov8m.pt"]
+            base_m = st.selectbox("Kiến trúc base model YOLO:", seg_bases if task_val == "segment" else det_bases)
         with tc2:
             epochs = st.slider("Số Epochs:", 5, 100, 30, 5)
             batch = st.selectbox("Batch size:", [4, 8, 16, 32], index=1)
 
         if ms and hasattr(ms, "generate_training_command"):
-            cmd = ms.generate_training_command(dataset_yaml, epochs=epochs, batch_size=batch, model=base_m)
+            cmd = ms.generate_training_command(dataset_yaml, epochs=epochs, batch_size=batch, model=base_m, task=task_val)
         else:
-            cmd = ModelService(getattr(service, "_model_repo", None)).generate_training_command(dataset_yaml, epochs=epochs, batch_size=batch, model=base_m)
+            cmd = ModelService(getattr(service, "_model_repo", None)).generate_training_command(dataset_yaml, epochs=epochs, batch_size=batch, model=base_m, task=task_val)
         st.caption("Lệnh Ultralytics CLI thực tế được sinh:")
         st.code(cmd, language="bash")
 
@@ -1403,6 +1425,7 @@ def page_model_management(service: AnalysisService):
                         base_model=base_m,
                         epochs=epochs,
                         batch_size=batch,
+                        task=task_val,
                     )
                 elif ms and hasattr(ms, "start_real_training_job"):
                     ok_launch, job_id, launch_info = ms.start_real_training_job(
@@ -1411,6 +1434,7 @@ def page_model_management(service: AnalysisService):
                         base_model=base_m,
                         epochs=epochs,
                         batch_size=batch,
+                        task=task_val,
                     )
                 else:
                     m_temp = ModelService(getattr(service, "_model_repo", None))
@@ -1420,6 +1444,7 @@ def page_model_management(service: AnalysisService):
                         base_model=base_m,
                         epochs=epochs,
                         batch_size=batch,
+                        task=task_val,
                     )
 
                 if ok_launch:

@@ -128,6 +128,7 @@ class VideoWriter:
         show_confidence: bool = True,
         show_event_markers: bool = True,
         privacy_blur_faces: bool = False,
+        show_masks: bool = True,
     ) -> np.ndarray:
         """
         Vẽ chú thích toàn diện lên 1 frame tuân thủ nghiêm ngặt chuẩn Part 4:
@@ -178,10 +179,13 @@ class VideoWriter:
 
             status = event_statuses.get(obj.track_id, None)
 
-            # Gán ghế liên quan
+            # Gán ghế liên quan (ưu tiên sử dụng mask polygon)
             associated_seat = ""
             if seat_manager and seat_manager.is_configured:
-                associated_seat = seat_manager.find_seat_for_bbox(obj.bbox, w, h) or ""
+                if hasattr(seat_manager, "find_seat_for_object"):
+                    associated_seat = seat_manager.find_seat_for_object(obj, w, h) or ""
+                else:
+                    associated_seat = seat_manager.find_seat_for_bbox(obj.bbox, w, h) or ""
 
             # Chọn màu và format ID chuẩn theo Part 4
             if is_person:
@@ -219,6 +223,16 @@ class VideoWriter:
                     thickness = 2
 
                 label = f"{id_prefix} ({vi_name}){seat_info}{conf_info}{marker}"
+
+            # Vẽ segmentation mask polygon nếu có (Instance Segmentation)
+            if show_masks and getattr(obj, "polygon", None) is not None and len(obj.polygon) >= 3:
+                mask_pts = np.array(
+                    [(int(p[0]), int(p[1])) for p in obj.polygon], dtype=np.int32
+                ).reshape((-1, 1, 2))
+                mask_overlay = annotated.copy()
+                cv2.fillPoly(mask_overlay, [mask_pts], color)
+                cv2.polylines(annotated, [mask_pts], isClosed=True, color=color, thickness=1)
+                cv2.addWeighted(mask_overlay, 0.30, annotated, 0.70, 0, annotated)
 
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, thickness)
 

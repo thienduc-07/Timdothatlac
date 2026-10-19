@@ -176,23 +176,27 @@ class ModelService:
     def generate_training_command(
         self,
         dataset_yaml_path: str,
-        base_model: str = "yolov8n.pt",
+        base_model: Optional[str] = None,
         epochs: int = 50,
         batch_size: int = 16,
         imgsz: int = 640,
         device: Optional[str] = None,
+        task: str = "detect",
     ) -> str:
-        """Sinh lệnh CLI chuẩn Ultralytics để chạy huấn luyện thực tế."""
+        """Sinh lệnh CLI chuẩn Ultralytics để chạy huấn luyện thực tế (detect hoặc segment)."""
         dev = device or self.get_training_hardware_info()["device"]
+        task_mode = "segment" if task.lower() in ("segment", "segmentation", "seg") else "detect"
+        default_model = "yolov8n-seg.pt" if task_mode == "segment" else "yolov8n.pt"
+        model = base_model or default_model
         return (
-            f"yolo detect train "
+            f"yolo {task_mode} train "
             f"data='{dataset_yaml_path}' "
-            f"model='{base_model}' "
+            f"model='{model}' "
             f"epochs={epochs} "
             f"batch={batch_size} "
             f"imgsz={imgsz} "
             f"device='{dev}' "
-            f"project='{RUNS_DIR}' "
+            f"project='{RUNS_DIR / task_mode}' "
             f"name='exp_bus_model'"
         )
 
@@ -200,16 +204,18 @@ class ModelService:
         self,
         dataset_yaml_path: str,
         new_version: str,
-        base_model: str = "yolov8n.pt",
+        base_model: Optional[str] = None,
         epochs: int = 30,
         batch_size: int = 16,
         imgsz: int = 640,
+        task: str = "detect",
     ) -> Tuple[bool, str, Dict]:
         """
         Khởi tạo tiến trình huấn luyện THỰC SỰ bằng Ultralytics trong tiến trình riêng (background process):
         - Không khóa giao diện Streamlit.
         - Ghi nhật ký đầy đủ ra file log.
         - Kiểm tra tính hợp lệ của dataset trước khi chạy.
+        - Hỗ trợ cả tác vụ Object Detection và Instance Segmentation.
         - Trả về job_id để theo dõi tiến độ thời gian thực.
         """
         # 1. Kiểm tra tính hợp lệ của dataset
@@ -220,28 +226,33 @@ class ModelService:
 
         job_id = f"job_{str(uuid.uuid4())[:8]}"
         log_file_path = TRAINING_LOGS_DIR / f"{job_id}.log"
-        exp_name = f"train_{new_version.lower().replace('.', '_')}_{job_id}"
-        exp_dir = RUNS_DIR / "detect" / exp_name
+        task_mode = "segment" if task.lower() in ("segment", "segmentation", "seg") else "detect"
+        default_model = "yolov8n-seg.pt" if task_mode == "segment" else "yolov8n.pt"
+        chosen_base_model = base_model or default_model
+
+        exp_name = f"train_{task_mode}_{new_version.lower().replace('.', '_')}_{job_id}"
+        exp_dir = RUNS_DIR / task_mode / exp_name
 
         hw = self.get_training_hardware_info()
         device = hw["device"]
 
-        # Lệnh chạy huấn luyện
+        # Lệnh chạy huấn luyện với task rõ ràng
         cmd = [
             sys.executable, "-m", "ultralytics", "train",
+            f"task={task_mode}",
             f"data={Path(dataset_yaml_path).resolve()}",
-            f"model={base_model}",
+            f"model={chosen_base_model}",
             f"epochs={epochs}",
             f"batch={batch_size}",
             f"imgsz={imgsz}",
             f"device={device}",
-            f"project={RUNS_DIR / 'detect'}",
+            f"project={RUNS_DIR / task_mode}",
             f"name={exp_name}",
             "exist_ok=True",
             "verbose=True",
         ]
 
-        logger.info(f"Bắt đầu Training Job {job_id}: {' '.join(cmd)}")
+        logger.info(f"Bắt đầu Training Job {job_id} ({task_mode}): {' '.join(cmd)}")
 
         try:
             log_f = open(log_file_path, "w", encoding="utf-8")

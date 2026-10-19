@@ -25,10 +25,11 @@ class AlertStatus:
 @dataclass
 class Detection:
     """Kết quả nhận diện một vật thể trong một frame."""
-    class_name: str          # Tên lớp (ví dụ: "backpack", "person")
+    class_name: str          # Tên lớp (ví dụ: "backpack", "person", "item", "seat")
     confidence: float        # Điểm tin cậy (0.0 - 1.0)
     bbox: Tuple[int, int, int, int]  # (x1, y1, x2, y2) - tọa độ bounding box
     class_id: int = -1       # ID lớp trong model
+    polygon: Optional[List[Tuple[float, float]]] = None  # Tọa độ đa giác phân đoạn (segmentation mask polygon)
 
 
 @dataclass
@@ -39,6 +40,7 @@ class TrackedObject:
     confidence: float        # Điểm tin cậy gần nhất
     bbox: Tuple[int, int, int, int]  # Bounding box hiện tại
     class_id: int = -1
+    polygon: Optional[List[Tuple[float, float]]] = None  # Segmentation polygon gần nhất nếu có
 
 
 @dataclass
@@ -55,6 +57,7 @@ class TrackObservation:
     last_seen_time: float       # Thời gian (giây) trong video khi xuất hiện gần nhất
     positions: List[Tuple[int, int, int, int]] = field(default_factory=list)
     # Danh sách bbox qua thời gian, dùng để tính chuyển động
+    polygons: List[Optional[List[Tuple[float, float]]]] = field(default_factory=list)
     confidence_history: List[float] = field(default_factory=list)
     nearby_person_track_ids: List[int] = field(default_factory=list)
     # Các track ID của người từng ở gần vật thể này
