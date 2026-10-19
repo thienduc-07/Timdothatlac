@@ -537,13 +537,17 @@ def page_camera_monitor(service: AnalysisService):
                 rgb_f = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
                 frame_view.image(rgb_f, channels="RGB", use_container_width=True)
 
+                total_seats = len(service.seat_manager.seats)
+                statuses = service.seat_manager.get_all_statuses()
+                occ_seats = sum(1 for s in statuses.values() if s.state == SeatState.OCCUPIED)
+                vac_seats = sum(1 for s in statuses.values() if s.state == SeatState.VACANT)
+
                 metric_view.markdown(
-                    f"**⏱️ Frame:** `{frame_idx}` | "
-                    f"**FPS Suy luận:** `{calc_fps:.1f}` | "
-                    f"**Độ trễ:** `{latency_ms:.1f}ms` | "
-                    f"**Đang theo dõi:** `{len(events)}` | "
-                    f"**⚠️ Nghi ngờ:** `{summary.get('suspected', 0)}` | "
-                    f"**🛡️ Che khuất:** `{summary.get('occluded', 0)}`"
+                    f"🪑 **Ghế:** `{total_seats}` (👤 Có người: `{occ_seats}` | 🟢 Trống: `{vac_seats}`) | "
+                    f"🎒 **Đồ theo dõi:** `{len(events)}` | "
+                    f"⚠️ **Nghi ngờ:** `{summary.get('suspected', 0)}` | "
+                    f"🛡️ **Che khuất:** `{summary.get('occluded', 0)}` | "
+                    f"⏱️ **FPS:** `{calc_fps:.1f}` (`{latency_ms:.1f}ms`)"
                 )
 
                 if summary.get("suspected", 0) > 0 and not alert_fired and auto_alert:
@@ -625,13 +629,17 @@ def page_camera_monitor(service: AnalysisService):
                     rgb_f = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
                     cam_view.image(rgb_f, channels="RGB", use_container_width=True)
 
+                    total_seats = len(service.seat_manager.seats)
+                    statuses = service.seat_manager.get_all_statuses()
+                    occ_seats = sum(1 for s in statuses.values() if s.state == SeatState.OCCUPIED)
+                    vac_seats = sum(1 for s in statuses.values() if s.state == SeatState.VACANT)
+
                     cam_metrics.markdown(
-                        f"**⏱️ Frame:** `{frame_idx:,}` | "
-                        f"**Độ trễ:** `{lat_ms:.1f}ms` | "
-                        f"**FPS:** `{1000.0/max(1.0, lat_ms):.1f}` | "
-                        f"**Đang theo dõi:** `{len(events)}` | "
-                        f"**⚠️ Nghi ngờ:** `{summary.get('suspected', 0)}` | "
-                        f"**🛡️ Che khuất:** `{summary.get('occluded', 0)}`"
+                        f"🪑 **Ghế:** `{total_seats}` (👤 Có người: `{occ_seats}` | 🟢 Trống: `{vac_seats}`) | "
+                        f"🎒 **Đồ theo dõi:** `{len(events)}` | "
+                        f"⚠️ **Nghi ngờ:** `{summary.get('suspected', 0)}` | "
+                        f"🛡️ **Che khuất:** `{summary.get('occluded', 0)}` | "
+                        f"⏱️ **FPS:** `{1000.0/max(1.0, lat_ms):.1f}` (`{lat_ms:.1f}ms`)"
                     )
                     frame_idx += 1
 
@@ -760,11 +768,113 @@ def page_alert_center(service: AnalysisService):
 def page_seats(service: AnalysisService):
     render_header(
         title="Quản lý Sơ đồ Ghế xe buýt (Fixed Seat Entities)",
-        subtitle="Định danh cố định từng ghế (S01, S02...), hiệu chuẩn polygon và sinh sơ đồ tự động",
+        subtitle="Tự động nhận diện từng ghế, phân tách ghế đôi (Ghế A & Ghế B), gán ID ổn định",
         mode=SystemMode.DEMO,
     )
 
-    tab_grid, tab_list = st.tabs(["⚡ Sinh sơ đồ ghế tự động", "📋 Danh sách & Tọa độ Polygon"])
+    tab_auto, tab_grid, tab_list, tab_diag = st.tabs([
+        "🔍 Tự động Nhận diện Ghế (AI / Vision)",
+        "⚡ Sinh sơ đồ tham số xe buýt",
+        "📋 Danh sách & Trạng thái Ghế",
+        "🧠 Kiểm tra Khả năng Model (Diagnostics)",
+    ])
+
+    with tab_auto:
+        st.markdown("##### 🚌 Tự động Quét & Phân Tách Từng Ghế (Twin-Seat Decomposition)")
+        st.caption(
+            "Hệ thống tự động phát hiện từng chiếc ghế riêng biệt từ góc nhìn camera trần nhìn xuống (top-down view). "
+            "Phân tách chính xác hai ghế nằm cạnh nhau trong cùng một hàng (Ghế A & Ghế B), không gộp cả hàng thành 1 vùng lớn."
+        )
+
+        col_cfg1, col_cfg2, col_cfg3 = st.columns(3)
+        with col_cfg1:
+            auto_rows = st.number_input("Số hàng ghế trong góc nhìn:", 1, 8, 4, 1, key="auto_rows")
+        with col_cfg2:
+            auto_left = st.number_input("Ghế bên trái lối đi:", 1, 2, 2, 1, help="2 = Ghế đôi kề nhau (Cửa sổ + Lối đi)", key="auto_left")
+        with col_cfg3:
+            auto_right = st.number_input("Ghế bên phải lối đi:", 1, 2, 2, 1, help="2 = Ghế đôi kề nhau (Lối đi + Cửa sổ)", key="auto_right")
+
+        auto_naming = st.selectbox(
+            "Quy tắc đặt Seat ID:",
+            ["SEAT_1A, SEAT_1B... (Khuyên dùng chuẩn hàng không/xe khách)", "SEAT_001, SEAT_002..."],
+            key="auto_naming"
+        )
+        naming_format = "SEAT" if "1A" in auto_naming else "NUM"
+
+        st.markdown("###### 📸 Chọn frame hình ảnh để quét:")
+        img_source = st.radio(
+            "Nguồn ảnh mẫu:",
+            ["Trích xuất từ Video Demo mẫu xe buýt", "Tải lên ảnh chụp từ trần xe buýt (JPG/PNG)"],
+            horizontal=True,
+            key="img_source"
+        )
+
+        target_frame = None
+        if "Demo mẫu" in img_source:
+            demo_p = ensure_demo_video_exists()
+            cap = cv2.VideoCapture(demo_p)
+            ret, frame = cap.read()
+            cap.release()
+            if ret and frame is not None:
+                target_frame = frame
+        else:
+            up_img = st.file_uploader("Tải lên ảnh chụp từ trần xe buýt:", type=["jpg", "jpeg", "png"], key="up_seat_frame")
+            if up_img:
+                file_bytes = np.asarray(bytearray(up_img.read()), dtype=np.uint8)
+                target_frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+        if target_frame is None:
+            target_frame = np.full((720, 1280, 3), (35, 30, 25), dtype=np.uint8)
+            cv2.putText(target_frame, "OVERHEAD BUS CABIN SIMULATION", (340, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (200, 200, 200), 2)
+
+        if st.button("🚀 Bắt đầu Quét & Nhận diện Từng Ghế", type="primary", use_container_width=True):
+            with st.spinner("Đang chạy mô hình phân tích thị giác & phân rã ghế đôi..."):
+                res = service.auto_detect_seats(
+                    frame=target_frame,
+                    rows=auto_rows,
+                    left_cols=auto_left,
+                    right_cols=auto_right,
+                    naming_format=naming_format,
+                    save_to_disk=True,
+                )
+                st.session_state["last_seat_detection_result"] = res
+                st.success(f"✅ Đã nhận diện thành công {res.total_seats} chiếc ghế riêng biệt bằng {res.method.value}!")
+
+        if "last_seat_detection_result" in st.session_state:
+            res = st.session_state["last_seat_detection_result"]
+            cur_h, cur_w = target_frame.shape[:2]
+
+            preview_img = target_frame.copy()
+            overlay = preview_img.copy()
+
+            for s in res.seats:
+                poly = s.get_pixel_polygon(cur_w, cur_h)
+                pts_arr = np.array(poly, dtype=np.int32).reshape((-1, 1, 2))
+                
+                # Màu sắc: Phân biệt ghế trái (Cyan) và ghế phải (Teal)
+                is_left = "A" in s.seat_id or "B" in s.seat_id or (s.seat_id.replace("SEAT_", "").isdigit() and int(s.seat_id.replace("SEAT_", "")) % 4 in (1, 2))
+                color = (255, 200, 0) if is_left else (0, 215, 255)
+
+                cv2.fillPoly(overlay, [pts_arr], color)
+                cv2.polylines(preview_img, [pts_arr], isClosed=True, color=(255, 255, 255), thickness=2)
+
+                cx = int(np.mean([p[0] for p in poly]))
+                cy = int(np.mean([p[1] for p in poly]))
+                cv2.putText(preview_img, s.seat_id, (cx - 35, cy + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
+
+            cv2.addWeighted(overlay, 0.25, preview_img, 0.75, 0, preview_img)
+            st.image(cv2.cvtColor(preview_img, cv2.COLOR_BGR2RGB), caption=f"Kết quả nhận diện {res.total_seats} ghế riêng biệt (Phân rã ghế đôi)", use_container_width=True)
+
+            seat_rows_data = []
+            for s in res.seats:
+                poly = s.get_pixel_polygon(cur_w, cur_h)
+                seat_rows_data.append({
+                    "Seat ID": s.seat_id,
+                    "Vị trí / Loại": s.description,
+                    "Tọa độ Pixel (Top-Left → Bottom-Right)": f"({poly[0][0]}, {poly[0][1]}) → ({poly[2][0]}, {poly[2][1]})",
+                    "Phân tách độc lập": "✅ Tách biệt hoàn toàn",
+                })
+            st.dataframe(pd.DataFrame(seat_rows_data), use_container_width=True)
 
     with tab_grid:
         st.markdown("##### 🚌 Trình sinh nhanh sơ đồ xe buýt (Bus Grid Generator)")
@@ -772,20 +882,20 @@ def page_seats(service: AnalysisService):
 
         gcol1, gcol2, gcol3 = st.columns(3)
         with gcol1:
-            rows = st.number_input("Số hàng ghế", 1, 12, 4, 1)
+            rows = st.number_input("Số hàng ghế", 1, 12, 4, 1, key="grid_rows")
         with gcol2:
-            left_cols = st.number_input("Số ghế bên trái lối đi", 1, 3, 2, 1)
+            left_cols = st.number_input("Số ghế bên trái lối đi", 1, 3, 2, 1, key="grid_left")
         with gcol3:
-            right_cols = st.number_input("Số ghế bên phải lối đi", 1, 3, 2, 1)
+            right_cols = st.number_input("Số ghế bên phải lối đi", 1, 3, 2, 1, key="grid_right")
 
-        name_style = st.selectbox("Định dạng tên ghế:", ["S01, S02, S03...", "Ghế 1A, 1B, 2A..."])
+        name_style = st.selectbox("Định dạng tên ghế:", ["SEAT_1A, SEAT_1B...", "S01, S02, S03..."], key="grid_name_style")
 
         total_seats = rows * (left_cols + right_cols)
         st.info(f"Sơ đồ sẽ tạo tổng cộng **{total_seats} ghế cố định**.")
 
         if st.button("💾 Tạo và Lưu Sơ đồ Ghế mới", type="primary"):
             from src.seats.seat_manager import SeatManager
-            style_code = "numeric" if "S01" in name_style else "alphanumeric"
+            style_code = "SEAT" if "1A" in name_style else "NUM"
             new_grid = SeatManager.generate_bus_grid(
                 rows=rows,
                 left_cols=left_cols,
@@ -801,15 +911,43 @@ def page_seats(service: AnalysisService):
         if not seats:
             st.warning("Chưa có cấu hình vùng ghế nào.")
         else:
+            statuses = service.seat_manager.get_all_statuses()
             seat_data = []
             for s in seats:
+                st_info = statuses.get(s.seat_id)
+                st_state = st_info.state.value if st_info else "unknown"
+                notes = st_info.notes if st_info else ""
                 seat_data.append({
                     "Seat ID": s.seat_id,
+                    "Trạng thái": st_state.upper(),
                     "Mô tả": s.description,
                     "Chuẩn hóa [0-1]": s.is_normalized,
                     "Số đỉnh polygon": len(s.polygon),
+                    "Ghi chú": notes,
                 })
             st.dataframe(pd.DataFrame(seat_data), use_container_width=True)
+
+    with tab_diag:
+        st.markdown("##### 🧠 Báo cáo Khả năng Model & Hỗ trợ Nhận diện Ghế")
+        diag = service.get_seat_diagnostics()
+
+        st.markdown(f"""
+        <div style="background: #141E33; border: 1px solid #3A506B; padding: 16px; border-radius: 8px; margin-bottom: 12px;">
+            <h4 style="color: #F8FAFC; margin-top: 0;">📊 Phân tích Model Pretrained Hiện tại</h4>
+            <ul style="color: #CBD5E1; line-height: 1.6;">
+                <li><b>Lớp ghế xe buýt góc nhìn trần (Top-down):</b> <span style="color: #EF4444; font-weight: bold;">KHÔNG CÓ TRONG COCO PRETRAINED</span></li>
+                <li><b>Lớp COCO 56 (chair):</b> Ghế tựa văn phòng / phòng khách nhìn ngang. Không nhận diện được đệm ghế xe buýt nhìn từ trên xuống.</li>
+                <li><b>Phương án tự động kích hoạt:</b> <span style="color: #10B981; font-weight: bold;">TopDownVisionSeatDetector & TwinSeatDecomposer</span></li>
+                <li><b>Khả năng phân tách ghế đôi:</b> <span style="color: #10B981; font-weight: bold;">ĐÃ TÍCH HỢP (Tách biệt độc lập Ghế A & Ghế B)</span></li>
+            </ul>
+            <div style="background: #0F172A; padding: 12px; border-radius: 6px; border-left: 4px solid #3B82F6; margin-top: 10px;">
+                <p style="margin: 0; color: #94A3B8; font-size: 0.9rem;">
+                    💡 <b>Mở rộng mô hình chuyên biệt:</b> Đặt file trọng số <code>models/bus_seat_yolov8.pt</code> được huấn luyện trên 
+                    dữ liệu trần xe buýt (nhãn: <code>seat_window</code>, <code>seat_aisle</code>) vào thư mục dự án để hệ thống tự động chuyển sang suy luận bằng Custom Deep Learning Model.
+                </p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════

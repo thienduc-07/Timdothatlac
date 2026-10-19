@@ -163,6 +163,28 @@ class AnalysisService:
         self.save_seats(presets)
         return presets
 
+    def auto_detect_seats(
+        self,
+        frame: np.ndarray,
+        rows: int = 4,
+        left_cols: int = 2,
+        right_cols: int = 2,
+        naming_format: str = "SEAT",
+        save_to_disk: bool = True,
+    ):
+        """Tự động phát hiện và phân tách từng ghế trên xe buýt từ frame camera."""
+        return self._seat_manager.auto_detect_and_configure_seats(
+            frame=frame,
+            rows=rows,
+            left_cols=left_cols,
+            right_cols=right_cols,
+            naming_format=naming_format,
+            save_to_disk=save_to_disk,
+        )
+
+    def get_seat_diagnostics(self) -> Dict:
+        """Lấy thông tin chẩn đoán về model nhận diện ghế."""
+        return self._seat_manager.get_model_diagnostics()
 
     def get_model_info(self) -> Dict:
         """Trả về thông tin model để hiển thị."""
