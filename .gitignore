@@ -15,6 +15,9 @@ data/*.mp4
 data/*.avi
 data/*.mov
 data/*.mkv
+data/dataset/
+data/videos/
+data/snapshots/
 
 # Output files
 outputs/

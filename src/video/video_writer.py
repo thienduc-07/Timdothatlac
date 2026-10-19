@@ -24,22 +24,21 @@ from config.settings import (
 
 logger = get_logger(__name__)
 
-# Bảng màu BGR
-COLOR_PERSON = (255, 200, 50)          # Xanh dương nhạt cho người
-COLOR_ITEM_NORMAL = (50, 255, 50)      # Xanh lá cho đồ vật bình thường
-COLOR_OBSERVED = (0, 255, 255)         # Vàng chanh cho OBSERVED / MONITORING
-COLOR_ITEM_LEFT = (0, 165, 255)        # Cam cho ITEM_LEFT (ghế trống còn đồ)
-COLOR_SUSPECTED = (0, 0, 255)          # Đỏ cho SUSPECTED (nghi ngờ bỏ quên)
-COLOR_OCCLUDED = (180, 50, 180)        # Tím cho OCCLUDED (bị che khuất)
-COLOR_RECHECK = (0, 215, 255)          # Vàng đậm cho RECHECK (đang xác minh)
-COLOR_REVIEW_REQUIRED = (147, 20, 255) # Hồng tím cho REVIEW_REQUIRED (cần kiểm tra)
-COLOR_RESOLVED = (0, 200, 0)           # Xanh lá đậm cho RESOLVED / CONFIRMED
-COLOR_DISMISSED = (128, 128, 128)      # Xám cho DISMISSED
+# ──────────────────────────────────────────────
+# Chuẩn màu sắc cố định (Part 4) - BGR cho OpenCV
+# ──────────────────────────────────────────────
+# 1. GHẾ (SEATS) - Cyan / Xanh dương
+COLOR_SEAT_VACANT = (255, 229, 0)      # Cyan: Ghế trống
+COLOR_SEAT_OCCUPIED = (255, 120, 0)    # Xanh dương đậm: Ghế có người
+COLOR_SEAT_UNKNOWN = (160, 160, 160)   # Xám: Chưa rõ
 
-# Màu vùng ghế (Seat ROI)
-COLOR_SEAT_VACANT = (50, 200, 50)      # Xanh lá: Ghế trống
-COLOR_SEAT_OCCUPIED = (50, 50, 220)    # Đỏ cam: Ghế có người
-COLOR_SEAT_UNKNOWN = (150, 150, 150)   # Xám: Chưa xác định
+# 2. NGƯỜI (PERSONS) - Xanh lá cây (Green)
+COLOR_PERSON = (76, 217, 100)          # Xanh lá cây
+
+# 3. ĐỒ VẬT (OBJECTS) - Hổ phách / Vàng cam (Amber)
+COLOR_OBJECT = (11, 158, 245)          # Hổ phách / Vàng cam
+COLOR_OBJECT_OCCLUDED = (180, 100, 240)# Tím nhạt cho đồ bị che khuất (dự đoán)
+COLOR_ALERT_CRITICAL = (68, 68, 239)   # Đỏ cho cảnh báo khẩn cấp
 
 
 class VideoWriter:
@@ -81,10 +80,15 @@ class VideoWriter:
         event_statuses: Optional[dict] = None,
         seat_manager: Optional[SeatManager] = None,
         active_events: Optional[List[Event]] = None,
+        show_seats: bool = True,
+        show_persons: bool = True,
+        show_objects: bool = True,
+        show_track_ids: bool = True,
+        show_confidence: bool = True,
+        show_event_markers: bool = True,
+        privacy_blur_faces: bool = False,
     ):
-        """
-        Vẽ chú thích toàn diện lên frame và ghi vào video đầu ra.
-        """
+        """Vẽ chú thích toàn diện lên frame và ghi vào video đầu ra."""
         if not self._opened or self._writer is None:
             return
 
@@ -96,6 +100,13 @@ class VideoWriter:
             active_events=active_events,
             width=self.width,
             height=self.height,
+            show_seats=show_seats,
+            show_persons=show_persons,
+            show_objects=show_objects,
+            show_track_ids=show_track_ids,
+            show_confidence=show_confidence,
+            show_event_markers=show_event_markers,
+            privacy_blur_faces=privacy_blur_faces,
         )
 
         self._writer.write(annotated)
@@ -110,12 +121,22 @@ class VideoWriter:
         active_events: Optional[List[Event]] = None,
         width: Optional[int] = None,
         height: Optional[int] = None,
+        show_seats: bool = True,
+        show_persons: bool = True,
+        show_objects: bool = True,
+        show_track_ids: bool = True,
+        show_confidence: bool = True,
+        show_event_markers: bool = True,
+        privacy_blur_faces: bool = False,
     ) -> np.ndarray:
         """
-        Vẽ chú thích toàn diện lên 1 frame (dùng chung cho cả video file và live webcam):
-        - Vùng ghế (Seat ROI polygon) với màu sắc trạng thái.
-        - Bounding box vật thể với tên số ghế: ví dụ '[Ghế 1A] Ba lô #2 85% ⚠ NGHI NGỜ'.
-        - Vị trí vật thể đang bị che khuất.
+        Vẽ chú thích toàn diện lên 1 frame tuân thủ nghiêm ngặt chuẩn Part 4:
+        - GHẾ (Cyan/Blue): S01, S02... kèm trạng thái
+        - NGƯỜI (Xanh lá): P01, P12...
+        - ĐỒ VẬT (Hổ phách/Amber): O01, O31...
+        - Đồ bị che khuất: vẽ viền mờ với nhãn [Dự đoán/Che khuất]
+        - Hỗ trợ làm mờ khuôn mặt (Privacy Blur)
+        - Hỗ trợ lọc hiển thị từng lớp riêng biệt
         """
         annotated = frame.copy()
         cur_h, cur_w = frame.shape[:2]
@@ -123,91 +144,104 @@ class VideoWriter:
         h = height or cur_h
         event_statuses = event_statuses or {}
 
-        # 1. Vẽ các vùng ghế (Seat ROI)
-        if seat_manager and seat_manager.is_configured:
+        # 1. Vẽ các vùng ghế (Seat ROI) - Màu Cyan / Blue
+        if show_seats and seat_manager and seat_manager.is_configured:
             VideoWriter._draw_seat_rois_static(annotated, seat_manager, w, h)
 
-        # 2. Vẽ vị trí cuối cùng của các vật thể đang bị che khuất (OCCLUDED / RECHECK / REVIEW_REQUIRED)
-        if active_events:
-            VideoWriter._draw_occluded_and_missing_events_static(annotated, active_events, tracked_objects)
+        # 2. Vẽ vị trí cuối cùng của các vật thể đang bị che khuất (OCCLUDED / RECHECK)
+        if show_objects and active_events:
+            VideoWriter._draw_occluded_and_missing_events_static(
+                annotated, active_events, tracked_objects, show_track_ids, show_event_markers
+            )
 
-        # 3. Vẽ các vật thể đang được phát hiện / tracking trong frame
+        # 3. Vẽ các đối tượng đang được track trong frame
         for obj in tracked_objects:
+            is_person = (obj.class_name == "person")
+
+            # Bộ lọc lớp
+            if is_person and not show_persons:
+                continue
+            if not is_person and not show_objects:
+                continue
+
             x1, y1, x2, y2 = obj.bbox
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+
+            # Làm mờ khuôn mặt nếu bật Privacy Blur
+            if is_person and privacy_blur_faces:
+                face_h = max(5, int((y2 - y1) * 0.35))
+                face_roi = annotated[y1:y1 + face_h, x1:x2]
+                if face_roi.size > 0:
+                    blurred = cv2.GaussianBlur(face_roi, (25, 25), 30)
+                    annotated[y1:y1 + face_h, x1:x2] = blurred
+
             status = event_statuses.get(obj.track_id, None)
 
-            # Phân loại màu sắc theo trạng thái
-            if status == EventStatus.SUSPECTED:
-                color = COLOR_SUSPECTED
-                tag = " ⚠ NGHI NGỜ"
-                thickness = 3
-            elif status == EventStatus.OCCLUDED:
-                color = COLOR_OCCLUDED
-                tag = " 🛡 BỊ CHE KHUẤT"
-                thickness = 2
-            elif status == EventStatus.RECHECK:
-                color = COLOR_RECHECK
-                tag = " 🔄 XÁC MINH"
-                thickness = 2
-            elif status == EventStatus.REVIEW_REQUIRED:
-                color = COLOR_REVIEW_REQUIRED
-                tag = " 📋 CẦN KIỂM TRA"
-                thickness = 3
-            elif status == EventStatus.ITEM_LEFT:
-                color = COLOR_ITEM_LEFT
-                tag = " 🪑 GHẾ TRỐNG"
-                thickness = 2
-            elif status in (EventStatus.OBSERVED, EventStatus.MONITORING):
-                color = COLOR_OBSERVED
-                tag = " 👁 QUAN SÁT"
-                thickness = 2
-            elif status in (EventStatus.RESOLVED, EventStatus.CONFIRMED):
-                color = COLOR_RESOLVED
-                tag = " ✅ ĐÃ XÁC NHẬN"
-                thickness = 2
-            elif status == EventStatus.DISMISSED:
-                color = COLOR_DISMISSED
-                tag = " ❌ LOẠI BỎ"
-                thickness = 1
-            elif obj.class_name == "person":
+            # Gán ghế liên quan
+            associated_seat = ""
+            if seat_manager and seat_manager.is_configured:
+                associated_seat = seat_manager.find_seat_for_bbox(obj.bbox, w, h) or ""
+
+            # Chọn màu và format ID chuẩn theo Part 4
+            if is_person:
                 color = COLOR_PERSON
-                tag = ""
-                thickness = 1
-            else:
-                color = COLOR_ITEM_NORMAL
-                tag = ""
+                id_prefix = f"P{obj.track_id}" if show_track_ids else "Người"
+                seat_info = f" | {associated_seat}" if associated_seat else ""
+                conf_info = f" | {obj.confidence:.0%}" if show_confidence else ""
+                label = f"{id_prefix}{seat_info}{conf_info}"
                 thickness = 2
+            else:
+                vi_name = CLASS_NAMES_VI.get(obj.class_name, obj.class_name)
+                id_prefix = f"O{obj.track_id}" if show_track_ids else vi_name
+                seat_info = f" | {associated_seat}" if associated_seat else ""
+                conf_info = f" | {obj.confidence:.0%}" if show_confidence else ""
+
+                if status == EventStatus.SUSPECTED:
+                    color = COLOR_ALERT_CRITICAL
+                    marker = " | ⚠ NGHI NGỜ" if show_event_markers else ""
+                    thickness = 3
+                elif status == EventStatus.ITEM_LEFT:
+                    color = COLOR_OBJECT
+                    marker = " | 🪑 GHẾ TRỐNG" if show_event_markers else ""
+                    thickness = 2
+                elif status == EventStatus.OCCLUDED:
+                    color = COLOR_OBJECT_OCCLUDED
+                    marker = " | 🛡 CHE KHUẤT" if show_event_markers else ""
+                    thickness = 2
+                elif status == EventStatus.REVIEW_REQUIRED:
+                    color = COLOR_ALERT_CRITICAL
+                    marker = " | 📋 CẦN DUYỆT" if show_event_markers else ""
+                    thickness = 2
+                else:
+                    color = COLOR_OBJECT
+                    marker = ""
+                    thickness = 2
+
+                label = f"{id_prefix} ({vi_name}){seat_info}{conf_info}{marker}"
 
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, thickness)
 
-            # Nhận diện số ghế mà vật thể hoặc người đang nằm trên đó
-            seat_tag = ""
-            if seat_manager and seat_manager.is_configured:
-                found_seat = seat_manager.find_seat_for_bbox(obj.bbox, w, h)
-                if found_seat:
-                    seat_tag = f"[{found_seat}] "
-
-            vi_name = CLASS_NAMES_VI.get(obj.class_name, obj.class_name)
-            label = f"{seat_tag}{vi_name} #{obj.track_id} {obj.confidence:.0%}{tag}"
-
             font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.5
+            font_scale = 0.45
             (text_w, text_h), _ = cv2.getTextSize(label, font, font_scale, 1)
-            label_y = max(y1 - 10, text_h + 5)
+            label_y = max(y1 - 6, text_h + 6)
             cv2.rectangle(
                 annotated,
-                (x1, label_y - text_h - 5),
-                (x1 + text_w + 5, label_y + 5),
+                (x1, label_y - text_h - 4),
+                (x1 + text_w + 6, label_y + 4),
                 color,
                 -1,
             )
+            # Text màu đen nếu nền sáng (Cyan/Amber), màu trắng nếu nền tối
+            text_color = (0, 0, 0) if (color == COLOR_SEAT_VACANT or color == COLOR_OBJECT) else (255, 255, 255)
             cv2.putText(
                 annotated,
                 label,
-                (x1 + 2, label_y),
+                (x1 + 3, label_y - 2),
                 font,
                 font_scale,
-                (255, 255, 255),
+                text_color,
                 1,
                 cv2.LINE_AA,
             )
@@ -266,8 +300,9 @@ class VideoWriter:
         frame: np.ndarray,
         active_events: List[Event],
         current_tracked: List[TrackedObject],
+        show_track_ids: bool = True,
+        show_event_markers: bool = True,
     ):
-
         """
         Vẽ vị trí lưu giữ cuối cùng của các đồ vật đang bị che khuất hoặc đang xác minh.
         """
@@ -284,14 +319,14 @@ class VideoWriter:
                     continue
 
                 if event.status == EventStatus.OCCLUDED:
-                    color = COLOR_OCCLUDED
-                    tag = f"🛡 {event.event_id} BỊ CHE ({event.occlusion_duration:.0f}s)"
+                    color = COLOR_OBJECT_OCCLUDED
+                    tag = f"O{event.last_track_id} [Dự đoán/Che khuất {event.occlusion_duration:.0f}s]"
                 elif event.status == EventStatus.RECHECK:
-                    color = COLOR_RECHECK
-                    tag = f"🔄 {event.event_id} ĐANG XÁC MINH"
+                    color = COLOR_OBJECT
+                    tag = f"O{event.last_track_id} [Đang xác minh]"
                 else:
-                    color = COLOR_REVIEW_REQUIRED
-                    tag = f"📋 {event.event_id} CẦN KIỂM TRA"
+                    color = COLOR_ALERT_CRITICAL
+                    tag = f"O{event.last_track_id} [Cần kiểm tra]"
 
                 # Vẽ viền nét đứt hoặc nét kép biểu thị vị trí được ghi nhớ
                 cv2.rectangle(frame, (bx1, by1), (bx2, by2), color, 2)

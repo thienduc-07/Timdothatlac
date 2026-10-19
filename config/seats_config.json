@@ -1,49 +1,557 @@
 {
   "version": "1.0",
-  "description": "Cấu hình vùng ghế (Seat ROI) mặc định cho camera trần xe buýt",
+  "description": "Bus Seat ROI",
   "seats": [
     {
-      "seat_id": "SEAT_01",
-      "description": "Hàng ghế 1 - Bên trái",
+      "seat_id": "Ghế 1A",
+      "description": "Hàng 1 - Bên trái",
       "is_normalized": true,
       "polygon": [
-        [0.12, 0.25],
-        [0.42, 0.25],
-        [0.42, 0.55],
-        [0.12, 0.55]
+        [
+          0.05,
+          0.15
+        ],
+        [
+          0.374,
+          0.15
+        ],
+        [
+          0.374,
+          0.1981
+        ],
+        [
+          0.05,
+          0.1981
+        ]
       ]
     },
     {
-      "seat_id": "SEAT_02",
-      "description": "Hàng ghế 1 - Bên phải",
+      "seat_id": "Ghế 1B",
+      "description": "Hàng 1 - Bên phải",
       "is_normalized": true,
       "polygon": [
-        [0.58, 0.25],
-        [0.88, 0.25],
-        [0.88, 0.55],
-        [0.58, 0.55]
+        [
+          0.59,
+          0.15
+        ],
+        [
+          0.914,
+          0.1981
+        ],
+        [
+          0.914,
+          0.1981
+        ],
+        [
+          0.59,
+          0.1981
+        ]
       ]
     },
     {
-      "seat_id": "SEAT_03",
-      "description": "Hàng ghế 2 - Bên trái",
+      "seat_id": "Ghế 2A",
+      "description": "Hàng 2 - Bên trái",
       "is_normalized": true,
       "polygon": [
-        [0.12, 0.60],
-        [0.42, 0.60],
-        [0.42, 0.90],
-        [0.12, 0.90]
+        [
+          0.05,
+          0.2142
+        ],
+        [
+          0.374,
+          0.2142
+        ],
+        [
+          0.374,
+          0.2623
+        ],
+        [
+          0.05,
+          0.2623
+        ]
       ]
     },
     {
-      "seat_id": "SEAT_04",
-      "description": "Hàng ghế 2 - Bên phải",
+      "seat_id": "Ghế 2B",
+      "description": "Hàng 2 - Bên phải",
       "is_normalized": true,
       "polygon": [
-        [0.58, 0.60],
-        [0.88, 0.60],
-        [0.88, 0.90],
-        [0.58, 0.90]
+        [
+          0.59,
+          0.2142
+        ],
+        [
+          0.914,
+          0.2623
+        ],
+        [
+          0.914,
+          0.2623
+        ],
+        [
+          0.59,
+          0.2623
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 3A",
+      "description": "Hàng 3 - Bên trái",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.05,
+          0.2783
+        ],
+        [
+          0.374,
+          0.2783
+        ],
+        [
+          0.374,
+          0.3265
+        ],
+        [
+          0.05,
+          0.3265
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 3B",
+      "description": "Hàng 3 - Bên phải",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.59,
+          0.2783
+        ],
+        [
+          0.914,
+          0.3265
+        ],
+        [
+          0.914,
+          0.3265
+        ],
+        [
+          0.59,
+          0.3265
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 4A",
+      "description": "Hàng 4 - Bên trái",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.05,
+          0.3425
+        ],
+        [
+          0.374,
+          0.3425
+        ],
+        [
+          0.374,
+          0.3906
+        ],
+        [
+          0.05,
+          0.3906
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 4B",
+      "description": "Hàng 4 - Bên phải",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.59,
+          0.3425
+        ],
+        [
+          0.914,
+          0.3906
+        ],
+        [
+          0.914,
+          0.3906
+        ],
+        [
+          0.59,
+          0.3906
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 5A",
+      "description": "Hàng 5 - Bên trái",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.05,
+          0.4067
+        ],
+        [
+          0.374,
+          0.4067
+        ],
+        [
+          0.374,
+          0.4548
+        ],
+        [
+          0.05,
+          0.4548
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 5B",
+      "description": "Hàng 5 - Bên phải",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.59,
+          0.4067
+        ],
+        [
+          0.914,
+          0.4548
+        ],
+        [
+          0.914,
+          0.4548
+        ],
+        [
+          0.59,
+          0.4548
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 6A",
+      "description": "Hàng 6 - Bên trái",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.05,
+          0.4708
+        ],
+        [
+          0.374,
+          0.4708
+        ],
+        [
+          0.374,
+          0.519
+        ],
+        [
+          0.05,
+          0.519
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 6B",
+      "description": "Hàng 6 - Bên phải",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.59,
+          0.4708
+        ],
+        [
+          0.914,
+          0.519
+        ],
+        [
+          0.914,
+          0.519
+        ],
+        [
+          0.59,
+          0.519
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 7A",
+      "description": "Hàng 7 - Bên trái",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.05,
+          0.535
+        ],
+        [
+          0.374,
+          0.535
+        ],
+        [
+          0.374,
+          0.5831
+        ],
+        [
+          0.05,
+          0.5831
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 7B",
+      "description": "Hàng 7 - Bên phải",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.59,
+          0.535
+        ],
+        [
+          0.914,
+          0.5831
+        ],
+        [
+          0.914,
+          0.5831
+        ],
+        [
+          0.59,
+          0.5831
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 8A",
+      "description": "Hàng 8 - Bên trái",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.05,
+          0.5992
+        ],
+        [
+          0.374,
+          0.5992
+        ],
+        [
+          0.374,
+          0.6473
+        ],
+        [
+          0.05,
+          0.6473
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 8B",
+      "description": "Hàng 8 - Bên phải",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.59,
+          0.5992
+        ],
+        [
+          0.914,
+          0.6473
+        ],
+        [
+          0.914,
+          0.6473
+        ],
+        [
+          0.59,
+          0.6473
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 9A",
+      "description": "Hàng 9 - Bên trái",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.05,
+          0.6633
+        ],
+        [
+          0.374,
+          0.6633
+        ],
+        [
+          0.374,
+          0.7115
+        ],
+        [
+          0.05,
+          0.7115
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 9B",
+      "description": "Hàng 9 - Bên phải",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.59,
+          0.6633
+        ],
+        [
+          0.914,
+          0.7115
+        ],
+        [
+          0.914,
+          0.7115
+        ],
+        [
+          0.59,
+          0.7115
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 10A",
+      "description": "Hàng 10 - Bên trái",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.05,
+          0.7275
+        ],
+        [
+          0.374,
+          0.7275
+        ],
+        [
+          0.374,
+          0.7756
+        ],
+        [
+          0.05,
+          0.7756
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 10B",
+      "description": "Hàng 10 - Bên phải",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.59,
+          0.7275
+        ],
+        [
+          0.914,
+          0.7756
+        ],
+        [
+          0.914,
+          0.7756
+        ],
+        [
+          0.59,
+          0.7756
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 11A",
+      "description": "Hàng 11 - Bên trái",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.05,
+          0.7917
+        ],
+        [
+          0.374,
+          0.7917
+        ],
+        [
+          0.374,
+          0.8398
+        ],
+        [
+          0.05,
+          0.8398
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 11B",
+      "description": "Hàng 11 - Bên phải",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.59,
+          0.7917
+        ],
+        [
+          0.914,
+          0.8398
+        ],
+        [
+          0.914,
+          0.8398
+        ],
+        [
+          0.59,
+          0.8398
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 12A",
+      "description": "Hàng 12 - Bên trái",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.05,
+          0.8558
+        ],
+        [
+          0.374,
+          0.8558
+        ],
+        [
+          0.374,
+          0.904
+        ],
+        [
+          0.05,
+          0.904
+        ]
+      ]
+    },
+    {
+      "seat_id": "Ghế 12B",
+      "description": "Hàng 12 - Bên phải",
+      "is_normalized": true,
+      "polygon": [
+        [
+          0.59,
+          0.8558
+        ],
+        [
+          0.914,
+          0.904
+        ],
+        [
+          0.914,
+          0.904
+        ],
+        [
+          0.59,
+          0.904
+        ]
       ]
     }
   ]

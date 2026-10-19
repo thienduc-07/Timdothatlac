@@ -42,38 +42,113 @@ DEFAULT_CONFIDENCE_THRESHOLD = 0.35
 DEVICE = os.environ.get("DEVICE", "cpu")
 
 # ──────────────────────────────────────────────
-# Các lớp vật thể COCO cần theo dõi
+# Chế độ hoạt động của hệ thống
 # ──────────────────────────────────────────────
-# Đây là các lớp từ COCO dataset mà YOLOv8 đã được huấn luyện.
-# Chỉ liệt kê các lớp thực sự tồn tại trong model.
+class SystemMode:
+    DEMO = "DEMO"            # Chế độ chạy video mẫu minh họa
+    PROCESSING = "PROCESSING"# Chế độ đang phân tích video file
+    LIVE = "LIVE"            # Chế độ giám sát trực tiếp từ Camera / RTSP
 
-# Lớp đồ vật có khả năng bị bỏ quên
+# ──────────────────────────────────────────────
+# Chuẩn màu sắc cố định cho Computer Vision (BGR cho OpenCV, HEX cho Web)
+# ──────────────────────────────────────────────
+# 1. GHẾ (SEATS) - Cyan / Xanh dương
+COLOR_SEAT_BGR = (255, 229, 0)         # Cyan sáng trong BGR
+COLOR_SEAT_HEX = "#00E5FF"
+COLOR_SEAT_OCCUPIED_BGR = (255, 120, 0)# Xanh dương đậm khi có người
+COLOR_SEAT_OCCUPIED_HEX = "#0284C7"
+COLOR_SEAT_VACANT_BGR = (255, 229, 0)
+COLOR_SEAT_VACANT_HEX = "#00E5FF"
+COLOR_SEAT_UNKNOWN_BGR = (160, 160, 160)
+COLOR_SEAT_UNKNOWN_HEX = "#94A3B8"
+
+# 2. NGƯỜI (PERSONS) - Xanh lá cây (Green)
+COLOR_PERSON_BGR = (76, 217, 100)      # Green trong BGR
+COLOR_PERSON_HEX = "#10B981"
+
+# 3. ĐỒ VẬT (OBJECTS) - Hổ phách / Vàng cam (Amber)
+COLOR_OBJECT_BGR = (11, 158, 245)      # Amber trong BGR
+COLOR_OBJECT_HEX = "#F59E0B"
+COLOR_OBJECT_OCCLUDED_BGR = (180, 100, 240) # Tím nhạt cho đồ bị che khuất
+COLOR_OBJECT_OCCLUDED_HEX = "#A855F7"
+
+# 4. CẢNH BÁO / LỖI KHẨN CẤP - Đỏ
+COLOR_ALERT_BGR = (68, 68, 239)        # Đỏ trong BGR
+COLOR_ALERT_HEX = "#EF4444"
+
+# ──────────────────────────────────────────────
+# Các lớp vật thể COCO & Mở rộng (Flexible Object Detection)
+# ──────────────────────────────────────────────
 ITEM_CLASSES = [
     "backpack",     # Ba lô
     "handbag",      # Túi xách
     "suitcase",     # Vali
     "umbrella",     # Ô / Dù
-    "bottle",       # Chai
+    "bottle",       # Chai / Bình nước
     "cell phone",   # Điện thoại
     "laptop",       # Máy tính xách tay
-    "book",         # Sách
+    "book",         # Sách / Vở
+    "handbag",      # Túi cầm tay
 ]
 
-# Lớp con người (dùng để theo dõi sự hiện diện của người)
+# Các lớp mở rộng hỗ trợ nhận diện bổ sung hoặc human review
+EXTENDED_ITEM_CLASSES = [
+    "paper_bag",    # Túi giấy / túi nilon
+    "box",          # Hộp / Thùng nhỏ
+    "jacket",       # Áo khoác / quần áo
+    "hat",          # Mũ / Nón
+    "lunch_box",    # Hộp cơm / Hộp đồ ăn
+    "wallet",       # Ví tiền
+    "unknown_object"# Đồ vật chưa xác định rõ lớp
+]
+
 PERSON_CLASS = "person"
 
-# Tên tiếng Việt cho các lớp (dùng hiển thị trên giao diện)
+# Tên tiếng Việt hiển thị
 CLASS_NAMES_VI = {
     "person": "Người",
     "backpack": "Ba lô",
     "handbag": "Túi xách",
     "suitcase": "Vali",
     "umbrella": "Ô/Dù",
-    "bottle": "Chai",
+    "bottle": "Bình nước/Chai",
     "cell phone": "Điện thoại",
     "laptop": "Laptop",
     "book": "Sách",
+    "paper_bag": "Túi giấy/Nilon",
+    "box": "Hộp/Thùng",
+    "jacket": "Áo khoác",
+    "hat": "Mũ/Nón",
+    "lunch_box": "Hộp cơm",
+    "wallet": "Ví tiền",
+    "unknown_object": "Vật thể chưa rõ",
 }
+
+# ──────────────────────────────────────────────
+# Cấu hình Thông báo & Cảnh báo (Alerts & Notifications)
+# ──────────────────────────────────────────────
+ALERT_COOLDOWN_SECONDS = 60.0          # Tránh gửi cảnh báo trùng lặp cho cùng 1 ghế/vật trong 60s
+DEFAULT_NOTIFICATION_RETRY_COUNT = 3  # Số lần thử lại tối đa khi gửi thông báo thất bại
+
+# Mức độ ưu tiên
+class AlertPriority:
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+
+class AlertStatus:
+    PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
+    DISMISSED = "DISMISSED"
+    RESOLVED = "RESOLVED"
+
+# Kênh thông báo
+class NotificationChannel:
+    IN_APP = "in_app"
+    WEB_PUSH = "web_push"
+    TELEGRAM = "telegram"
+    EMAIL = "email"
+    WEBHOOK = "webhook"
 
 # ──────────────────────────────────────────────
 # Tracking

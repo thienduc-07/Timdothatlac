@@ -77,6 +77,99 @@ CREATE TABLE IF NOT EXISTS seat_configs (
 );
 """
 
+# Schema cho bảng alerts (Cảnh báo sinh ra cho nhân viên)
+CREATE_ALERTS_TABLE = """
+CREATE TABLE IF NOT EXISTS alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alert_id TEXT UNIQUE NOT NULL,
+    event_id TEXT NOT NULL,
+    seat_id TEXT DEFAULT '',
+    object_id TEXT DEFAULT '',
+    person_id TEXT DEFAULT '',
+    priority TEXT DEFAULT 'MEDIUM',
+    status TEXT DEFAULT 'PENDING',
+    reason TEXT DEFAULT '',
+    snapshot_path TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    sent_channels TEXT DEFAULT '[]'
+);
+"""
+
+# Schema cho bảng notification_logs (Lịch sử gửi thông báo đa kênh)
+CREATE_NOTIFICATION_LOGS_TABLE = """
+CREATE TABLE IF NOT EXISTS notification_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alert_id TEXT,
+    channel TEXT NOT NULL,
+    recipient TEXT DEFAULT '',
+    status TEXT NOT NULL,
+    status_code INTEGER DEFAULT 0,
+    error_message TEXT DEFAULT '',
+    payload TEXT DEFAULT '{}',
+    sent_at TEXT NOT NULL
+);
+"""
+
+# Schema cho bảng dataset_images (Ảnh huấn luyện AI)
+CREATE_DATASET_IMAGES_TABLE = """
+CREATE TABLE IF NOT EXISTS dataset_images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    image_id TEXT UNIQUE NOT NULL,
+    image_path TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    split TEXT DEFAULT 'train',
+    width INTEGER DEFAULT 0,
+    height INTEGER DEFAULT 0,
+    source_type TEXT DEFAULT 'upload',
+    is_labeled INTEGER DEFAULT 0,
+    quality_tag TEXT DEFAULT 'good',
+    created_at TEXT NOT NULL
+);
+"""
+
+# Schema cho bảng annotations (Nhãn đối tượng bounding box)
+CREATE_ANNOTATIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS annotations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    annotation_id TEXT UNIQUE NOT NULL,
+    image_id TEXT NOT NULL,
+    class_name TEXT NOT NULL,
+    bbox_x1 REAL DEFAULT 0.0,
+    bbox_y1 REAL DEFAULT 0.0,
+    bbox_x2 REAL DEFAULT 0.0,
+    bbox_y2 REAL DEFAULT 0.0,
+    is_occluded INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (image_id) REFERENCES dataset_images(image_id)
+);
+"""
+
+# Schema cho bảng model_versions (Quản lý các phiên bản Model AI)
+CREATE_MODEL_VERSIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS model_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id TEXT UNIQUE NOT NULL,
+    version TEXT NOT NULL,
+    dataset_version TEXT DEFAULT 'v1.0',
+    classes TEXT DEFAULT '[]',
+    metrics_json TEXT DEFAULT '{}',
+    confidence_threshold REAL DEFAULT 0.35,
+    status TEXT DEFAULT 'archived',
+    artifact_path TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+);
+"""
+
+# Schema cho bảng system_config (Lưu cấu hình hệ thống dạng key-value)
+CREATE_SYSTEM_CONFIG_TABLE = """
+CREATE TABLE IF NOT EXISTS system_config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
 
 class Database:
     """Quản lý kết nối và khởi tạo SQLite database."""
@@ -119,12 +212,47 @@ class Database:
         cursor.execute(CREATE_ANALYSES_TABLE)
         cursor.execute(CREATE_EVENTS_TABLE)
         cursor.execute(CREATE_SEATS_TABLE)
+        cursor.execute(CREATE_ALERTS_TABLE)
+        cursor.execute(CREATE_NOTIFICATION_LOGS_TABLE)
+        cursor.execute(CREATE_DATASET_IMAGES_TABLE)
+        cursor.execute(CREATE_ANNOTATIONS_TABLE)
+        cursor.execute(CREATE_MODEL_VERSIONS_TABLE)
+        cursor.execute(CREATE_SYSTEM_CONFIG_TABLE)
         self._connection.commit()
 
         # Thực hiện migration kiểm tra các cột mới cho bảng events
         self._migrate_events_table(cursor)
+        self._init_default_data(cursor)
         self._connection.commit()
         logger.debug("Schema database đã được khởi tạo và kiểm tra migration")
+
+    def _init_default_data(self, cursor: sqlite3.Cursor):
+        """Khởi tạo phiên bản model mặc định và cấu hình ban đầu nếu chưa có."""
+        cursor.execute("SELECT COUNT(*) AS cnt FROM model_versions")
+        if cursor.fetchone()["cnt"] == 0:
+            import json
+            from datetime import datetime
+            now_iso = datetime.now().isoformat()
+            cursor.execute(
+                """
+                INSERT INTO model_versions (
+                    model_id, version, dataset_version, classes, metrics_json,
+                    confidence_threshold, status, artifact_path, notes, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "yolov8n-coco-v1.0",
+                    "v1.0",
+                    "COCO-Pretrained",
+                    json.dumps(["person", "backpack", "handbag", "suitcase", "umbrella", "bottle", "cell phone", "laptop", "book"]),
+                    json.dumps({"map50": 0.82, "precision": 0.79, "recall": 0.78}),
+                    0.35,
+                    "active",
+                    "yolov8n.pt",
+                    "Mô hình YOLOv8n chuẩn COCO tối ưu tốc độ cho xe buýt",
+                    now_iso,
+                ),
+            )
 
     def _migrate_events_table(self, cursor: sqlite3.Cursor):
         """Kiểm tra và thêm các cột mới vào bảng events nếu đang dùng database cũ."""

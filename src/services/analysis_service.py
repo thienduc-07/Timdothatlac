@@ -32,7 +32,15 @@ from config.settings import (
 
 from src.seats.seat_config import SeatConfigManager
 from src.seats.seat_manager import SeatManager
-from src.models import AnalysisResult, VideoMetadata, SeatConfig, SeatStatus, Event
+from src.models import AnalysisResult, VideoMetadata, SeatConfig, SeatStatus, Event, Alert
+from src.database.alert_repository import AlertRepository
+from src.database.dataset_repository import DatasetRepository
+from src.database.model_repository import ModelRepository
+from src.services.alert_service import AlertService
+from src.services.notification_service import NotificationService
+from src.services.dataset_service import DatasetService
+from src.services.model_service import ModelService
+from src.video.camera_service import CameraStreamManager
 
 
 logger = get_logger(__name__)
@@ -41,13 +49,21 @@ logger = get_logger(__name__)
 class AnalysisService:
     """
     Dịch vụ phân tích video — lớp trung gian giữa giao diện và pipeline.
-    Hỗ trợ quản lý vùng ghế (Seat ROI) và phân tích tình huống che khuất.
+    Hỗ trợ quản lý vùng ghế (Seat ROI), phát hiện che khuất,
+    quản lý Alert đa kênh, Dataset annotation và Model versioning.
     """
 
     def __init__(self):
         self._detector: Optional[YOLODetector] = None
         self._db: Optional[Database] = None
         self._repo: Optional[EventRepository] = None
+        self._alert_repo: Optional[AlertRepository] = None
+        self._alert_service: Optional[AlertService] = None
+        self._dataset_repo: Optional[DatasetRepository] = None
+        self._dataset_service: Optional[DatasetService] = None
+        self._model_repo: Optional[ModelRepository] = None
+        self._model_service: Optional[ModelService] = None
+        self._camera_manager = CameraStreamManager()
         self._seat_config_mgr = SeatConfigManager()
         self._seat_manager = SeatManager()
         self._model_loaded = False
@@ -64,7 +80,15 @@ class AnalysisService:
         if not self._db.connect():
             logger.error("Không thể kết nối database")
             return False
-        self._repo = EventRepository(self._db.get_connection())
+
+        conn = self._db.get_connection()
+        self._repo = EventRepository(conn)
+        self._alert_repo = AlertRepository(conn)
+        self._alert_service = AlertService(self._alert_repo)
+        self._dataset_repo = DatasetRepository(conn)
+        self._dataset_service = DatasetService(self._dataset_repo)
+        self._model_repo = ModelRepository(conn)
+        self._model_service = ModelService(self._model_repo)
 
         # Khởi tạo YOLO detector
         self._detector = YOLODetector()
@@ -81,8 +105,32 @@ class AnalysisService:
             logger.warning("Chưa có cấu hình vùng ghế. Người dùng cần thiết lập Seat ROI.")
 
         self._model_loaded = True
-        logger.info("AnalysisService khởi tạo thành công")
+        logger.info("AnalysisService khởi tạo thành công toàn bộ hệ thống")
         return True
+
+    @property
+    def alert_service(self) -> Optional[AlertService]:
+        return self._alert_service
+
+    @property
+    def dataset_service(self) -> Optional[DatasetService]:
+        return self._dataset_service
+
+    @property
+    def model_service(self) -> Optional[ModelService]:
+        return self._model_service
+
+    @property
+    def camera_manager(self) -> CameraStreamManager:
+        return self._camera_manager
+
+    @property
+    def alert_repo(self) -> Optional[AlertRepository]:
+        return self._alert_repo
+
+    @property
+    def model_repo(self) -> Optional[ModelRepository]:
+        return self._model_repo
 
     @property
     def is_ready(self) -> bool:
@@ -277,15 +325,29 @@ class AnalysisService:
         event_detector: ForgottenItemDetector,
         event_manager: EventManager,
         confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+        show_seats: bool = True,
+        show_persons: bool = True,
+        show_objects: bool = True,
+        show_track_ids: bool = True,
+        show_confidence: bool = True,
+        show_event_markers: bool = True,
+        privacy_blur_faces: bool = False,
+        telegram_config: Optional[Dict] = None,
+        email_config: Optional[Dict] = None,
+        webhook_config: Optional[Dict] = None,
     ) -> Tuple[np.ndarray, List[Event], Dict]:
         """
-        Xử lý 1 frame webcam thời gian thực:
+        Xử lý 1 frame camera thời gian thực:
         - Chạy tracking & detection
         - Cập nhật trạng thái từng ghế
         - Phát hiện đồ bỏ quên & che khuất
-        - Chú thích vùng ghế và số ghế trực tiếp lên frame
+        - Kích hoạt Alert Center & thông báo nếu nghi ngờ
+        - Đo lường độ trễ suy luận (ms)
+        - Chú thích màu sắc và số ghế trực tiếp lên frame
         """
+        import time
         from src.video.video_writer import VideoWriter
+        t_start = time.time()
 
         cur_h, cur_w = frame.shape[:2]
         target_ids = list(self._detector._target_class_ids) if (self._detector and self._detector._target_class_ids) else None
@@ -300,6 +362,7 @@ class AnalysisService:
         )
 
         # Phân tích sự kiện
+        current_time_sec = frame_idx / fps if fps > 0 else 0.0
         if self._seat_manager and self._seat_manager.is_configured:
             event_detector.process_frame(
                 tracked_objects=tracked,
@@ -307,7 +370,7 @@ class AnalysisService:
                 fps=fps,
                 frame_width=cur_w,
                 frame_height=cur_h,
-                video_name="Live_Webcam",
+                video_name="Live_Camera",
                 frame=frame,
             )
         else:
@@ -323,7 +386,7 @@ class AnalysisService:
                     new_status=evt_info["status"],
                     observation=evt_info["observation"],
                     reason=evt_info["reason"],
-                    video_name="Live_Webcam",
+                    video_name="Live_Camera",
                     frame=frame,
                 )
 
@@ -335,13 +398,30 @@ class AnalysisService:
             elif evt.track_id != -1:
                 event_statuses[evt.track_id] = evt.status
 
-        # Lưu sự kiện vào DB định kỳ hoặc khi có sự kiện quan trọng
-        if self._repo and event_manager.events:
+        # Lưu sự kiện vào DB và kích hoạt Alert Center
+        if event_manager.events:
             for evt in event_manager.events:
                 if evt.status in (EventStatus.SUSPECTED, EventStatus.OCCLUDED, EventStatus.REVIEW_REQUIRED):
-                    self._repo.save_event(evt, analysis_id="live_webcam")
+                    if self._repo:
+                        self._repo.save_event(evt, analysis_id="live_stream")
+                    if self._alert_service and evt.status in (EventStatus.SUSPECTED, EventStatus.REVIEW_REQUIRED):
+                        self._alert_service.process_event_for_alert(
+                            event=evt,
+                            current_time_sec=current_time_sec,
+                            telegram_config=telegram_config,
+                            email_config=email_config,
+                            webhook_config=webhook_config,
+                        )
 
-        # Vẽ chú thích trực tiếp lên frame
+        # Đo lường độ trễ suy luận
+        latency_ms = (time.time() - t_start) * 1000.0
+        self._camera_manager.update_metrics(
+            latency_ms=latency_ms,
+            tracked_count=len(tracked),
+            pending_events_count=len(event_manager.events),
+        )
+
+        # Vẽ chú thích trực tiếp lên frame với các tùy chọn lớp hiển thị
         annotated = VideoWriter.annotate_frame(
             frame=frame,
             tracked_objects=tracked,
@@ -350,13 +430,144 @@ class AnalysisService:
             active_events=event_manager.events,
             width=cur_w,
             height=cur_h,
+            show_seats=show_seats,
+            show_persons=show_persons,
+            show_objects=show_objects,
+            show_track_ids=show_track_ids,
+            show_confidence=show_confidence,
+            show_event_markers=show_event_markers,
+            privacy_blur_faces=privacy_blur_faces,
         )
 
         summary = event_manager.get_summary()
         return annotated, event_manager.events, summary
 
+    # ──────────────────────────────────────────────
+    # Alert & Notification Delegators
+    # ──────────────────────────────────────────────
+    def get_recent_alerts(self, limit: int = 50, status: Optional[str] = None) -> List[Dict]:
+        """Lấy danh sách các Alert gần nhất."""
+        if self._alert_repo:
+            return self._alert_repo.get_recent_alerts(limit=limit, status=status)
+        return []
+
+    def update_alert_status(self, alert_id: str, new_status: str) -> bool:
+        """Cập nhật trạng thái alert (PENDING, CONFIRMED, DISMISSED, RESOLVED)."""
+        if self._alert_repo:
+            return self._alert_repo.update_alert_status(alert_id, new_status)
+        return False
+
+    def get_unresolved_alert_count(self) -> int:
+        """Đếm số cảnh báo đang chờ xử lý."""
+        if self._alert_repo:
+            return self._alert_repo.get_unresolved_alert_count()
+        return 0
+
+    def get_notification_logs(self, limit: int = 50) -> List[Dict]:
+        """Lấy lịch sử gửi thông báo."""
+        if self._alert_repo:
+            return self._alert_repo.get_notification_logs(limit=limit)
+        return []
+
+    def send_test_alert(
+        self,
+        telegram_config: Optional[Dict] = None,
+        email_config: Optional[Dict] = None,
+        webhook_config: Optional[Dict] = None,
+        seat_id: str = "S01",
+    ) -> Optional[Alert]:
+        """Bắn thử 1 cảnh báo test qua các kênh đã cấu hình."""
+        if self._alert_service:
+            return self._alert_service.send_test_alert(
+                telegram_config=telegram_config,
+                email_config=email_config,
+                webhook_config=webhook_config,
+                seat_id=seat_id,
+            )
+        return None
+
+    # ──────────────────────────────────────────────
+    # Dataset Delegators
+    # ──────────────────────────────────────────────
+    def get_dataset_images(self, split: Optional[str] = None, labeled_only: Optional[bool] = None) -> List[Dict]:
+        """Lấy danh sách ảnh trong dataset."""
+        if self._dataset_service:
+            return self._dataset_service.get_images(split=split, labeled_only=labeled_only)
+        return []
+
+    def get_dataset_stats(self) -> Dict:
+        """Lấy thống kê dataset."""
+        if self._dataset_service:
+            return self._dataset_service.get_stats()
+        return {"total_images": 0, "labeled_images": 0, "splits": {}, "class_counts": {}}
+
+    def add_dataset_image(self, file_bytes: bytes, filename: str, split: str = "train") -> Optional[str]:
+        """Thêm ảnh vào dataset."""
+        if self._dataset_service:
+            return self._dataset_service.add_image_from_bytes(file_bytes, filename, split=split)
+        return None
+
+    def extract_frames_from_video(self, video_path: str, interval_seconds: float = 2.0) -> List[str]:
+        """Trích xuất frame từ video để làm dataset."""
+        if self._dataset_service:
+            return self._dataset_service.extract_frames_from_video(video_path, interval_seconds=interval_seconds)
+        return []
+
+    def save_image_annotations(self, image_id: str, annotations: List[Dict]) -> bool:
+        """Lưu nhãn cho ảnh."""
+        if self._dataset_service:
+            return self._dataset_service.save_annotations(image_id, annotations)
+        return False
+
+    def get_image_annotations(self, image_id: str) -> List[Dict]:
+        """Lấy nhãn của ảnh."""
+        if self._dataset_service:
+            return self._dataset_service.get_annotations(image_id)
+        return []
+
+    def delete_dataset_image(self, image_id: str) -> bool:
+        """Xóa ảnh dataset."""
+        if self._dataset_service:
+            return self._dataset_service.delete_image(image_id)
+        return False
+
+    def export_yolo_dataset(self) -> Tuple[bool, str, str]:
+        """Xuất dataset ra file zip chuẩn YOLO."""
+        if self._dataset_service:
+            return self._dataset_service.export_yolo_dataset()
+        return False, "", "DatasetService chưa sẵn sàng"
+
+    # ──────────────────────────────────────────────
+    # Model Delegators
+    # ──────────────────────────────────────────────
+    def get_all_models(self) -> List[Dict]:
+        """Lấy tất cả model versions."""
+        if self._model_service:
+            return self._model_service.get_all_models()
+        return []
+
+    def get_active_model(self) -> Optional[Dict]:
+        """Lấy model active."""
+        if self._model_service:
+            return self._model_service.get_active_model()
+        return None
+
+    def activate_model(self, model_id: str) -> Tuple[bool, str]:
+        """Kích hoạt model."""
+        if self._model_service:
+            return self._model_service.activate_model(model_id)
+        return False, "ModelService chưa sẵn sàng"
+
+    def simulate_training_job(self, new_version: str, dataset_version: str, epochs: int = 30) -> Tuple[bool, Dict, str]:
+        """Huấn luyện & tạo candidate model."""
+        if self._model_service:
+            return self._model_service.simulate_training_job(new_version, dataset_version, epochs=epochs)
+        return False, {}, "ModelService chưa sẵn sàng"
+
     def cleanup(self):
         """Giải phóng tài nguyên."""
+        if self._camera_manager:
+            self._camera_manager.stop_stream()
         if self._db:
             self._db.close()
 

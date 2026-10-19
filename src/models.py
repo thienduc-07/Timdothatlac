@@ -7,6 +7,7 @@ Các dataclass dùng chung giữa các module.
 from dataclasses import dataclass, field
 from typing import Optional, List, Tuple
 from enum import Enum
+from config.settings import AlertPriority, AlertStatus
 
 
 @dataclass
@@ -90,9 +91,96 @@ class TrackObservation:
 
 class SeatState(str, Enum):
     """Trạng thái ước lượng của một ghế."""
-    VACANT = "vacant"          # Ghế trống
-    OCCUPIED = "occupied"      # Ghế có người ngồi / che
-    UNKNOWN = "unknown"        # Chưa xác định / chưa đủ dữ liệu
+    VACANT = "vacant"                  # Ghế trống
+    EMPTY = "vacant"                   # Alias cho VACANT
+    OCCUPIED = "occupied"              # Ghế có người ngồi / che
+    PARTIALLY_OCCLUDED = "partially_occluded" # Ghế bị che một phần
+    UNKNOWN = "unknown"                # Chưa xác định / chưa đủ dữ liệu
+
+
+@dataclass
+class Alert:
+    """Cảnh báo được sinh ra từ Event khi đủ điều kiện nghi ngờ bỏ quên."""
+    alert_id: str                      # Mã cảnh báo duy nhất (UUID)
+    event_id: str                      # Mã sự kiện tương ứng
+    seat_id: str                       # Ghế liên quan (S01, S02, ...)
+    object_id: str                     # Mã track / định danh vật thể (O01, O02, ...)
+    person_id: str = ""                # Mã track người liên quan (P01, ...) nếu có
+    priority: str = "MEDIUM"           # HIGH, MEDIUM, LOW
+    status: str = "PENDING"            # PENDING, CONFIRMED, DISMISSED, RESOLVED
+    reason: str = ""                   # Lý do sinh cảnh báo
+    snapshot_path: str = ""            # Đường dẫn ảnh bằng chứng
+    created_at: str = ""               # ISO timestamp
+    sent_channels: List[str] = field(default_factory=list) # Danh sách kênh đã gửi thành công
+
+
+@dataclass
+class NotificationDelivery:
+    """Nhật ký gửi thông báo qua các kênh (Telegram, Email, Webhook, Web Push)."""
+    delivery_id: Optional[int] = None
+    alert_id: str = ""
+    channel: str = ""                  # in_app, telegram, email, webhook, web_push
+    recipient: str = ""                # Chat ID, Email nhận, Webhook URL
+    status: str = "PENDING"            # SUCCESS, FAILED, PENDING
+    status_code: int = 0               # Mã phản hồi từ API nhà cung cấp
+    error_message: str = ""            # Chi tiết lỗi nếu thất bại
+    payload: dict = field(default_factory=dict)
+    sent_at: str = ""
+
+
+@dataclass
+class DatasetImage:
+    """Một ảnh trong dataset dùng để huấn luyện/cải thiện AI."""
+    image_id: str
+    image_path: str
+    filename: str
+    split: str = "train"               # train, val, test
+    width: int = 0
+    height: int = 0
+    source_type: str = "upload"        # upload, video_extracted
+    is_labeled: bool = False
+    quality_tag: str = "good"          # good, low_quality, duplicate
+    created_at: str = ""
+
+
+@dataclass
+class Annotation:
+    """Nhãn bounding box của một đối tượng trong DatasetImage."""
+    annotation_id: str
+    image_id: str
+    class_name: str
+    bbox_x1: float
+    bbox_y1: float
+    bbox_x2: float
+    bbox_y2: float
+    is_occluded: bool = False
+    created_at: str = ""
+
+
+@dataclass
+class ModelVersion:
+    """Thông tin một phiên bản model trong hệ thống."""
+    model_id: str                      # Mã định danh model
+    version: str                       # v1.0, v1.1...
+    dataset_version: str = "v1.0"
+    classes: List[str] = field(default_factory=list)
+    metrics: dict = field(default_factory=dict) # {"map50": 0.85, "precision": 0.82, "recall": 0.80}
+    confidence_threshold: float = 0.35
+    status: str = "archived"           # active, candidate, archived
+    artifact_path: str = ""
+    notes: str = ""
+    created_at: str = ""
+
+
+@dataclass
+class CameraConfig:
+    """Cấu hình nguồn camera giám sát."""
+    camera_id: str
+    name: str
+    source_type: str = "webcam"        # webcam, video_file, demo_sample, rtsp
+    stream_url: str = ""
+    fps: float = 15.0
+    is_active: bool = True
 
 
 @dataclass
