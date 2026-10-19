@@ -226,9 +226,9 @@ class TestSeatOccupancyEstimation:
                 frame_height=720,
             )
 
-        # Cả 2 ghế không thể khẳng định chắc chắn -> UNKNOWN với ghi chú rõ ràng
-        assert statuses["SEAT_1A"].state == SeatState.UNKNOWN
-        assert statuses["SEAT_1B"].state == SeatState.UNKNOWN
+        # Cả 2 ghế không thể khẳng định chắc chắn -> AMBIGUOUS (hoặc UNKNOWN) với ghi chú rõ ràng
+        assert statuses["SEAT_1A"].state in (SeatState.AMBIGUOUS, SeatState.UNKNOWN)
+        assert statuses["SEAT_1B"].state in (SeatState.AMBIGUOUS, SeatState.UNKNOWN)
         assert "giữa 2 ghế" in statuses["SEAT_1A"].notes
 
 

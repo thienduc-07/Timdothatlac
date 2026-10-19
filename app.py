@@ -478,6 +478,8 @@ def page_dashboard(service: AnalysisService):
                     s_badge = '<span class="badge" style="background: #1E3A8A; color: #60A5FA;">CÓ NGƯỜI</span>'
                 elif st_state == SeatState.VACANT:
                     s_badge = '<span class="badge" style="background: #065F46; color: #34D399;">TRỐNG</span>'
+                elif st_state == SeatState.AMBIGUOUS:
+                    s_badge = '<span class="badge" style="background: #78350F; color: #FBBF24;">TRANH CHẤP / CHƯA RÕ</span>'
                 else:
                     s_badge = '<span class="badge" style="background: #374151; color: #9CA3AF;">CHƯA RÕ</span>'
 

@@ -107,6 +107,7 @@ class SeatState(str, Enum):
     EMPTY = "vacant"                   # Alias cho VACANT
     OCCUPIED = "occupied"              # Ghế có người ngồi / che
     PARTIALLY_OCCLUDED = "partially_occluded" # Ghế bị che một phần
+    AMBIGUOUS = "ambiguous"            # Trạng thái mơ hồ / tranh chấp giữa 2 ghế
     UNKNOWN = "unknown"                # Chưa xác định / chưa đủ dữ liệu
 
 

@@ -269,6 +269,9 @@ class VideoWriter:
             elif seat_state == SeatState.VACANT:
                 color = COLOR_SEAT_VACANT
                 state_text = "TRỐNG"
+            elif seat_state == SeatState.AMBIGUOUS:
+                color = (0, 165, 255)
+                state_text = "TRANH CHẤP"
             else:
                 color = COLOR_SEAT_UNKNOWN
                 state_text = "CHƯA RÕ"

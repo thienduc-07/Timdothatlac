@@ -210,7 +210,7 @@ class SeatOccupancyEstimator:
             if is_ambiguous:
                 # Trường hợp không thể phân định rõ ghế nào
                 status.notes = f"Chưa rõ: Hành khách nằm/ngồi giữa 2 ghế liền nhau (overlap {overlap:.0%})"
-                status.state = SeatState.UNKNOWN
+                status.state = SeatState.AMBIGUOUS
                 continue
 
             if overlap >= self.overlap_threshold:
