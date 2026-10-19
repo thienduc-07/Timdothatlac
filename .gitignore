@@ -1,0 +1,54 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Video files (large)
+data/*.mp4
+data/*.avi
+data/*.mov
+data/*.mkv
+
+# Output files
+outputs/
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+logs/*.log
+
+# Model weights (large)
+*.pt
+models/*.pt
+models/*.onnx
+
+# Environment
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Pytest cache
+.pytest_cache/
+
+# Distribution
+dist/
+build/
+*.egg-info/

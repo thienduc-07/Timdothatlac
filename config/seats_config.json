@@ -1,0 +1,50 @@
+{
+  "version": "1.0",
+  "description": "Cấu hình vùng ghế (Seat ROI) mặc định cho camera trần xe buýt",
+  "seats": [
+    {
+      "seat_id": "SEAT_01",
+      "description": "Hàng ghế 1 - Bên trái",
+      "is_normalized": true,
+      "polygon": [
+        [0.12, 0.25],
+        [0.42, 0.25],
+        [0.42, 0.55],
+        [0.12, 0.55]
+      ]
+    },
+    {
+      "seat_id": "SEAT_02",
+      "description": "Hàng ghế 1 - Bên phải",
+      "is_normalized": true,
+      "polygon": [
+        [0.58, 0.25],
+        [0.88, 0.25],
+        [0.88, 0.55],
+        [0.58, 0.55]
+      ]
+    },
+    {
+      "seat_id": "SEAT_03",
+      "description": "Hàng ghế 2 - Bên trái",
+      "is_normalized": true,
+      "polygon": [
+        [0.12, 0.60],
+        [0.42, 0.60],
+        [0.42, 0.90],
+        [0.12, 0.90]
+      ]
+    },
+    {
+      "seat_id": "SEAT_04",
+      "description": "Hàng ghế 2 - Bên phải",
+      "is_normalized": true,
+      "polygon": [
+        [0.58, 0.60],
+        [0.88, 0.60],
+        [0.88, 0.90],
+        [0.58, 0.90]
+      ]
+    }
+  ]
+}
