@@ -493,6 +493,80 @@ def page_dashboard(service: AnalysisService):
             st.warning("Chưa thiết lập vùng ghế.")
 
 
+def _run_browser_camera_analysis(
+    photo,
+    service: AnalysisService,
+    conf_thresh: float,
+    min_stat_time: float,
+    show_seats: bool,
+    show_persons: bool,
+    show_objects: bool,
+    privacy_blur: bool,
+):
+    """Xử lý hình ảnh chụp từ webcam trình duyệt và hiển thị trực quan chi tiết."""
+    if not photo:
+        return
+    try:
+        np_arr = np.frombuffer(photo.getvalue(), np.uint8)
+        cv_img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        if cv_img is None:
+            st.error("Không thể đọc định dạng ảnh từ Camera.")
+            return
+
+        tracker = ObjectTracker()
+        event_manager = EventManager()
+        event_detector = ForgottenItemDetector(
+            min_stationary_time=min_stat_time,
+            movement_threshold=STATIONARY_MOVEMENT_THRESHOLD,
+            watched_classes=ITEM_CLASSES,
+            seat_manager=service.seat_manager,
+            event_manager=event_manager,
+        )
+
+        with st.spinner("🧠 AI đang quét & phân tích hình ảnh từ Camera của bạn..."):
+            annotated, events, summary = service.process_webcam_frame(
+                frame=cv_img,
+                frame_idx=1,
+                fps=1.0,
+                tracker=tracker,
+                event_detector=event_detector,
+                event_manager=event_manager,
+                confidence_threshold=conf_thresh,
+                show_seats=show_seats,
+                show_persons=show_persons,
+                show_objects=show_objects,
+                privacy_blur_faces=privacy_blur,
+            )
+
+        rgb_res = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+        st.image(rgb_res, caption="Kết quả Phân tích Trực quan AI (Bounding box, Ghế, Người & Đồ vật)", channels="RGB", use_container_width=True)
+
+        statuses = service.seat_manager.get_all_statuses()
+        total_seats = len(service.seat_manager.seats)
+        occ_seats = sum(1 for s in statuses.values() if s.state == SeatState.OCCUPIED)
+        vac_seats = sum(1 for s in statuses.values() if s.state == SeatState.VACANT)
+
+        mcol1, mcol2, mcol3, mcol4 = st.columns(4)
+        with mcol1:
+            st.metric("Tổng số ghế", f"{total_seats}")
+        with mcol2:
+            st.metric("Ghế có người", f"{occ_seats}", delta=f"{vac_seats} ghế trống")
+        with mcol3:
+            st.metric("Đồ vật theo dõi", f"{len(events)}")
+        with mcol4:
+            sus_count = summary.get("suspected", 0)
+            st.metric("Nghi ngờ bỏ quên", f"{sus_count}", delta="Cần chú ý" if sus_count > 0 else "An toàn", delta_color="inverse" if sus_count > 0 else "normal")
+
+        if summary.get("suspected", 0) > 0:
+            st.error("⚠️ **CẢNH BÁO:** Phát hiện vật thể có dấu hiệu bị bỏ quên trên ghế!")
+            play_audio_alert()
+        else:
+            st.success(f"✅ Quét thành công! Phát hiện {len(events)} đối tượng trong tầm quan sát của AI.")
+    except Exception as e:
+        logger.error(f"Lỗi phân tích ảnh webcam: {e}")
+        st.error(f"Lỗi khi xử lý hình ảnh camera: {e}")
+
+
 # ══════════════════════════════════════════════
 # TRANG 2: GIÁM SÁT CAMERA & VIDEO (CAMERA MONITOR)
 # ══════════════════════════════════════════════
@@ -506,6 +580,13 @@ def page_camera_monitor(service: AnalysisService):
 
     render_legend()
 
+    # Nhận diện môi trường Cloud hoặc Local
+    is_cloud_env = (
+        os.path.exists("/mount/src")
+        or "STREAMLIT_SHARING_HOST" in os.environ
+        or (sys.platform.startswith("linux") and not os.path.exists("/dev/video0"))
+    )
+
     # Nguồn dữ liệu & Tùy chọn điều khiển
     st.markdown("##### ⚙️ Nguồn dữ liệu & Cấu hình luồng")
     src_col1, src_col2, src_col3 = st.columns([2, 1, 1])
@@ -516,10 +597,11 @@ def page_camera_monitor(service: AnalysisService):
             [
                 "🚌 Video Mẫu Xe Buýt (Demo Mode - Khuyên dùng trên Cloud)",
                 "📁 Tải lên Video từ máy tính",
-                "🎥 Live Webcam máy tính (FaceTime HD / USB)",
-                "📸 Chụp quét từ Webcam trình duyệt",
+                "📸 Webcam Trình duyệt (Dùng Camera MacBook / Điện thoại trên Cloud & Web)",
+                "🎥 Live Webcam máy tính (OpenCV / Chỉ dùng khi chạy Local)",
                 "🌐 Luồng IP / RTSP Camera",
             ],
+            index=2 if is_cloud_env else 0,
             horizontal=False,
         )
 
@@ -634,111 +716,133 @@ def page_camera_monitor(service: AnalysisService):
                     else:
                         st.error(f"Lỗi: {result.error_message}")
 
-    elif "Live Webcam máy tính" in source_mode:
-        wcol1, wcol2 = st.columns([2, 1])
-        with wcol1:
-            cam_idx = st.number_input("Cổng Camera (0 = FaceTime HD / Mặc định, 1, 2 = USB)", 0, 5, 0)
-            run_cam = st.toggle("🔴 BẬT / TẮT CAMERA THỜI GIAN THỰC", value=False)
-        with wcol2:
-            st.caption("⚡ Trên macOS: Đảm bảo cấp quyền Camera cho Terminal hoặc Trình duyệt.")
-
-        if run_cam:
-            cap = cv2.VideoCapture(int(cam_idx))
-            if not cap.isOpened():
-                cap = cv2.VideoCapture(int(cam_idx), cv2.CAP_AVFOUNDATION)
-
-            if not cap.isOpened():
-                st.error(f"❌ Không thể mở camera cổng {cam_idx}. Hãy kiểm tra kết nối phần cứng.")
-            else:
-                cam_view = st.empty()
-                cam_metrics = st.empty()
-                tracker = ObjectTracker()
-                event_manager = EventManager()
-                event_detector = ForgottenItemDetector(
-                    min_stationary_time=min_stat_time,
-                    movement_threshold=STATIONARY_MOVEMENT_THRESHOLD,
-                    watched_classes=ITEM_CLASSES,
-                    seat_manager=service.seat_manager,
-                    event_manager=event_manager,
-                )
-
-                frame_idx = 0
-                while run_cam:
-                    t0 = time.time()
-                    ret, frame = cap.read()
-                    if not ret or frame is None:
-                        st.warning("Mất tín hiệu camera.")
-                        break
-
-                    annotated, events, summary = service.process_webcam_frame(
-                        frame=frame,
-                        frame_idx=frame_idx,
-                        fps=15.0,
-                        tracker=tracker,
-                        event_detector=event_detector,
-                        event_manager=event_manager,
-                        confidence_threshold=conf_thresh,
-                        show_seats=show_seats,
-                        show_persons=show_persons,
-                        show_objects=show_objects,
-                        privacy_blur_faces=privacy_blur,
-                    )
-
-                    lat_ms = (time.time() - t0) * 1000.0
-                    rgb_f = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-                    cam_view.image(rgb_f, channels="RGB", use_container_width=True)
-
-                    total_seats = len(service.seat_manager.seats)
-                    statuses = service.seat_manager.get_all_statuses()
-                    occ_seats = sum(1 for s in statuses.values() if s.state == SeatState.OCCUPIED)
-                    vac_seats = sum(1 for s in statuses.values() if s.state == SeatState.VACANT)
-
-                    cam_metrics.markdown(
-                        f"🪑 **Ghế:** `{total_seats}` (👤 Có người: `{occ_seats}` | 🟢 Trống: `{vac_seats}`) | "
-                        f"🎒 **Đồ theo dõi:** `{len(events)}` | "
-                        f"⚠️ **Nghi ngờ:** `{summary.get('suspected', 0)}` | "
-                        f"🛡️ **Che khuất:** `{summary.get('occluded', 0)}` | "
-                        f"⏱️ **FPS:** `{1000.0/max(1.0, lat_ms):.1f}` (`{lat_ms:.1f}ms`)"
-                    )
-                    frame_idx += 1
-
-                cap.release()
-
-    elif "Chụp quét từ Webcam trình duyệt" in source_mode:
-        st.markdown("##### 📸 Chụp ảnh từ Camera MacBook / Trình duyệt:")
-        photo = st.camera_input("Chụp ảnh phân tích tức thì")
-        if photo:
-            np_arr = np.frombuffer(photo.getvalue(), np.uint8)
-            cv_img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
-            tracker = ObjectTracker()
-            event_manager = EventManager()
-            event_detector = ForgottenItemDetector(
-                min_stationary_time=min_stat_time,
-                movement_threshold=STATIONARY_MOVEMENT_THRESHOLD,
-                watched_classes=ITEM_CLASSES,
-                seat_manager=service.seat_manager,
-                event_manager=event_manager,
+    elif "Live Webcam máy tính" in source_mode or "Live Stream Webcam" in source_mode:
+        if is_cloud_env:
+            st.warning(
+                "☁️ **Bạn đang truy cập qua máy chủ Streamlit Cloud.**\n\n"
+                "Máy chủ đám mây không có cổng USB hay FaceTime vật lý để OpenCV kết nối trực tiếp đến camera máy tính của bạn.\n\n"
+                "👉 **Để sử dụng Camera MacBook/Laptop của bạn trên Web:**\n"
+                "• Vui lòng chuyển sang mục **'📸 Webcam Trình duyệt'** ở menu trên, hoặc dùng khung chụp ảnh nhanh ngay bên dưới.\n"
+                "• Trình duyệt sẽ tự động xin quyền truy cập Camera của bạn và truyền hình ảnh an toàn đến AI."
             )
-
-            with st.spinner("AI đang phân tích ảnh..."):
-                annotated, events, summary = service.process_webcam_frame(
-                    frame=cv_img,
-                    frame_idx=1,
-                    fps=1.0,
-                    tracker=tracker,
-                    event_detector=event_detector,
-                    event_manager=event_manager,
-                    confidence_threshold=conf_thresh,
+            st.markdown("##### 📸 Dùng ngay Camera MacBook / Laptop qua Trình duyệt:")
+            cloud_quick_photo = st.camera_input("Chụp ảnh phân tích tức thì qua Camera thiết bị", key="cloud_cam_quick_snap")
+            if cloud_quick_photo:
+                _run_browser_camera_analysis(
+                    photo=cloud_quick_photo,
+                    service=service,
+                    conf_thresh=conf_thresh,
+                    min_stat_time=min_stat_time,
                     show_seats=show_seats,
                     show_persons=show_persons,
                     show_objects=show_objects,
-                    privacy_blur_faces=privacy_blur,
+                    privacy_blur=privacy_blur,
                 )
+        else:
+            wcol1, wcol2 = st.columns([2, 1])
+            with wcol1:
+                cam_idx = st.number_input("Cổng Camera (0 = FaceTime HD / Mặc định, 1, 2 = USB / Continuity)", 0, 5, 0)
+                run_cam = st.toggle("🔴 BẬT / TẮT CAMERA THỜI GIAN THỰC", value=False)
+            with wcol2:
+                st.caption("⚡ Trên macOS: Đảm bảo cấp quyền Camera cho Terminal / Ứng dụng trong Cài đặt hệ thống.")
 
-            rgb_res = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-            st.image(rgb_res, caption="Kết quả phân tích", channels="RGB", use_container_width=True)
-            st.success(f"Phân tích hoàn tất! Số đối tượng: {len(events)} | Nghi ngờ: {summary.get('suspected', 0)}")
+            if run_cam:
+                cap = cv2.VideoCapture(int(cam_idx))
+                if not cap.isOpened() and sys.platform == "darwin":
+                    cap = cv2.VideoCapture(int(cam_idx), cv2.CAP_AVFOUNDATION)
+
+                if not cap.isOpened():
+                    st.error(
+                        f"❌ **Không thể mở camera cổng {cam_idx}.**\n\n"
+                        "🔍 **Cách khắc phục:**\n"
+                        "1. **Quyền riêng tư macOS:** Vào `Cài đặt hệ thống > Quyền riêng tư & Bảo mật > Camera` và bật quyền cho Terminal / Python / VS Code.\n"
+                        "2. **Thử đổi cổng:** Đổi sang cổng `1` hoặc `2` (nếu đang dùng iPhone Continuity Camera hoặc webcam ngoài).\n"
+                        "3. **Tắt ứng dụng khác:** Đảm bảo FaceTime, Zoom, Teams, Photo Booth không chiếm quyền camera.\n"
+                        "4. **Dự phòng:** Dùng khung **Webcam trình duyệt** bên dưới để chụp quét mà không cần OpenCV."
+                    )
+                    st.markdown("##### 📸 Chụp quét dự phòng qua Camera trình duyệt:")
+                    fallback_snap = st.camera_input("Chụp ảnh qua Camera trình duyệt", key="local_fallback_cam")
+                    if fallback_snap:
+                        _run_browser_camera_analysis(
+                            photo=fallback_snap,
+                            service=service,
+                            conf_thresh=conf_thresh,
+                            min_stat_time=min_stat_time,
+                            show_seats=show_seats,
+                            show_persons=show_persons,
+                            show_objects=show_objects,
+                            privacy_blur=privacy_blur,
+                        )
+                else:
+                    cam_view = st.empty()
+                    cam_metrics = st.empty()
+                    tracker = ObjectTracker()
+                    event_manager = EventManager()
+                    event_detector = ForgottenItemDetector(
+                        min_stationary_time=min_stat_time,
+                        movement_threshold=STATIONARY_MOVEMENT_THRESHOLD,
+                        watched_classes=ITEM_CLASSES,
+                        seat_manager=service.seat_manager,
+                        event_manager=event_manager,
+                    )
+
+                    frame_idx = 0
+                    while run_cam:
+                        t0 = time.time()
+                        ret, frame = cap.read()
+                        if not ret or frame is None:
+                            st.warning("Mất tín hiệu camera.")
+                            break
+
+                        annotated, events, summary = service.process_webcam_frame(
+                            frame=frame,
+                            frame_idx=frame_idx,
+                            fps=15.0,
+                            tracker=tracker,
+                            event_detector=event_detector,
+                            event_manager=event_manager,
+                            confidence_threshold=conf_thresh,
+                            show_seats=show_seats,
+                            show_persons=show_persons,
+                            show_objects=show_objects,
+                            privacy_blur_faces=privacy_blur,
+                        )
+
+                        lat_ms = (time.time() - t0) * 1000.0
+                        rgb_f = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+                        cam_view.image(rgb_f, channels="RGB", use_container_width=True)
+
+                        total_seats = len(service.seat_manager.seats)
+                        statuses = service.seat_manager.get_all_statuses()
+                        occ_seats = sum(1 for s in statuses.values() if s.state == SeatState.OCCUPIED)
+                        vac_seats = sum(1 for s in statuses.values() if s.state == SeatState.VACANT)
+
+                        cam_metrics.markdown(
+                            f"🪑 **Ghế:** `{total_seats}` (👤 Có người: `{occ_seats}` | 🟢 Trống: `{vac_seats}`) | "
+                            f"🎒 **Đồ theo dõi:** `{len(events)}` | "
+                            f"⚠️ **Nghi ngờ:** `{summary.get('suspected', 0)}` | "
+                            f"🛡️ **Che khuất:** `{summary.get('occluded', 0)}` | "
+                            f"⏱️ **FPS:** `{1000.0/max(1.0, lat_ms):.1f}` (`{lat_ms:.1f}ms`)"
+                        )
+                        frame_idx += 1
+
+                    cap.release()
+
+    elif "Webcam Trình duyệt" in source_mode or "Webcam trình duyệt" in source_mode:
+        st.markdown("##### 📸 Chụp ảnh từ Camera MacBook / Điện thoại / Trình duyệt:")
+        st.info("💡 **Hỗ trợ trực tiếp trên Streamlit Cloud & Mọi thiết bị:** Nhấn nút camera bên dưới, cấp quyền truy cập Camera khi trình duyệt hỏi để bắt đầu phân tích tức thì.")
+        photo = st.camera_input("Chụp ảnh phân tích tức thì qua Camera thiết bị", key="main_browser_cam")
+        if photo:
+            _run_browser_camera_analysis(
+                photo=photo,
+                service=service,
+                conf_thresh=conf_thresh,
+                min_stat_time=min_stat_time,
+                show_seats=show_seats,
+                show_persons=show_persons,
+                show_objects=show_objects,
+                privacy_blur=privacy_blur,
+            )
 
     elif "Luồng IP / RTSP" in source_mode:
         rtsp_url = st.text_input("Nhập URL luồng RTSP (ví dụ: rtsp://admin:123456@192.168.1.100:554/stream1):")
