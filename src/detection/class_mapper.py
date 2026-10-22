@@ -55,6 +55,7 @@ DEFAULT_MAPPING: Dict[str, str] = {
 COCO_ITEM_CLASSES = frozenset({
     "backpack", "handbag", "suitcase", "umbrella",
     "bottle", "cell phone", "laptop", "book",
+    "cup", "remote", "mouse", "keyboard", "scissors", "tie", "wine glass", "clock",
 })
 
 
@@ -111,9 +112,12 @@ def format_seat_label(seat_id: str) -> str:
         "SEAT_001" -> "Ghế 001"
         "SEAT_1A"  -> "Ghế 1A"
         "1"        -> "Ghế 001"
+        "UNKNOWN_SEAT" -> "Chưa xác định vị trí ghế"
     """
     sid = str(seat_id).strip()
     clean_id = sid.upper()
+    if not clean_id or clean_id in ("UNKNOWN_SEAT", "UNKNOWN", "NONE", "N/A", ""):
+        return "Chưa xác định vị trí ghế"
     if clean_id.startswith("SEAT_") or clean_id.startswith("SEAT-") or clean_id.startswith("SEAT "):
         sub = clean_id[5:].strip()
         if sub.isdigit():
