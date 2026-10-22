@@ -13,9 +13,17 @@ ROOT_DIR = Path(__file__).resolve().parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+import os
+
+# Giới hạn số luồng CPU cho OpenMP/BLAS để tránh nghẽn thread và CPU throttling trên Streamlit Cloud
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "2")
+os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "2")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "2")
+
 from datetime import datetime
 import json
-import os
 import time
 import cv2
 import numpy as np
@@ -953,8 +961,8 @@ def page_camera_monitor(service: AnalysisService):
                             show_event_markers=True,
                             privacy_blur=privacy_blur,
                             show_masks=show_masks,
-                            stride=1,
-                            infer_imgsz=480,
+                            stride=2,
+                            infer_imgsz=416,
                         ),
                         media_stream_constraints={"video": True, "audio": False},
                         async_processing=True,
@@ -1031,6 +1039,8 @@ def page_camera_monitor(service: AnalysisService):
                         show_objects=show_objects,
                         privacy_blur=privacy_blur,
                         show_masks=show_masks,
+                        stride=2,
+                        infer_imgsz=416,
                     ),
                     media_stream_constraints={"video": True, "audio": False},
                     async_processing=True,

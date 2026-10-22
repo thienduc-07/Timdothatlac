@@ -32,6 +32,7 @@
       color: var(--text-main);
       padding: 8px;
       overflow-x: hidden;
+      min-height: 620px;
     }
 
     .container {
@@ -537,7 +538,9 @@
     }
 
     function updateFrameHeight() {
-      const height = document.body.scrollHeight + 15;
+      const bodyH = document.body ? document.body.scrollHeight : 0;
+      const docH = document.documentElement ? document.documentElement.scrollHeight : 0;
+      const height = Math.max(bodyH, docH, 680) + 15;
       window.parent.postMessage({
         isStreamlitMessage: true,
         type: "streamlit:setFrameHeight",
@@ -554,6 +557,7 @@
         if (args.showSeats !== undefined) showSeats = args.showSeats;
         if (args.showPersons !== undefined) showPersons = args.showPersons;
         if (args.showObjects !== undefined) showObjects = args.showObjects;
+        updateFrameHeight();
       }
     });
 
@@ -562,6 +566,25 @@
       type: "streamlit:componentReady",
       apiVersion: 1
     }, "*");
+
+    // Đảm bảo iframe luôn có chiều cao hiển thị ngay khi trang tải xong
+    window.addEventListener("DOMContentLoaded", () => {
+      updateFrameHeight();
+      setTimeout(updateFrameHeight, 150);
+      setTimeout(updateFrameHeight, 500);
+    });
+    window.addEventListener("load", () => {
+      updateFrameHeight();
+      setTimeout(updateFrameHeight, 200);
+    });
+    if (window.ResizeObserver && document.body) {
+      try {
+        const resizeObserver = new ResizeObserver(() => updateFrameHeight());
+        resizeObserver.observe(document.body);
+      } catch (e) {
+        console.debug("ResizeObserver not supported:", e);
+      }
+    }
 
     // ─────────────────────────────────────────────────────────────
     // Camera Device Enumeration

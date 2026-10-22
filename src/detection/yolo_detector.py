@@ -166,6 +166,16 @@ class YOLODetector:
                     self.model_name = str(MODELS_DIR / "yolo26n-seg.onnx")
                     logger.info("Phát hiện file model yolo26n-seg.onnx tại MODELS_DIR. Tự động ưu tiên sử dụng.")
 
+            if self.device == "cpu":
+                try:
+                    import torch
+                    if hasattr(torch, "set_num_threads"):
+                        max_th = min(2, max(1, os.cpu_count() or 1))
+                        torch.set_num_threads(max_th)
+                        logger.info(f"Đã tối ưu hóa CPU threads cho YOLO PyTorch: {max_th} luồng")
+                except Exception as e:
+                    logger.debug(f"Không thể thiết lập torch.set_num_threads: {e}")
+
             logger.info(f"Đang tải model {self.model_name} trên thiết bị '{self.device}'...")
             self.model = YOLO(self.model_name)
 

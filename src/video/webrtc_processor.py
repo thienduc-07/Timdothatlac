@@ -128,10 +128,13 @@ def get_system_telemetry() -> Dict[str, Any]:
             elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
                 device_info = "Apple Silicon Metal (MPS)"
 
+        thread_cnt = threading.active_count()
+
         return {
             "cpu_percent": cpu_pct,
             "process_rss_mb": rss_mb,
             "system_mem_percent": sys_mem_pct,
+            "thread_count": thread_cnt,
             "device": device_info,
         }
     except Exception as e:
@@ -140,6 +143,7 @@ def get_system_telemetry() -> Dict[str, Any]:
             "cpu_percent": 0.0,
             "process_rss_mb": 0.0,
             "system_mem_percent": 0.0,
+            "thread_count": threading.active_count(),
             "device": "Unknown",
         }
 
@@ -177,8 +181,8 @@ class BusWebRtcVideoProcessor(VideoProcessorBase):
         show_event_markers: bool = True,
         privacy_blur: bool = False,
         show_masks: bool = True,
-        stride: int = 1,
-        infer_imgsz: Optional[int] = 640,
+        stride: int = 2,
+        infer_imgsz: Optional[int] = 480,
     ):
         self.session_id = str(uuid.uuid4())[:8]
         self.service = service
@@ -194,6 +198,9 @@ class BusWebRtcVideoProcessor(VideoProcessorBase):
         self.show_masks = show_masks
         self.stride = max(1, stride)
         self.infer_imgsz = infer_imgsz
+        self._last_telemetry_check: float = 0.0
+        self._cached_telemetry: Dict[str, Any] = get_system_telemetry()
+        self._last_frame_recv_time: float = time.time()
 
         # ── Pipeline AI độc lập cho phiên WebRTC này ──
         self.tracker = ObjectTracker()
@@ -304,16 +311,25 @@ class BusWebRtcVideoProcessor(VideoProcessorBase):
         cập nhật annotated buffer và thống kê độ trễ.
         """
         frame_idx = 0
+        idle_count = 0
         while self._running:
             try:
                 item = self._frame_queue.get(timeout=0.1)
+                idle_count = 0
             except queue.Empty:
+                idle_count += 1
+                if idle_count > 10:  # > 1 giây không có frame mới
+                    time.sleep(0.05)  # Tránh quay vòng CPU rỗng khi không có frame
+                if idle_count > 200:  # > 20 giây không có frame từ WebRTC client
+                    logger.info(f"BusWebRtcVideoProcessor [{self.session_id}] hết thời gian chờ frame (idle timeout).")
+                    break
                 continue
 
             if item is None or not self._running:
                 break
 
             img, t_recv, cur_idx = item
+            self._last_frame_recv_time = time.time()
             t_infer_start = time.perf_counter()
 
             annotated = None
@@ -373,7 +389,11 @@ class BusWebRtcVideoProcessor(VideoProcessorBase):
                 status_tag = "🔴 PHÁT HIỆN ĐỒ BỎ QUÊN!" if sus_count > 0 else "🟢 BÌNH THƯỜNG"
                 status_color = "#EF4444" if sus_count > 0 else "#10B981"
 
-                telemetry = get_system_telemetry()
+                now_time = time.time()
+                if now_time - self._last_telemetry_check > 2.0:
+                    self._cached_telemetry = get_system_telemetry()
+                    self._last_telemetry_check = now_time
+                telemetry = self._cached_telemetry
 
                 self.latest_metrics.update({
                     "infer_fps": infer_fps,
@@ -392,6 +412,7 @@ class BusWebRtcVideoProcessor(VideoProcessorBase):
                     "cpu_percent": telemetry["cpu_percent"],
                     "process_rss_mb": telemetry["process_rss_mb"],
                     "system_mem_percent": telemetry["system_mem_percent"],
+                    "thread_count": telemetry.get("thread_count", 1),
                     "device": telemetry["device"],
                 })
 

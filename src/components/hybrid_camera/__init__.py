@@ -31,6 +31,7 @@ def hybrid_camera(
     show_objects: bool = True,
     target_width: int = 640,
     target_height: int = 480,
+    height: int = 720,
     key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -42,6 +43,7 @@ def hybrid_camera(
     - conf_threshold: Ngưỡng tin cậy (0.1 - 1.0)
     - iou_threshold: Ngưỡng NMS IoU
     - show_masks: Bật/tắt hiển thị polygon segmentation masks
+    - height: Chiều cao iframe tính bằng pixel (mặc định 720px để tránh bị collapse)
     - key: Streamlit widget key
 
     Returns:
@@ -71,6 +73,7 @@ def hybrid_camera(
         showObjects=show_objects,
         targetWidth=target_width,
         targetHeight=target_height,
+        height=height,
         key=key,
         default=default_val,
     )
