@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hybrid AI Camera Stream</title>
-  <!-- ONNX Runtime Web (WebGPU & WASM SIMD) -->
+  <title>Lost & Found AI Bus - Browser-Native Camera</title>
+  <!-- ONNX Runtime Web (WebGPU & WASM SIMD with multithreading) -->
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.all.min.js"></script>
   <style>
     :root {
@@ -30,7 +30,7 @@
     body {
       background-color: var(--bg-color);
       color: var(--text-main);
-      padding: 10px;
+      padding: 8px;
       overflow-x: hidden;
     }
 
@@ -44,7 +44,7 @@
       box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
     }
 
-    /* Controls Bar */
+    /* Controls Bar - Exactly ONE button for camera control */
     .controls-bar {
       display: flex;
       flex-wrap: wrap;
@@ -52,7 +52,7 @@
       justify-content: space-between;
       gap: 12px;
       margin-bottom: 14px;
-      padding-bottom: 14px;
+      padding-bottom: 12px;
       border-bottom: 1px solid var(--card-border);
     }
 
@@ -61,9 +61,9 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
-      padding: 10px 22px;
+      padding: 11px 26px;
       font-size: 15px;
-      font-weight: 600;
+      font-weight: 700;
       border-radius: 8px;
       border: none;
       cursor: pointer;
@@ -73,7 +73,7 @@
 
     .btn-start {
       background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
     }
     .btn-start:hover {
       background: linear-gradient(135deg, #059669 0%, #047857 100%);
@@ -82,7 +82,7 @@
 
     .btn-stop {
       background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
-      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
     }
     .btn-stop:hover {
       background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
@@ -95,6 +95,7 @@
       pointer-events: none;
     }
 
+    /* Device Selector (Device camera switch) */
     .select-wrapper {
       display: flex;
       align-items: center;
@@ -114,12 +115,12 @@
       cursor: pointer;
     }
 
-    /* Backend Badge */
+    /* Status Badge */
     .backend-badge {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 12px;
+      padding: 6px 14px;
       border-radius: 20px;
       font-size: 12px;
       font-weight: 600;
@@ -129,11 +130,6 @@
       background: rgba(16, 185, 129, 0.15);
       border: 1px solid rgba(16, 185, 129, 0.4);
       color: #34D399;
-    }
-    .badge-server {
-      background: rgba(59, 130, 246, 0.15);
-      border: 1px solid rgba(59, 130, 246, 0.4);
-      color: #60A5FA;
     }
     .badge-idle {
       background: rgba(148, 163, 184, 0.15);
@@ -156,7 +152,7 @@
       100% { opacity: 0.4; transform: scale(0.9); }
     }
 
-    /* Video Screen Viewport */
+    /* Viewport following Gesture-Synth architecture */
     .viewport {
       position: relative;
       width: 100%;
@@ -171,10 +167,12 @@
       border: 1px solid #1E293B;
     }
 
+    /* Hidden video element feeding frames to overlay canvas */
     video {
       display: none;
     }
 
+    /* Main rendering canvas */
     canvas {
       width: 100%;
       height: 100%;
@@ -193,10 +191,12 @@
       color: var(--text-muted);
       text-align: center;
       padding: 20px;
+      background: #050B14;
+      z-index: 10;
     }
 
     .loading-bar-container {
-      width: 220px;
+      width: 240px;
       height: 6px;
       background: #334155;
       border-radius: 3px;
@@ -210,6 +210,35 @@
       height: 100%;
       background: var(--cyan);
       transition: width 0.3s ease;
+    }
+
+    /* Alert Banner */
+    .alert-banner {
+      margin-top: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      animation: slideDown 0.3s ease;
+    }
+    .alert-banner.critical {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      color: #FCA5A5;
+      display: flex;
+    }
+    .alert-banner.error {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #FCA5A5;
+      display: block;
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     /* Telemetry HUD */
@@ -239,6 +268,7 @@
     .telemetry-val.green { color: var(--green); }
     .telemetry-val.cyan { color: var(--cyan); }
     .telemetry-val.amber { color: var(--amber); }
+    .telemetry-val.red { color: var(--red); }
 
     .telemetry-lbl {
       font-size: 11px;
@@ -247,39 +277,20 @@
       letter-spacing: 0.5px;
       margin-top: 2px;
     }
-
-    .alert-box {
-      margin-top: 12px;
-      padding: 10px 14px;
-      border-radius: 6px;
-      font-size: 13px;
-      display: none;
-    }
-    .alert-warn {
-      background: rgba(245, 158, 11, 0.15);
-      border: 1px solid rgba(245, 158, 11, 0.4);
-      color: #FCD34D;
-    }
-    .alert-error {
-      background: rgba(239, 68, 68, 0.15);
-      border: 1px solid rgba(239, 68, 68, 0.4);
-      color: #FCA5A5;
-    }
   </style>
 </head>
 <body>
   <div class="container">
-    <!-- Controls Bar -->
+    <!-- Controls Bar: EXACTLY ONE BUTTON -->
     <div class="controls-bar">
-      <!-- 1 nút điều khiển duy nhất -->
       <button id="btnToggleCam" class="primary-btn btn-start">
         📷 BẬT CAMERA
       </button>
 
       <div class="select-wrapper">
-        <label for="deviceSelect">Cổng Camera:</label>
+        <label for="deviceSelect">Thiết bị:</label>
         <select id="deviceSelect">
-          <option value="">Tự động dò tìm camera...</option>
+          <option value="">Camera mặc định</option>
         </select>
       </div>
 
@@ -294,36 +305,37 @@
       <video id="webcam" playsinline autoplay muted></video>
       <canvas id="displayCanvas"></canvas>
       <div id="placeholder" class="placeholder-overlay">
-        <div style="font-size: 40px;">🎥</div>
-        <div style="font-size: 15px; font-weight: 500;">Camera đang tắt</div>
-        <div style="font-size: 13px; max-width: 380px;">
-          Bấm <strong>📷 BẬT CAMERA</strong> để quét AI trực tiếp trên máy của bạn với <strong>Polygon đa giác viền</strong>.
+        <div style="font-size: 44px;">🚌</div>
+        <div style="font-size: 16px; font-weight: 600; color: #F8FAFC;">Camera Giám Sát Xe Buýt (Browser-Native)</div>
+        <div style="font-size: 13px; max-width: 420px; line-height: 1.5;">
+          Nhấn nút <strong>📷 BẬT CAMERA</strong> để mở webcam trực tiếp từ trình duyệt của bạn.<br>
+          AI suy luận cục bộ bằng WebGPU/WASM với <strong>Mặt nạ Polygon bám sát viền đồ vật</strong>.
         </div>
         <div id="loadingProgress" class="loading-bar-container">
           <div id="progressBar" class="loading-bar"></div>
         </div>
         <div id="loadingMsg" style="font-size: 12px; color: var(--cyan); display: none;">
-          Đang tải model AI về thiết bị (lần đầu)...
+          Đang chuẩn bị mô hình AI...
         </div>
       </div>
     </div>
 
-    <!-- Alert Box -->
-    <div id="alertBox" class="alert-box"></div>
+    <!-- Alert Banner (Abandoned Item / Error) -->
+    <div id="alertBanner" class="alert-banner"></div>
 
     <!-- Telemetry HUD -->
     <div class="telemetry-grid">
+      <div class="telemetry-card">
+        <div id="valDisplayFps" class="telemetry-val cyan">0.0</div>
+        <div class="telemetry-lbl">Display FPS (Canvas)</div>
+      </div>
       <div class="telemetry-card">
         <div id="valInferFps" class="telemetry-val green">0.0</div>
         <div class="telemetry-lbl">AI Infer FPS</div>
       </div>
       <div class="telemetry-card">
-        <div id="valDisplayFps" class="telemetry-val cyan">0.0</div>
-        <div class="telemetry-lbl">Display FPS</div>
-      </div>
-      <div class="telemetry-card">
         <div id="valLatency" class="telemetry-val">0 ms</div>
-        <div class="telemetry-lbl">Độ trễ xử lý</div>
+        <div class="telemetry-lbl">Độ trễ AI</div>
       </div>
       <div class="telemetry-card">
         <div id="valItems" class="telemetry-val amber">0</div>
@@ -332,6 +344,10 @@
       <div class="telemetry-card">
         <div id="valPersons" class="telemetry-val green">0</div>
         <div class="telemetry-lbl">Hành khách</div>
+      </div>
+      <div class="telemetry-card">
+        <div id="valAlertStatus" class="telemetry-val green" style="font-size: 14px;">BÌNH THƯỜNG</div>
+        <div class="telemetry-lbl">Trạng thái khoang</div>
       </div>
     </div>
   </div>
@@ -352,25 +368,79 @@
       "hair drier", "toothbrush"
     ];
 
-    const ITEM_CLASSES = new Set([
+    // Personal belongings eligible for true instance segmentation polygons
+    const BELONGING_CLASSES = new Set([
       "item", "backpack", "handbag", "suitcase", "umbrella", "bottle",
-      "cell phone", "laptop", "book", "cup", "scissors"
+      "cup", "laptop", "mouse", "remote", "keyboard", "cell phone",
+      "book", "scissors"
     ]);
 
     const CLASS_NAMES_VI = {
       "person": "Người",
+      "item": "Đồ vật",
       "backpack": "Ba lô",
       "handbag": "Túi xách",
       "suitcase": "Vali",
       "umbrella": "Ô / Dù",
       "bottle": "Bình nước",
+      "cup": "Cốc / Ly",
       "cell phone": "Điện thoại",
       "laptop": "Laptop",
       "book": "Sách",
-      "cup": "Cốc / Ly",
+      "scissors": "Kéo",
       "chair": "Ghế xe buýt",
       "seat": "Ghế xe buýt"
     };
+
+    // ─────────────────────────────────────────────────────────────
+    // Web Audio Synthesizer (Gesture Synth architectural inspiration)
+    // ─────────────────────────────────────────────────────────────
+    class AudioAlertSynth {
+      constructor() {
+        this.ctx = null;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) this.ctx = new AudioContext();
+        }
+      }
+      playAlertChime() {
+        try {
+          this.init();
+          if (!this.ctx) return;
+          if (this.ctx.state === "suspended") this.ctx.resume();
+
+          const now = this.ctx.currentTime;
+          const osc1 = this.ctx.createOscillator();
+          const osc2 = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+
+          osc1.type = "sine";
+          osc1.frequency.setValueAtTime(880, now);
+          osc1.frequency.exponentialRampToValueAtTime(440, now + 0.35);
+
+          osc2.type = "triangle";
+          osc2.frequency.setValueAtTime(1320, now);
+          osc2.frequency.exponentialRampToValueAtTime(660, now + 0.35);
+
+          gain.gain.setValueAtTime(0.3, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+          osc1.connect(gain);
+          osc2.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc1.start(now);
+          osc2.start(now);
+          osc1.stop(now + 0.4);
+          osc2.stop(now + 0.4);
+        } catch (e) {
+          console.debug("Audio alert skipped:", e);
+        }
+      }
+    }
+    const audioSynth = new AudioAlertSynth();
 
     // ─────────────────────────────────────────────────────────────
     // Global State
@@ -385,26 +455,39 @@
     let inferTimeoutId = null;
     let isInferring = false;
 
-    let confThreshold = 0.35;
+    let confThreshold = 0.30;
     let iouThreshold = 0.45;
     let showMasks = true;
     let showSeats = true;
     let showPersons = true;
     let showObjects = true;
-    let modelUrl = "/app/static/models/yolo26n-seg.onnx";
 
-    let lastDisplayTime = performance.now();
-    let displayFps = 0.0;
+    // Relative and absolute model paths
+    let modelCandidateUrls = [
+      "static/models/yolo26n-seg.onnx",
+      "/app/static/models/yolo26n-seg.onnx",
+      "/static/models/yolo26n-seg.onnx"
+    ];
+
+    // Frame rates & metrics
     let displayFrameCount = 0;
     let lastFpsCalcTime = performance.now();
+    let displayFps = 0.0;
 
     let inferTimes = [];
     let inferFps = 0.0;
-    let lastInferTime = performance.now();
 
-    // Client tracking state
-    let trackedObjects = [];
+    // Client-side Object Tracking & State Machine
+    let activeTracks = new Map(); // id -> TrackRecord
     let nextTrackId = 1;
+
+    // Bus Seats Definition (Normalized [x1, y1, x2, y2])
+    const BUS_SEATS = [
+      { id: "S01", name: "Ghế 01", box: [0.08, 0.20, 0.45, 0.52], occupied: false, itemPresent: false },
+      { id: "S02", name: "Ghế 02", box: [0.55, 0.20, 0.92, 0.52], occupied: false, itemPresent: false },
+      { id: "S03", name: "Ghế 03", box: [0.08, 0.56, 0.45, 0.90], occupied: false, itemPresent: false },
+      { id: "S04", name: "Ghế 04", box: [0.55, 0.56, 0.92, 0.90], occupied: false, itemPresent: false }
+    ];
 
     // DOM Elements
     const btnToggle = document.getElementById("btnToggleCam");
@@ -418,19 +501,29 @@
     const loadingProgress = document.getElementById("loadingProgress");
     const progressBar = document.getElementById("progressBar");
     const loadingMsg = document.getElementById("loadingMsg");
-    const alertBox = document.getElementById("alertBox");
+    const alertBanner = document.getElementById("alertBanner");
 
     const valInferFps = document.getElementById("valInferFps");
     const valDisplayFps = document.getElementById("valDisplayFps");
     const valLatency = document.getElementById("valLatency");
     const valItems = document.getElementById("valItems");
     const valPersons = document.getElementById("valPersons");
+    const valAlertStatus = document.getElementById("valAlertStatus");
 
     // Offscreen Canvas for Model Preprocessing (480x480)
     const offscreenCanvas = document.createElement("canvas");
     offscreenCanvas.width = 480;
     offscreenCanvas.height = 480;
     const offCtx = offscreenCanvas.getContext("2d", { willReadFrequently: true });
+
+    // Pre-allocated Float32Array for input tensor to prevent GC stalls
+    const inputSize = 480;
+    const channelSize = inputSize * inputSize;
+    const preallocatedFloat32 = new Float32Array(3 * channelSize);
+
+    // Latest detections for asynchronous overlay rendering
+    let latestDetections = [];
+    let latestSuspectCount = 0;
 
     // ─────────────────────────────────────────────────────────────
     // Streamlit Component Messaging Protocol
@@ -461,11 +554,9 @@
         if (args.showSeats !== undefined) showSeats = args.showSeats;
         if (args.showPersons !== undefined) showPersons = args.showPersons;
         if (args.showObjects !== undefined) showObjects = args.showObjects;
-        if (args.modelUrl) modelUrl = args.modelUrl;
       }
     });
 
-    // Notify ready
     window.parent.postMessage({
       isStreamlitMessage: true,
       type: "streamlit:componentReady",
@@ -500,52 +591,74 @@
     loadCameras();
 
     // ─────────────────────────────────────────────────────────────
-    // ONNX Runtime Web Model Loading with Cache
+    // ONNX Runtime Web Model Loading with CacheStorage
     // ─────────────────────────────────────────────────────────────
     async function loadONNXModel() {
       if (ortSession) return ortSession;
 
       loadingProgress.style.display = "block";
       loadingMsg.style.display = "block";
+      loadingMsg.textContent = "Đang kiểm tra bộ nhớ đệm model AI...";
       progressBar.style.width = "20%";
 
       let modelArrayBuffer = null;
+      let matchedUrl = "";
 
-      // 1. Thử đọc từ Cache Storage API
+      // 1. Thử Cache Storage API
       try {
         if (window.caches) {
-          const cache = await caches.open("yolo26-models-v1");
-          const cachedResponse = await cache.match(modelUrl);
-          if (cachedResponse) {
-            progressBar.style.width = "70%";
-            modelArrayBuffer = await cachedResponse.arrayBuffer();
+          const cache = await caches.open("yolo26-seg-v2");
+          for (const url of modelCandidateUrls) {
+            const cachedResponse = await cache.match(url);
+            if (cachedResponse) {
+              progressBar.style.width = "65%";
+              loadingMsg.textContent = "Nạp nhanh mô hình từ bộ nhớ đệm...";
+              modelArrayBuffer = await cachedResponse.arrayBuffer();
+              matchedUrl = url;
+              break;
+            }
           }
         }
       } catch (e) {
-        console.log("Cache lookup skipped:", e);
+        console.debug("Cache lookup skipped:", e);
       }
 
       // 2. Tải qua mạng nếu chưa có cache
       if (!modelArrayBuffer) {
-        progressBar.style.width = "40%";
-        const resp = await fetch(modelUrl);
-        if (!resp.ok) {
-          throw new Error(`Không thể tải model từ ${modelUrl} (HTTP ${resp.status})`);
-        }
-        progressBar.style.width = "75%";
-        // Lưu vào cache
-        try {
-          if (window.caches) {
-            const cache = await caches.open("yolo26-models-v1");
-            cache.put(modelUrl, resp.clone());
+        loadingMsg.textContent = "Đang tải mô hình AI về trình duyệt (10.5 MB)...";
+        progressBar.style.width = "35%";
+
+        let lastErr = null;
+        for (const url of modelCandidateUrls) {
+          try {
+            const resp = await fetch(url);
+            if (resp.ok) {
+              progressBar.style.width = "75%";
+              // Lưu vào Cache Storage
+              try {
+                if (window.caches) {
+                  const cache = await caches.open("yolo26-seg-v2");
+                  cache.put(url, resp.clone());
+                }
+              } catch (ce) {}
+              modelArrayBuffer = await resp.arrayBuffer();
+              matchedUrl = url;
+              break;
+            }
+          } catch (netErr) {
+            lastErr = netErr;
           }
-        } catch (e) {}
-        modelArrayBuffer = await resp.arrayBuffer();
+        }
+
+        if (!modelArrayBuffer) {
+          throw new Error("Không thể tải mô hình ONNX từ máy chủ: " + (lastErr ? lastErr.message : "404 Not Found"));
+        }
       }
 
-      progressBar.style.width = "90%";
+      progressBar.style.width = "85%";
+      loadingMsg.textContent = "Đang biên dịch nhân WebGPU / WASM SIMD...";
 
-      // 3. Khởi tạo session (Thử WebGPU trước, fallback sang WASM)
+      // 3. Khởi tạo session (WebGPU trước, tự động fallback WASM SIMD)
       try {
         if (navigator.gpu) {
           ortSession = await ort.InferenceSession.create(modelArrayBuffer, {
@@ -556,10 +669,10 @@
           activeBackendType = "client_webgpu";
           console.log("Khởi tạo ONNX Runtime thành công với WebGPU.");
         } else {
-          throw new Error("WebGPU không có sẵn trên trình duyệt.");
+          throw new Error("Trình duyệt chưa hỗ trợ WebGPU, chuyển sang WASM SIMD.");
         }
       } catch (gpuErr) {
-        console.warn("WebGPU không khả dụng, chuyển sang WASM SIMD:", gpuErr);
+        console.warn("Chuyển sang WASM SIMD:", gpuErr);
         try {
           ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency || 2);
           ort.env.wasm.simd = true;
@@ -571,7 +684,7 @@
           activeBackendType = "client_wasm";
           console.log("Khởi tạo ONNX Runtime thành công với WASM CPU.");
         } catch (wasmErr) {
-          throw new Error("Không thể khởi tạo ONNX runtime WebGPU hoặc WASM: " + wasmErr.message);
+          throw new Error("Không thể khởi tạo nhân ONNX: " + wasmErr.message);
         }
       }
 
@@ -579,7 +692,7 @@
       setTimeout(() => {
         loadingProgress.style.display = "none";
         loadingMsg.style.display = "none";
-      }, 400);
+      }, 350);
 
       return ortSession;
     }
@@ -588,6 +701,7 @@
     // Single Camera Control Toggle
     // ─────────────────────────────────────────────────────────────
     btnToggle.addEventListener("click", async () => {
+      audioSynth.init();
       if (!isRunning) {
         await startCamera();
       } else {
@@ -598,13 +712,13 @@
     async function startCamera() {
       btnToggle.disabled = true;
       btnToggle.textContent = "⏳ Đang kết nối...";
-      alertBox.style.display = "none";
+      alertBanner.style.display = "none";
 
       try {
-        // Tải model trước
+        // Tải trước model
         await loadONNXModel();
 
-        // Mở MediaStream từ camera client
+        // Mở MediaStream từ camera của visitor
         const deviceId = deviceSelect.value;
         const constraints = {
           video: {
@@ -629,15 +743,17 @@
         btnToggle.className = "primary-btn btn-stop";
 
         backendBadge.className = "backend-badge badge-client";
-        backendText.textContent = `⚡ AI trên thiết bị (${executionProvider.toUpperCase()})`;
+        backendText.textContent = `⚡ AI trên trình duyệt (${executionProvider.toUpperCase()})`;
 
         isRunning = true;
-        lastDisplayTime = performance.now();
         lastFpsCalcTime = performance.now();
+        displayFrameCount = 0;
 
-        // Bắt đầu vòng lặp hiển thị & vòng lặp suy luận
+        // Bắt đầu 2 vòng lặp độc lập:
+        // 1. Render loop: requestAnimationFrame (mượt mà 60 FPS, không phụ thuộc AI)
+        // 2. Inference scheduler: chạy async bỏ qua frame nếu AI đang bận
         requestAnimationFrame(renderLoop);
-        runInferenceLoop();
+        runInferenceScheduler();
 
         notifyStreamlit({
           status: "running",
@@ -645,21 +761,20 @@
           is_running: true
         });
 
-        loadCameras(); // Cập nhật label các camera sau khi đã được cấp quyền
+        loadCameras(); // Cập nhật tên camera sau khi người dùng cấp quyền
       } catch (err) {
         console.error("Lỗi bật camera:", err);
         btnToggle.disabled = false;
         btnToggle.textContent = "📷 BẬT CAMERA";
         btnToggle.className = "primary-btn btn-start";
 
-        alertBox.className = "alert-box alert-error";
-        alertBox.innerHTML = `❌ <strong>Lỗi truy cập camera hoặc AI:</strong> ${err.message}<br>👉 Hãy kiểm tra quyền camera của trình duyệt. Bạn cũng có thể chọn chế độ <em>'Máy chủ (Server WebRTC)'</em> ở thanh bên.`;
-        alertBox.style.display = "block";
+        alertBanner.className = "alert-banner error";
+        alertBanner.innerHTML = `❌ <strong>Lỗi truy cập camera hoặc AI:</strong> ${err.message}<br>👉 Hãy nhấn vào biểu tượng ổ khóa/camera trên thanh địa chỉ URL của trình duyệt và bấm <strong>Cho phép (Allow)</strong> truy cập Camera, sau đó bấm <strong>📷 BẬT CAMERA</strong> lại.`;
+        alertBanner.style.display = "block";
 
         notifyStreamlit({
           status: "error",
           error: err.message,
-          active_backend: "server_fallback_recommended",
           is_running: false
         });
       }
@@ -692,8 +807,11 @@
       valLatency.textContent = "0 ms";
       valItems.textContent = "0";
       valPersons.textContent = "0";
+      valAlertStatus.textContent = "CAMERA TẮT";
+      valAlertStatus.className = "telemetry-val";
 
-      trackedObjects = [];
+      alertBanner.style.display = "none";
+      activeTracks.clear();
 
       notifyStreamlit({
         status: "stopped",
@@ -703,10 +821,8 @@
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Render Loop (Display at high frame rate)
+    // Render Loop (Decoupled Display at Screen Refresh Rate)
     // ─────────────────────────────────────────────────────────────
-    let latestDetections = [];
-
     function renderLoop() {
       if (!isRunning) return;
 
@@ -723,29 +839,40 @@
       if (videoEl.readyState >= 2) {
         ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
 
-        // Vẽ lớp overlays (Detections, Polygons, Bounding Boxes)
-        drawDetections(latestDetections);
+        // Vẽ ghế xe buýt
+        if (showSeats) {
+          drawSeats(canvasEl.width, canvasEl.height);
+        }
+
+        // Vẽ các đối tượng đã được track & trích xuất polygon
+        drawTrackedObjects(canvasEl.width, canvasEl.height);
       }
 
       animFrameId = requestAnimationFrame(renderLoop);
     }
 
     // ─────────────────────────────────────────────────────────────
-    // AI Inference Loop (Asynchronous Decoupled Worker)
+    // Asynchronous Inference Scheduler (Gesture Synth Architecture)
+    // - Limits concurrent inference to one active frame
+    // - Skips frames smoothly if inference is busy
+    // - Reuses pre-allocated Float32Array to eliminate GC pressure
+    // - Explicitly disposes tensors
     // ─────────────────────────────────────────────────────────────
-    async function runInferenceLoop() {
+    async function runInferenceScheduler() {
       if (!isRunning) return;
 
       if (!isInferring && videoEl.readyState >= 2 && ortSession) {
         isInferring = true;
         const tStart = performance.now();
 
+        let inputTensor = null;
+        let results = null;
+
         try {
-          // 1. Preprocess: vẽ video lên offscreen 480x480
-          const inputSize = 480;
           const origW = canvasEl.width;
           const origH = canvasEl.height;
 
+          // 1. Tiền xử lý Letterbox trên offscreen canvas 480x480
           const r = Math.min(inputSize / origH, inputSize / origW);
           const nw = Math.round(origW * r);
           const nh = Math.round(origH * r);
@@ -756,32 +883,34 @@
           offCtx.fillRect(0, 0, inputSize, inputSize);
           offCtx.drawImage(videoEl, Math.round(padW), Math.round(padH), nw, nh);
 
-          // 2. Chuyển ImageData thành Tensor Float32 [1, 3, 480, 480]
+          // 2. Đưa pixels vào pre-allocated Float32Array
           const imgData = offCtx.getImageData(0, 0, inputSize, inputSize);
           const pixels = imgData.data;
-          const floatArr = new Float32Array(3 * inputSize * inputSize);
-          const channelSize = inputSize * inputSize;
 
           for (let i = 0; i < channelSize; i++) {
             const pIdx = i * 4;
-            floatArr[i] = pixels[pIdx] / 255.0;                   // R
-            floatArr[channelSize + i] = pixels[pIdx + 1] / 255.0; // G
-            floatArr[channelSize * 2 + i] = pixels[pIdx + 2] / 255.0; // B
+            preallocatedFloat32[i] = pixels[pIdx] / 255.0;                   // R
+            preallocatedFloat32[channelSize + i] = pixels[pIdx + 1] / 255.0; // G
+            preallocatedFloat32[channelSize * 2 + i] = pixels[pIdx + 2] / 255.0; // B
           }
 
-          const tensor = new ort.Tensor("float32", floatArr, [1, 3, inputSize, inputSize]);
+          inputTensor = new ort.Tensor("float32", preallocatedFloat32, [1, 3, inputSize, inputSize]);
 
-          // 3. Thực thi suy luận ONNX
+          // 3. Thực thi suy luận ONNX Runtime
           const feeds = {};
-          feeds[ortSession.inputNames[0]] = tensor;
-          const results = await ortSession.run(feeds);
+          feeds[ortSession.inputNames[0]] = inputTensor;
+          results = await ortSession.run(feeds);
 
           const out0 = results[ortSession.outputNames[0]]; // [1, 116, 4725]
           const out1 = results[ortSession.outputNames[1]]; // [1, 32, 120, 120]
 
-          // 4. Giải mã phát hiện và trích xuất segmentation polygons
-          const dets = decodeYoloSeg(out0, out1, origW, origH, inputSize, padW, padH, r);
-          latestDetections = dets;
+          // 4. Giải mã phát hiện và trích xuất TRUE INSTANCE SEGMENTATION POLYGONS
+          const rawDetections = decodeTrueInstanceSegmentation(
+            out0, out1, origW, origH, inputSize, padW, padH, r
+          );
+
+          // 5. Cập nhật Object Tracking & Logic Đồ Bỏ Quên
+          updateTrackingAndState(rawDetections, origW, origH);
 
           // Cập nhật telemetry
           const tEnd = performance.now();
@@ -789,46 +918,162 @@
           valLatency.textContent = `${latency} ms`;
 
           inferTimes.push(tEnd);
-          if (inferTimes.length > 30) inferTimes.shift();
+          if (inferTimes.length > 25) inferTimes.shift();
           if (inferTimes.length >= 2) {
             const dt = (inferTimes[inferTimes.length - 1] - inferTimes[0]) / 1000;
             inferFps = (inferTimes.length - 1) / dt;
             valInferFps.textContent = inferFps.toFixed(1);
           }
 
-          const pCount = dets.filter(d => d.className === "person").length;
-          const iCount = dets.filter(d => d.className !== "person" && d.className !== "seat").length;
-          valPersons.textContent = pCount;
-          valItems.textContent = iCount;
-
         } catch (e) {
           console.error("Lỗi suy luận:", e);
         } finally {
+          // Giải phóng tensor để tránh rò rỉ bộ nhớ GPU/WASM
+          if (inputTensor && inputTensor.dispose) inputTensor.dispose();
+          if (results) {
+            for (const k in results) {
+              if (results[k] && results[k].dispose) results[k].dispose();
+            }
+          }
           isInferring = false;
         }
       }
 
-      inferTimeoutId = setTimeout(runInferenceLoop, 10);
+      inferTimeoutId = setTimeout(runInferenceScheduler, 12);
     }
 
     // ─────────────────────────────────────────────────────────────
-    // YOLO Segmentation Post-Processing (NMS + Mask Polygons)
+    // REQUIREMENT 5A: TRUE INSTANCE SEGMENTATION CONTOUR TRACING
+    // - Moore-Neighbor boundary tracing for exact curvature/concavity
+    // - Ramer-Douglas-Peucker simplification for smooth rendering
+    // - Strictly NO bounding boxes disguised as polygons
     // ─────────────────────────────────────────────────────────────
     function sigmoid(x) {
       return 1.0 / (1.0 + Math.exp(-x));
     }
 
-    function decodeYoloSeg(out0, out1, origW, origH, inputSize, padW, padH, r) {
+    // Moore-Neighbor Boundary Tracing algorithm
+    function traceContour(mask, w, h) {
+      // Pad mask with 1 pixel of zeros around boundary
+      const padW = w + 2;
+      const padH = h + 2;
+      const padded = new Uint8Array(padW * padH);
+
+      for (let r = 0; r < h; r++) {
+        const srcOffset = r * w;
+        const dstOffset = (r + 1) * padW + 1;
+        for (let c = 0; c < w; c++) {
+          padded[dstOffset + c] = mask[srcOffset + c];
+        }
+      }
+
+      // Tìm pixel 1 đầu tiên từ trên xuống dưới, trái qua phải
+      let startR = -1, startC = -1;
+      for (let r = 1; r <= h; r++) {
+        for (let c = 1; c <= w; c++) {
+          if (padded[r * padW + c] === 1) {
+            startR = r;
+            startC = c;
+            break;
+          }
+        }
+        if (startR !== -1) break;
+      }
+
+      if (startR === -1) return [];
+
+      // 8-neighbors theo chiều kim đồng hồ bắt đầu từ Hướng Tây (West)
+      const nbrOffsets = [
+        [0, -1],   // 0: West
+        [-1, -1],  // 1: North-West
+        [-1, 0],   // 2: North
+        [-1, 1],   // 3: North-East
+        [0, 1],    // 4: East
+        [1, 1],    // 5: South-East
+        [1, 0],    // 6: South
+        [1, -1]    // 7: South-West
+      ];
+
+      const contour = [];
+      let currR = startR;
+      let currC = startC;
+      let bIdx = 0; // Ban đầu kiểm tra từ West
+
+      const maxSteps = Math.max(300, w * h * 2);
+      let step = 0;
+
+      while (step < maxSteps) {
+        contour.push([currC - 1, currR - 1]); // Chuyển về tọa độ chưa pad
+        step++;
+
+        let found = false;
+        for (let i = 0; i < 8; i++) {
+          const checkIdx = (bIdx + i) % 8;
+          const nr = currR + nbrOffsets[checkIdx][0];
+          const nc = currC + nbrOffsets[checkIdx][1];
+
+          if (nr >= 0 && nr < padH && nc >= 0 && nc < padW && padded[nr * padW + nc] === 1) {
+            currR = nr;
+            currC = nc;
+            // Hướng kiểm tra tiếp theo bắt đầu từ ô nền trước đó
+            bIdx = (checkIdx + 5) % 8;
+            found = true;
+            break;
+          }
+        }
+
+        if (!found) break;
+        if (currR === startR && currC === startC && contour.length > 2) break;
+      }
+
+      return contour;
+    }
+
+    // Ramer-Douglas-Peucker (RDP) polygon simplification
+    function simplifyRDP(points, epsilon) {
+      if (points.length <= 2) return points;
+
+      let dmax = 0;
+      let index = 0;
+      const p1 = points[0];
+      const p2 = points[points.length - 1];
+
+      const dx = p2[0] - p1[0];
+      const dy = p2[1] - p1[1];
+      const lineLen = Math.hypot(dx, dy);
+
+      for (let i = 1; i < points.length - 1; i++) {
+        const p = points[i];
+        let d = 0;
+        if (lineLen === 0) {
+          d = Math.hypot(p[0] - p1[0], p[1] - p1[1]);
+        } else {
+          d = Math.abs(dy * p[0] - dx * p[1] + p2[0] * p1[1] - p2[1] * p1[0]) / lineLen;
+        }
+        if (d > dmax) {
+          index = i;
+          dmax = d;
+        }
+      }
+
+      if (dmax > epsilon) {
+        const res1 = simplifyRDP(points.slice(0, index + 1), epsilon);
+        const res2 = simplifyRDP(points.slice(index), epsilon);
+        return res1.slice(0, res1.length - 1).concat(res2);
+      } else {
+        return [p1, p2];
+      }
+    }
+
+    function decodeTrueInstanceSegmentation(out0, out1, origW, origH, inputSize, padW, padH, r) {
       const preds = out0.data;       // [1, 116, 4725]
       const protos = out1.data;     // [1, 32, 120, 120]
       const numAnchors = 4725;
-      const numAttributes = 116;
       const numClasses = 80;
 
       const candidates = [];
 
       for (let a = 0; a < numAnchors; a++) {
-        // Tìm lớp có xác suất cao nhất
         let maxScore = -1;
         let maxClassId = -1;
         for (let c = 0; c < numClasses; c++) {
@@ -850,7 +1095,6 @@
           const x2 = cx + w / 2;
           const y2 = cy + h / 2;
 
-          // Lấy 32 mask coefficients
           const coeffs = new Float32Array(32);
           for (let m = 0; m < 32; m++) {
             coeffs[m] = preds[(4 + numClasses + m) * numAnchors + a];
@@ -871,7 +1115,6 @@
 
       if (candidates.length === 0) return [];
 
-      // Sort by score descending
       candidates.sort((a, b) => b.score - a.score);
 
       // Fast NMS
@@ -924,38 +1167,54 @@
         const oy2 = Math.max(0, Math.min(origH, Math.round((b[3] - padH) / r)));
 
         let polygon = null;
+        const isBelonging = BELONGING_CLASSES.has(item.className);
 
-        // Chỉ tính polygon nếu là đồ vật (belonging items) và showMasks bật
-        if (showMasks && (ITEM_CLASSES.has(item.className) || item.className === "item")) {
+        // Chỉ trích xuất True Instance Segmentation Polygon cho ĐỒ VẬT (Belongings)
+        if (showMasks && isBelonging) {
           const px1 = Math.max(0, Math.min(protoW - 1, Math.floor(b[0] * protoScale)));
           const py1 = Math.max(0, Math.min(protoH - 1, Math.floor(b[1] * protoScale)));
-          const px2 = Math.max(0, Math.min(protoW, Math.ceil(b[2] * protoScale)));
-          const py2 = Math.max(0, Math.min(protoH, Math.ceil(b[3] * protoScale)));
+          const px2 = Math.max(1, Math.min(protoW, Math.ceil(b[2] * protoScale)));
+          const py2 = Math.max(1, Math.min(protoH, Math.ceil(b[3] * protoScale)));
 
-          const polyPts = [];
-          const step = 2; // Sample resolution
+          const pw = px2 - px1;
+          const ph = py2 - py1;
 
-          // Quét biên mask để tạo polygon bao quanh
-          for (let py = py1; py < py2; py += step) {
-            for (let px = px1; px < px2; px += step) {
-              let val = 0;
-              for (let m = 0; m < 32; m++) {
-                val += mc[m] * protos[m * (protoW * protoH) + py * protoW + px];
-              }
-              if (sigmoid(val) > 0.5) {
-                // Chuyển ngược tọa độ proto (120x120) -> input (480x480) -> frame gốc
-                const inX = px / protoScale;
-                const inY = py / protoScale;
-                const origX = Math.max(0, Math.min(origW, (inX - padW) / r));
-                const origY = Math.max(0, Math.min(origH, (inY - padH) / r));
-                polyPts.push([origX, origY]);
+          if (pw > 1 && ph > 1) {
+            const submask = new Uint8Array(pw * ph);
+
+            for (let y = 0; y < ph; y++) {
+              const py = py1 + y;
+              const rowOffset = y * pw;
+              for (let x = 0; x < pw; x++) {
+                const px = px1 + x;
+                let val = 0;
+                for (let m = 0; m < 32; m++) {
+                  val += mc[m] * protos[m * (protoW * protoH) + py * protoW + px];
+                }
+                if (sigmoid(val) > 0.5) {
+                  submask[rowOffset + x] = 1;
+                }
               }
             }
-          }
 
-          if (polyPts.length >= 4) {
-            // Tạo convex hull nhẹ để vẽ polygon mượt mà
-            polygon = getConvexHull(polyPts);
+            // Trích xuất contour đường biên bằng Moore-Neighbor
+            const rawContour = traceContour(submask, pw, ph);
+
+            if (rawContour.length >= 3) {
+              const mappedPoints = rawContour.map(([cx, cy]) => {
+                const inX = (px1 + cx) / protoScale;
+                const inY = (py1 + cy) / protoScale;
+                const origX = Math.max(0, Math.min(origW, (inX - padW) / r));
+                const origY = Math.max(0, Math.min(origH, (inY - padH) / r));
+                return [origX, origY];
+              });
+
+              // RDP làm mịn nhẹ đường viền (1.2px) giữ nguyên mọi góc uốn/lõm thực tế
+              const simplified = simplifyRDP(mappedPoints, 1.2);
+              if (simplified.length >= 3) {
+                polygon = simplified;
+              }
+            }
           }
         }
 
@@ -971,107 +1230,310 @@
       return results;
     }
 
-    // Convex hull thuật toán Andrew's Monotone Chain để tạo viền polygon mượt mà
-    function getConvexHull(points) {
-      if (points.length <= 3) return points;
-      points.sort((a, b) => a[0] === b[0] ? a[1] - b[1] : a[0] - b[0]);
+    // ─────────────────────────────────────────────────────────────
+    // Object Tracking across Frames & Abandoned Item State Machine
+    // ─────────────────────────────────────────────────────────────
+    function updateTrackingAndState(detections, frameW, frameH) {
+      const now = performance.now();
+      const matchedDetectionIndices = new Set();
 
-      const lower = [];
-      for (let i = 0; i < points.length; i++) {
-        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], points[i]) <= 0) {
-          lower.pop();
+      // Cập nhật các tracks hiện có bằng IoU
+      for (const [trackId, track] of activeTracks.entries()) {
+        let bestIoU = 0.25;
+        let bestIdx = -1;
+
+        for (let i = 0; i < detections.length; i++) {
+          if (matchedDetectionIndices.has(i)) continue;
+          const det = detections[i];
+          if (det.className === track.className) {
+            const iou = calcBoxIoU(track.bbox, det.bbox);
+            if (iou > bestIoU) {
+              bestIoU = iou;
+              bestIdx = i;
+            }
+          }
         }
-        lower.push(points[i]);
+
+        if (bestIdx !== -1) {
+          const det = detections[bestIdx];
+          matchedDetectionIndices.add(bestIdx);
+
+          track.bbox = det.bbox;
+          track.score = det.score;
+          track.lastSeen = now;
+          track.missCount = 0;
+
+          // Bảo toàn polygon: nếu frame này có mask thì cập nhật, nếu không thì giữ mask trước
+          if (det.polygon && det.polygon.length >= 3) {
+            track.polygon = det.polygon;
+          }
+        } else {
+          track.missCount++;
+        }
       }
 
-      const upper = [];
-      for (let i = points.length - 1; i >= 0; i--) {
-        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], points[i]) <= 0) {
-          upper.pop();
+      // Đăng ký các tracks mới cho detections chưa được match
+      for (let i = 0; i < detections.length; i++) {
+        if (!matchedDetectionIndices.has(i)) {
+          const det = detections[i];
+          const trackId = nextTrackId++;
+          activeTracks.set(trackId, {
+            id: trackId,
+            className: det.className,
+            score: det.score,
+            bbox: det.bbox,
+            polygon: det.polygon,
+            firstSeen: now,
+            lastSeen: now,
+            stationarySince: now,
+            status: "NORMAL", // NORMAL, OCCUPIED_NEARBY, SUSPECTED, OCCLUDED
+            missCount: 0,
+            associatedSeat: null
+          });
         }
-        upper.push(points[i]);
       }
 
-      upper.pop();
-      lower.pop();
-      return lower.concat(upper);
+      // Xóa các track đã biến mất quá 20 frames (~1.5s)
+      for (const [trackId, track] of activeTracks.entries()) {
+        if (track.missCount > 20) {
+          activeTracks.delete(trackId);
+        }
+      }
+
+      // Cập nhật trạng thái Ghế Xe Buýt (Seat Occupancy)
+      const persons = [];
+      const items = [];
+
+      for (const track of activeTracks.values()) {
+        if (track.missCount > 0) continue; // Chỉ tính các đối tượng đang hiện diện trong frame
+        if (track.className === "person") {
+          persons.push(track);
+        } else if (BELONGING_CLASSES.has(track.className)) {
+          items.push(track);
+        }
+      }
+
+      // Đánh giá trạng thái từng ghế
+      for (const seat of BUS_SEATS) {
+        const sx1 = seat.box[0] * frameW;
+        const sy1 = seat.box[1] * frameH;
+        const sx2 = seat.box[2] * frameW;
+        const sy2 = seat.box[3] * frameH;
+        const sArea = (sx2 - sx1) * (sy2 - sy1);
+
+        // Kiểm tra xem có người ngồi ghế không
+        seat.occupied = false;
+        for (const p of persons) {
+          const [px1, py1, px2, py2] = p.bbox;
+          const ix1 = Math.max(sx1, px1);
+          const iy1 = Math.max(sy1, py1);
+          const ix2 = Math.min(sx2, px2);
+          const iy2 = Math.min(sy2, py2);
+          if (ix2 > ix1 && iy2 > iy1) {
+            const inter = (ix2 - ix1) * (iy2 - iy1);
+            if (inter / Math.min(sArea, (px2 - px1) * (py2 - py1)) > 0.20) {
+              seat.occupied = true;
+              break;
+            }
+          }
+        }
+
+        // Kiểm tra xem có đồ vật trên ghế không
+        seat.itemPresent = false;
+        for (const item of items) {
+          const [ix1, iy1, ix2, iy2] = item.bbox;
+          const cx = (ix1 + ix2) / 2;
+          const cy = (iy1 + iy2) / 2;
+          if (cx >= sx1 && cx <= sx2 && cy >= sy1 && cy <= sy2) {
+            seat.itemPresent = true;
+            item.associatedSeat = seat.id;
+
+            // Logic đồ bỏ quên: Nếu ghế KHÔNG có người mà đồ vật nằm đó > 5 giây -> SUSPECTED
+            if (!seat.occupied) {
+              const staySec = (now - item.stationarySince) / 1000.0;
+              if (staySec >= 4.0) {
+                if (item.status !== "SUSPECTED") {
+                  item.status = "SUSPECTED";
+                  audioSynth.playAlertChime();
+                }
+              }
+            } else {
+              item.status = "NORMAL";
+              item.stationarySince = now; // Reset timer nếu có người ngồi cạnh
+            }
+          }
+        }
+      }
+
+      // Cập nhật Telemetry HUD
+      valPersons.textContent = persons.length;
+      valItems.textContent = items.length;
+
+      let suspectCount = 0;
+      for (const item of items) {
+        if (item.status === "SUSPECTED") suspectCount++;
+      }
+
+      if (suspectCount > 0) {
+        valAlertStatus.textContent = `⚠️ PHÁT HIỆN ${suspectCount} ĐỒ BỎ QUÊN!`;
+        valAlertStatus.className = "telemetry-val red";
+
+        alertBanner.className = "alert-banner critical";
+        alertBanner.innerHTML = `<span>⚠️ <strong>CẢNH BÁO BỎ QUÊN:</strong> Phát hiện ${suspectCount} đồ vật cá nhân bị bỏ lại trên ghế trống! Hãy kiểm tra hành khách.</span>`;
+        alertBanner.style.display = "flex";
+      } else {
+        valAlertStatus.textContent = "🟢 KHOANG BÌNH THƯỜNG";
+        valAlertStatus.className = "telemetry-val green";
+        alertBanner.style.display = "none";
+      }
+
+      // Gửi telemetry sang Streamlit
+      notifyStreamlit({
+        status: "running",
+        is_running: true,
+        person_count: persons.length,
+        item_count: items.length,
+        suspected_count: suspectCount,
+        display_fps: Number(displayFps.toFixed(1)),
+        infer_fps: Number(inferFps.toFixed(1))
+      });
     }
 
-    function cross(o, a, b) {
-      return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    function calcBoxIoU(boxA, boxB) {
+      const x1 = Math.max(boxA[0], boxB[0]);
+      const y1 = Math.max(boxA[1], boxB[1]);
+      const x2 = Math.min(boxA[2], boxB[2]);
+      const y2 = Math.min(boxA[3], boxB[3]);
+
+      const w = Math.max(0, x2 - x1);
+      const h = Math.max(0, y2 - y1);
+      const inter = w * h;
+      if (inter <= 0) return 0;
+
+      const areaA = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1]);
+      const areaB = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1]);
+      return inter / (areaA + areaB - inter);
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Overlay Rendering (Polygons, Boxes, Labels)
+    // Visual Rendering Functions (Overlay Canvas)
     // ─────────────────────────────────────────────────────────────
-    function drawDetections(detections) {
-      if (!detections || detections.length === 0) return;
+    function drawSeats(w, h) {
+      for (const seat of BUS_SEATS) {
+        const sx = seat.box[0] * w;
+        const sy = seat.box[1] * h;
+        const sw = (seat.box[2] - seat.box[0]) * w;
+        const sh = (seat.box[3] - seat.box[1]) * h;
 
-      for (const det of detections) {
-        const [x1, y1, x2, y2] = det.bbox;
+        ctx.lineWidth = 2;
+        if (seat.occupied) {
+          ctx.strokeStyle = "#0284C7"; // Xanh dương: có người
+          ctx.fillStyle = "rgba(2, 132, 199, 0.15)";
+        } else {
+          ctx.strokeStyle = "#00E5FF"; // Cyan: ghế trống
+          ctx.fillStyle = "rgba(0, 229, 255, 0.10)";
+        }
+
+        ctx.strokeRect(sx, sy, sw, sh);
+        ctx.fillRect(sx, sy, sw, sh);
+
+        // Seat label tag
+        ctx.font = "bold 11px sans-serif";
+        const tagText = `${seat.name} [${seat.occupied ? "CÓ NGƯỜI" : "TRỐNG"}]`;
+        const tw = ctx.measureText(tagText).width + 8;
+        ctx.fillStyle = seat.occupied ? "#0284C7" : "#00E5FF";
+        ctx.fillRect(sx, sy, tw, 18);
+        ctx.fillStyle = "#0F172A";
+        ctx.fillText(tagText, sx + 4, sy + 13);
+      }
+    }
+
+    function drawTrackedObjects(w, h) {
+      for (const track of activeTracks.values()) {
+        if (track.missCount > 0) continue; // Bỏ qua nếu đang decay
+
+        const [x1, y1, x2, y2] = track.bbox;
         const bw = x2 - x1;
         const bh = y2 - y1;
-        const cName = det.className;
-        const viLabel = CLASS_NAMES_VI[cName] || cName;
-        const scoreStr = `${Math.round(det.score * 100)}%`;
+        const cName = track.className;
+        const viName = CLASS_NAMES_VI[cName] || cName;
+        const scoreStr = `${Math.round(track.score * 100)}%`;
 
         if (cName === "person") {
           if (!showPersons) continue;
-          // Vẽ bounding box người (Green #10B981)
+          // NGƯỜI (PERSONS): Luôn vẽ Bounding Box màu xanh lá cây (#10B981)
           ctx.strokeStyle = "#10B981";
           ctx.lineWidth = 2.5;
           ctx.strokeRect(x1, y1, bw, bh);
 
-          drawLabelTag(x1, y1, `👤 ${viLabel} ${scoreStr}`, "#10B981");
+          drawLabelTag(x1, y1, `👤 Người #${track.id} ${scoreStr}`, "#10B981", "#FFFFFF");
         } else if (cName === "seat") {
-          if (!showSeats) continue;
-          // Vẽ ghế (Cyan #00E5FF)
-          ctx.strokeStyle = "#00E5FF";
-          ctx.lineWidth = 2;
-          ctx.strokeRect(x1, y1, bw, bh);
-          drawLabelTag(x1, y1, `🪑 ${viLabel}`, "#00E5FF");
+          // Ghế phát hiện trực tiếp từ model
+          continue;
         } else {
           if (!showObjects) continue;
-          // Đồ vật cá nhân (Amber #F59E0B)
-          if (det.polygon && det.polygon.length >= 3) {
-            // Vẽ mặt nạ Polygon bám sát viền
+          // ĐỒ VẬT (BELONGINGS): Vẽ TRUE INSTANCE SEGMENTATION POLYGON
+          const isSuspected = (track.status === "SUSPECTED");
+          const mainColor = isSuspected ? "#EF4444" : "#F59E0B";
+          const fillColor = isSuspected ? "rgba(239, 68, 68, 0.38)" : "rgba(245, 158, 11, 0.32)";
+
+          if (track.polygon && track.polygon.length >= 3) {
+            // Vẽ đường cong polygon thật bám sát đường viền chi tiết
             ctx.beginPath();
-            ctx.moveTo(det.polygon[0][0], det.polygon[0][1]);
-            for (let i = 1; i < det.polygon.length; i++) {
-              ctx.lineTo(det.polygon[i][0], det.polygon[i][1]);
+            ctx.moveTo(track.polygon[0][0], track.polygon[0][1]);
+            for (let i = 1; i < track.polygon.length; i++) {
+              ctx.lineTo(track.polygon[i][0], track.polygon[i][1]);
             }
             ctx.closePath();
 
-            ctx.fillStyle = "rgba(245, 158, 11, 0.35)";
+            ctx.fillStyle = fillColor;
             ctx.fill();
 
-            ctx.strokeStyle = "#F59E0B";
+            ctx.strokeStyle = mainColor;
             ctx.lineWidth = 2.5;
             ctx.stroke();
 
-            drawLabelTag(x1, y1, `📦 ${viLabel} ${scoreStr}`, "#F59E0B");
+            // Đặt nhãn tại đỉnh trên cùng của polygon
+            let minY = track.polygon[0][1];
+            let minX = track.polygon[0][0];
+            for (const pt of track.polygon) {
+              if (pt[1] < minY) {
+                minY = pt[1];
+                minX = pt[0];
+              }
+            }
+
+            const prefix = isSuspected ? "⚠️ BỎ QUÊN" : "🎒 Đồ vật";
+            const labelText = `${prefix} #${track.id} (${viName}) ${scoreStr}`;
+            drawLabelTag(minX, minY, labelText, mainColor, isSuspected ? "#FFFFFF" : "#0F172A");
+
           } else {
-            // Fallback box nếu không đủ điểm polygon
-            ctx.strokeStyle = "#F59E0B";
-            ctx.lineWidth = 2;
+            // Khi model chưa có mask cho class này: vẽ box và ghi rõ trạng thái
+            ctx.strokeStyle = mainColor;
+            ctx.lineWidth = 2.0;
             ctx.strokeRect(x1, y1, bw, bh);
-            drawLabelTag(x1, y1, `📦 ${viLabel} ${scoreStr}`, "#F59E0B");
+
+            const prefix = isSuspected ? "⚠️ BỎ QUÊN" : "📦 Đồ vật";
+            drawLabelTag(x1, y1, `${prefix} #${track.id} (${viName}) ${scoreStr}`, mainColor, isSuspected ? "#FFFFFF" : "#0F172A");
           }
         }
       }
     }
 
-    function drawLabelTag(x, y, text, color) {
-      ctx.font = "bold 13px -apple-system, sans-serif";
+    function drawLabelTag(x, y, text, bgColor, textColor) {
+      ctx.font = "bold 12px -apple-system, sans-serif";
       const metrics = ctx.measureText(text);
       const th = 20;
       const tw = metrics.width + 12;
 
-      ctx.fillStyle = color;
-      ctx.fillRect(x, Math.max(0, y - th), tw, th);
+      const tagX = Math.max(4, Math.min(canvasEl.width - tw - 4, x));
+      const tagY = Math.max(th, y);
 
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillText(text, x + 6, Math.max(14, y - 5));
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(tagX, tagY - th, tw, th);
+
+      ctx.fillStyle = textColor;
+      ctx.fillText(text, tagX + 6, tagY - 6);
     }
   </script>
 </body>

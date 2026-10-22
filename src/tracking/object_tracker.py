@@ -163,6 +163,15 @@ class ObjectTracker:
                         c_conf = float(tracked_sv.confidence[i]) if tracked_sv.confidence is not None else 1.0
                         cid = int(tracked_sv.class_id[i]) if tracked_sv.class_id is not None else 0
                         poly = tracked_sv.data["polygon"][i] if "polygon" in tracked_sv.data else None
+                        if poly is None:
+                            # Bảo toàn polygon từ lịch sử quan sát gần nhất (lên đến 15 frames)
+                            # để tránh hiện tượng mất viền polygon và thụt lùi về bounding box khi tracking
+                            prev_obs = self._observations.get(tid)
+                            if prev_obs and hasattr(prev_obs, "polygons") and prev_obs.polygons:
+                                for p in reversed(prev_obs.polygons[-15:]):
+                                    if p is not None and len(p) >= 3:
+                                        poly = p
+                                        break
 
                         obj = TrackedObject(
                             track_id=tid,
@@ -205,13 +214,22 @@ class ObjectTracker:
                     tid = idx + 1
                 cname = getattr(det, "class_name", "item")
                 bbox = getattr(det, "bbox", (0, 0, 0, 0))
+                poly = getattr(det, "polygon", None)
+                if poly is None:
+                    prev_obs = self._observations.get(tid)
+                    if prev_obs and hasattr(prev_obs, "polygons") and prev_obs.polygons:
+                        for p in reversed(prev_obs.polygons[-15:]):
+                            if p is not None and len(p) >= 3:
+                                poly = p
+                                break
+
                 obj = TrackedObject(
                     track_id=tid,
                     class_name=cname,
                     confidence=getattr(det, "confidence", 1.0),
                     bbox=bbox,
                     class_id=getattr(det, "class_id", 0),
-                    polygon=getattr(det, "polygon", None),
+                    polygon=poly,
                 )
                 tracked_objects.append(obj)
                 self._update_observation(
