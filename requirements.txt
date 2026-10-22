@@ -16,3 +16,4 @@ pytest>=8.0.0
 # Utilities
 supervision>=0.29.1
 python-dotenv>=1.0.0
+psutil>=5.9.0

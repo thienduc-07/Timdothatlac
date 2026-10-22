@@ -908,24 +908,57 @@ def page_camera_monitor(service: AnalysisService):
 
         if cam_backend.startswith("🌐"):
             # ── WebRTC Client-Side Streaming (Streamlit Cloud & Mọi thiết bị) ──
-            ctrl_c1, ctrl_c2 = st.columns([1, 1])
+            ctrl_c1, ctrl_c2, ctrl_c3 = st.columns([1, 1, 1])
             with ctrl_c1:
-                stream_res = st.selectbox(
-                    "Độ phân giải",
-                    ["640x480 (Mượt, 30 FPS, Khuyên dùng)", "960x540", "1280x720 (HD)"],
-                    index=0,
-                    key="webrtc_res_select"
+                cam_preset = st.selectbox(
+                    "Cấu hình thiết bị & Độ phân giải",
+                    [
+                        "⚡ Tối ưu mượt mà (480x360 - Khuyên dùng cho Mobile & Cloud)",
+                        "⚖️ Cân bằng (640x480 - Mặc định chuẩn)",
+                        "🔍 Độ nét cao (960x540 - Desktop băng thông mạnh)",
+                    ],
+                    index=1,
+                    key="webrtc_preset_select",
+                    help="Độ phân giải nhỏ hơn giúp giảm tải CPU/RAM trên Streamlit Cloud và tăng FPS đáng kể."
                 )
             with ctrl_c2:
                 infer_stride = st.selectbox(
                     "Tần suất phân tích AI",
-                    ["Mỗi frame (100% Realtime)", "Cách 1 frame (Tối ưu CPU Cloud)"],
+                    [
+                        "Mỗi frame (100% Realtime)",
+                        "Cách 1 frame (Khuyên dùng Cloud đa người dùng)",
+                        "Cách 2 frame (Siêu tiết kiệm CPU)",
+                    ],
                     index=0,
-                    key="webrtc_stride_select"
+                    key="webrtc_stride_select",
+                    help="Bỏ qua phân tích một số frame để ưu tiên độ mượt mà của video WebRTC."
+                )
+            with ctrl_c3:
+                backend_engine = st.selectbox(
+                    "Backend suy luận",
+                    [
+                        "🖥️ Local CPU/GPU Worker (In-Process)",
+                        "☁️ Roboflow Cloud Serverless (Khuyên dùng khi máy chủ quá tải)",
+                    ],
+                    index=0 if service.inference_mode != "roboflow" else 1,
+                    key="webrtc_backend_engine",
+                    help="Nếu máy chủ Streamlit Cloud bị quá tải CPU khi nhiều người dùng truy cập, chuyển sang Roboflow Cloud để offload GPU."
                 )
 
-            res_w, res_h = (640, 480) if "640x480" in stream_res else (960, 540) if "960x540" in stream_res else (1280, 720)
-            stride_val = 1 if "Mỗi frame" in infer_stride else 2
+            if "480x360" in cam_preset:
+                res_w, res_h, infer_sz = 480, 360, 480
+            elif "960x540" in cam_preset:
+                res_w, res_h, infer_sz = 960, 540, 640
+            else:
+                res_w, res_h, infer_sz = 640, 480, 640
+
+            stride_val = 1 if "Mỗi frame" in infer_stride else (2 if "Cách 1 frame" in infer_stride else 3)
+
+            # Đồng bộ chế độ backend suy luận nếu người dùng đổi lựa chọn
+            if "Roboflow" in backend_engine and service.inference_mode != "roboflow":
+                service.inference_mode = "roboflow"
+            elif "Local" in backend_engine and service.inference_mode == "roboflow":
+                service.inference_mode = "local"
 
             if not WEBRTC_AVAILABLE or webrtc_streamer is None:
                 st.error("⚠️ Thư viện `streamlit-webrtc` hoặc `av` chưa sẵn sàng trên môi trường này. Vui lòng kiểm tra requirements.txt.")
@@ -948,6 +981,7 @@ def page_camera_monitor(service: AnalysisService):
                         privacy_blur=privacy_blur,
                         show_masks=show_masks,
                         stride=stride_val,
+                        infer_imgsz=infer_sz,
                     ),
                     media_stream_constraints={
                         "video": {
@@ -972,6 +1006,7 @@ def page_camera_monitor(service: AnalysisService):
                             privacy_blur=privacy_blur,
                             show_masks=show_masks,
                             stride=stride_val,
+                            infer_imgsz=infer_sz,
                         )
                         metrics = webrtc_ctx.video_processor.get_metrics()
 
@@ -989,9 +1024,15 @@ def page_camera_monitor(service: AnalysisService):
                                 else:
                                     st.warning("Chưa có frame hình ảnh nào từ luồng camera để lưu.")
 
-                        # Render HUD metrics
-                        actual_fps = metrics.get("fps", 0.0)
-                        latency_ms = metrics.get("latency_ms", 0.0)
+                        # Trích xuất toàn bộ metrics chi tiết theo Yêu cầu 8
+                        in_fps = metrics.get("input_fps", 0.0)
+                        inf_fps = metrics.get("infer_fps", 0.0)
+                        out_fps = metrics.get("output_fps", 0.0)
+                        avg_lat = metrics.get("latency_avg_ms", 0.0)
+                        p95_lat = metrics.get("latency_p95_ms", 0.0)
+                        dropped = metrics.get("dropped_frames", 0)
+                        sessions = metrics.get("active_sessions", 1)
+
                         total_seats = metrics.get("total_seats", 0)
                         occ_seats = metrics.get("occ_seats", 0)
                         vac_seats = metrics.get("vac_seats", 0)
@@ -1001,17 +1042,41 @@ def page_camera_monitor(service: AnalysisService):
                         status_tag = metrics.get("status_tag", "🟢 BÌNH THƯỜNG")
                         status_color = metrics.get("status_color", "#10B981")
 
+                        cpu_pct = metrics.get("cpu_percent", 0.0)
+                        rss_mb = metrics.get("process_rss_mb", 0.0)
+                        sys_mem = metrics.get("system_mem_percent", 0.0)
+                        device_label = metrics.get("device", "CPU")
+
+                        # Bảng hiển thị telemetry toàn diện & trực quan
                         st.markdown(f"""
-                        <div style="background: #141E33; border: 1px solid #3A506B; border-radius: 8px; padding: 10px 16px; margin-top: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                            <div>
-                                <span style="font-weight: 700; color: #F8FAFC;">● WEBRTC ACTIVE</span>
-                                <span style="color: #38BDF8; font-weight: 600; margin-left: 10px;">⚡ {actual_fps:.1f} FPS ({latency_ms:.1f}ms)</span>
+                        <div style="background: #141E33; border: 1px solid #3A506B; border-radius: 8px; padding: 12px 18px; margin-top: 6px; display: flex; flex-direction: column; gap: 8px;">
+                            <!-- Hàng 1: FPS & Độ trễ chi tiết -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid #233554; padding-bottom: 6px;">
+                                <div>
+                                    <span style="font-weight: 700; color: #F8FAFC;">● WEBRTC ACTIVE</span>
+                                    <span style="color: #38BDF8; font-weight: 600; margin-left: 12px;">📥 Input: <b>{in_fps:.1f}</b> FPS</span>
+                                    <span style="color: #A78BFA; font-weight: 600; margin-left: 10px;">🧠 AI Infer: <b>{inf_fps:.1f}</b> FPS</span>
+                                    <span style="color: #34D399; font-weight: 600; margin-left: 10px;">📤 Output: <b>{out_fps:.1f}</b> FPS</span>
+                                </div>
+                                <div>
+                                    <span style="color: #CBD5E1;">Độ trễ AI: <b>{avg_lat:.1f}ms</b> (P95: <b>{p95_lat:.1f}ms</b>)</span>
+                                    <span style="color: #F87171; margin-left: 12px;">Bỏ qua (Dropped): <b>{dropped}</b> frames</span>
+                                </div>
                             </div>
-                            <div style="display: flex; gap: 14px; align-items: center;">
-                                <span style="color: #CBD5E1;">🪑 Ghế: <b>{total_seats}</b> (👤 {occ_seats} | 🟢 {vac_seats})</span>
-                                <span style="color: #CBD5E1;">👤 Người: <b>{person_count}</b></span>
-                                <span style="color: #CBD5E1;">🎒 Đồ vật: <b>{item_count}</b></span>
-                                <span style="color: {status_color}; font-weight: 700; border: 1px solid {status_color}; padding: 2px 8px; border-radius: 6px; font-size: 0.85rem;">{status_tag}</span>
+                            <!-- Hàng 2: Trạng thái hành khách, ghế & cảnh báo -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                                <div style="display: flex; gap: 14px; align-items: center;">
+                                    <span style="color: #CBD5E1;">🪑 Ghế: <b>{total_seats}</b> (👤 {occ_seats} | 🟢 {vac_seats})</span>
+                                    <span style="color: #CBD5E1;">👤 Người: <b>{person_count}</b></span>
+                                    <span style="color: #CBD5E1;">🎒 Đồ vật: <b>{item_count}</b></span>
+                                    <span style="color: {status_color}; font-weight: 700; border: 1px solid {status_color}; padding: 2px 8px; border-radius: 6px; font-size: 0.85rem;">{status_tag}</span>
+                                </div>
+                                <div style="font-size: 0.82rem; color: #94A3B8;">
+                                    <span>👥 Phiên: <b>{sessions}</b></span> | 
+                                    <span>⚙️ CPU: <b>{cpu_pct:.1f}%</b></span> | 
+                                    <span>💾 RAM: <b>{rss_mb:.0f}MB</b> ({sys_mem:.0f}%)</span> | 
+                                    <span>⚡ {device_label}</span>
+                                </div>
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
@@ -1019,7 +1084,11 @@ def page_camera_monitor(service: AnalysisService):
                         if sus_count > 0:
                             st.error(f"⚠️ **CẢNH BÁO BỎ QUÊN:** Phát hiện {sus_count} đồ vật bị bỏ lại trên ghế trống! Hãy kiểm tra khoang hành khách.")
                 else:
-                    st.info("💡 **Hướng dẫn:** Nhấn nút **'START'** màu xanh trên khung camera bên trên để cấp quyền webcam của thiết bị và bắt đầu phân tích trực tiếp. Khi muốn dừng, hãy nhấn **'STOP'**.")
+                    st.info(
+                        """⚪ **Camera đang ở trạng thái Dừng (Offline).**
+
+💡 Nhấn nút **'START'** màu xanh trên khung camera bên trên để cấp quyền webcam của thiết bị và bắt đầu phân tích trực tiếp. Hồ sơ sự kiện và danh sách đồ vật đã phát hiện được bảo lưu an toàn trong hệ thống."""
+                    )
 
                 with st.expander("ℹ️ Hướng dẫn cấp quyền Webcam & Khắc phục sự cố khi truy cập từ thiết bị khác", expanded=False):
                     st.markdown("""

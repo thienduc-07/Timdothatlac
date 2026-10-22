@@ -411,9 +411,11 @@ class AnalysisService:
         local_detections = []
         remote_detections = []
 
+        imgsz = kwargs.get("imgsz", None)
+
         if self.inference_mode in ("local", "hybrid"):
             if self._detector and hasattr(self._detector, "detect"):
-                local_detections = self._detector.detect(frame)
+                local_detections = self._detector.detect(frame, imgsz=imgsz)
             else:
                 local_detections = None
 

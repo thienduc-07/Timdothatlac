@@ -177,13 +177,14 @@ class YOLODetector:
             logger.error(f"Lỗi khi tải model YOLO: {e}")
             return False
 
-    def detect(self, frame: np.ndarray) -> List[Detection]:
+    def detect(self, frame: np.ndarray, imgsz: Optional[int] = None) -> List[Detection]:
         """
         Nhận diện vật thể trên một frame.
         Hỗ trợ trích xuất cả bounding box và segmentation polygon (nếu là instance segmentation).
 
         Args:
             frame: Ảnh BGR (numpy array) từ OpenCV
+            imgsz: Kích thước ảnh inference (ví dụ: 480, 640). Mặc định theo model.
 
         Returns:
             Danh sách Detection cho các vật thể được phát hiện.
@@ -195,15 +196,18 @@ class YOLODetector:
 
         try:
             h, w = frame.shape[:2]
+            infer_kwargs = {
+                "conf": self.confidence_threshold,
+                "device": self.device,
+                "verbose": False,
+                "classes": list(self._target_class_ids) if self._target_class_ids else None,
+            }
+            if imgsz is not None:
+                infer_kwargs["imgsz"] = int(imgsz)
+
             # Chạy inference có khóa bảo vệ đa luồng an toàn (Thread-Safe Inference)
             with self._infer_lock:
-                results = self.model(
-                    frame,
-                    conf=self.confidence_threshold,
-                    device=self.device,
-                    verbose=False,
-                    classes=list(self._target_class_ids) if self._target_class_ids else None,
-                )
+                results = self.model(frame, **infer_kwargs)
 
             detections = []
             for result in results:
