@@ -15,7 +15,11 @@ from typing import Dict, Generator, List, Optional, Tuple
 import cv2
 import numpy as np
 
+import sys
+import threading
+
 from src.utils.logger import get_logger
+from src.utils.text_renderer import draw_text_unicode
 from config.settings import DATA_DIR, SystemMode
 
 logger = get_logger(__name__)
@@ -28,6 +32,125 @@ class CameraSourceType:
     DEMO_SAMPLE = "demo_sample"
     WEBCAM = "webcam"
     RTSP = "rtsp"
+
+
+class ThreadedCameraReader:
+    """
+    Luồng thu nhận frame camera độc lập tốc độ cao (Zero-Latency Buffer).
+    Đặc điểm kỹ thuật:
+    - Chạy trên một daemon thread riêng biệt để liên tục làm mới frame từ phần cứng camera.
+    - Luôn duy trì duy nhất frame mới nhất (buffer size = 1), loại bỏ hoàn toàn hiện tượng
+      tràn bộ đệm 3-5 frame của OpenCV driver khi inference chạy.
+    - Hỗ trợ dò tìm và mở camera chuẩn macOS (AVFoundation) và đa nền tảng (Windows DirectShow, Linux V4L2).
+    - Tự động giải phóng tài nguyên phần cứng (cap.release(), stop thread) một cách tất định.
+    """
+
+    def __init__(self, src: int = 0, target_width: int = 640, target_height: int = 480):
+        self.src = src
+        self.target_width = target_width
+        self.target_height = target_height
+        self._cap: Optional[cv2.VideoCapture] = None
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+        self._lock = threading.Lock()
+        self._latest_frame: Optional[np.ndarray] = None
+        self._frame_count = 0
+        self._last_read_time = 0.0
+        self.fps: float = 0.0
+        self.active_port: int = -1
+
+    def open(self) -> Tuple[bool, str]:
+        """Tự động dò tìm cổng và mở camera phần cứng."""
+        self.stop()
+        candidates = [self.src, 0, 1, 2]
+        seen = set()
+        ports_to_try = [p for p in candidates if not (p in seen or seen.add(p))]
+
+        for port in ports_to_try:
+            # 1. Thử backend mặc định
+            cap = cv2.VideoCapture(port)
+            if cap.isOpened():
+                ret, test_f = cap.read()
+                if ret and test_f is not None:
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.target_width)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.target_height)
+                    self._cap = cap
+                    self.active_port = port
+                    break
+                cap.release()
+
+            # 2. Trên macOS, thử thêm cv2.CAP_AVFOUNDATION
+            if sys.platform == "darwin":
+                cap = cv2.VideoCapture(port, cv2.CAP_AVFOUNDATION)
+                if cap.isOpened():
+                    ret, test_f = cap.read()
+                    if ret and test_f is not None:
+                        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.target_width)
+                        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.target_height)
+                        self._cap = cap
+                        self.active_port = port
+                        break
+                    cap.release()
+
+        if self._cap is None or not self._cap.isOpened():
+            return False, f"Không thể mở camera cổng {self.src}. Vui lòng kiểm tra quyền truy cập camera trong Cài đặt hệ thống."
+
+        self._running = True
+        self._thread = threading.Thread(target=self._capture_loop, daemon=True, name="ThreadedCameraReader")
+        self._thread.start()
+        logger.info(f"ThreadedCameraReader đã khởi động thành công trên cổng {self.active_port}")
+        return True, f"Kết nối camera cổng {self.active_port} thành công"
+
+    def _capture_loop(self):
+        """Vòng lặp đọc frame liên tục chạy trên luồng nền."""
+        while self._running and self._cap and self._cap.isOpened():
+            ret, frame = self._cap.read()
+            if not ret or frame is None:
+                time.sleep(0.01)
+                continue
+
+            if self.target_width and self.target_height:
+                h, w = frame.shape[:2]
+                if w != self.target_width or h != self.target_height:
+                    frame = cv2.resize(frame, (self.target_width, self.target_height), interpolation=cv2.INTER_LINEAR)
+
+            now = time.time()
+            with self._lock:
+                self._latest_frame = frame
+                self._frame_count += 1
+                if self._last_read_time > 0:
+                    dt = now - self._last_read_time
+                    if dt > 0:
+                        cur_fps = 1.0 / dt
+                        self.fps = round(self.fps * 0.7 + cur_fps * 0.3, 1)
+                self._last_read_time = now
+
+            time.sleep(0.005)
+
+    def read_latest_frame(self) -> Tuple[bool, Optional[np.ndarray], int]:
+        """Lấy frame mới nhất từ luồng nền (Zero-Latency Buffer)."""
+        with self._lock:
+            if self._latest_frame is None:
+                return False, None, self._frame_count
+            return True, self._latest_frame.copy(), self._frame_count
+
+    def stop(self):
+        """Dừng luồng và giải phóng hoàn toàn camera phần cứng."""
+        self._running = False
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+            self._thread = None
+
+        if self._cap:
+            try:
+                self._cap.release()
+            except Exception:
+                pass
+            self._cap = None
+
+        with self._lock:
+            self._latest_frame = None
+        logger.info("ThreadedCameraReader đã dừng và giải phóng phần cứng camera.")
 
 
 class CameraStreamManager:
@@ -209,27 +332,23 @@ def generate_bus_simulation_frame(
         cv2.line(frame, (255, dy), (265, dy), (60, 66, 82), 1)
         cv2.line(frame, (375, dy), (385, dy), (60, 66, 82), 1)
 
-    # 2. Vẽ 4 ghế cố định
-    demo_seats = [
-        ("Ghế 1A", 40, 60, 240, 180),
-        ("Ghế 1B", 400, 60, 600, 180),
-        ("Ghế 2A", 40, 205, 240, 325),
-        ("Ghế 2B", 400, 205, 600, 325),
+    # 2. Vẽ các cấu trúc ghế đệm trong khoang xe (visual cabin elements)
+    cabin_seats = [
+        (40, 60, 240, 180),
+        (400, 60, 600, 180),
+        (40, 205, 240, 325),
+        (400, 205, 600, 325),
     ]
-    for sid, sx1, sy1, sx2, sy2 in demo_seats:
+    for sx1, sy1, sx2, sy2 in cabin_seats:
         # Khung ghế & đệm ghế
         cv2.rectangle(frame, (sx1, sy1), (sx2, sy2), (55, 62, 85), -1)
         cv2.rectangle(frame, (sx1 + 6, sy1 + 6), (sx2 - 6, sy2 - 6), (72, 82, 112), -1)
-        cv2.rectangle(frame, (sx1, sy1), (sx2, sy2), (0, 229, 255), 2)  # Viền Cyan
+        cv2.rectangle(frame, (sx1, sy1), (sx2, sy2), (0, 200, 225), 1)
         # Tựa lưng & tay vịn
         cv2.rectangle(frame, (sx1 + 4, sy1 + 4), (sx1 + 24, sy2 - 4), (40, 46, 64), -1)
-        cv2.putText(
-            frame, sid, (sx1 + 35, sy1 + 32),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2
-        )
 
     # 3. Trạng thái người & Ba lô theo timeline
-    bag_box = (155, 95, 225, 155)  # Trên Ghế 1A
+    bag_box = (155, 95, 225, 155)
 
     def _draw_backpack(canvas, bx1, by1, bx2, by2):
         """Vẽ ba lô màu hổ phách/cam tương phản cao có quai đeo và khóa kéo."""
@@ -240,7 +359,7 @@ def generate_bus_simulation_frame(
         # Ngăn kéo trước
         cv2.rectangle(canvas, (bx1 + 8, by1 + 18), (bx2 - 8, by2 - 6), (6, 120, 190), -1)
         cv2.line(canvas, (bx1 + 12, by1 + 24), (bx2 - 12, by1 + 24), (240, 240, 240), 2)
-        cv2.putText(canvas, "BALO", (bx1 + 10, by2 - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+        draw_text_unicode(canvas, "Ba lô", (bx1 + 10, by2 - 16), font_size=11, text_color=(255, 255, 255))
 
     def _draw_person(canvas, cx, cy):
         """Vẽ người nhìn từ trên xuống (vai, đầu, tóc, áo khoác)."""
@@ -253,43 +372,48 @@ def generate_bus_simulation_frame(
         # Đầu tóc
         cv2.circle(canvas, (cx, cy - 2), 17, (30, 25, 20), -1)
         cv2.circle(canvas, (cx, cy - 2), 17, (200, 200, 200), 1)
-        cv2.putText(canvas, "NGUOI", (cx - 24, cy - 26), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (120, 255, 120), 1)
+        draw_text_unicode(canvas, "Người", (cx - 16, cy - 28), font_size=11, text_color=(120, 255, 120))
 
     if f_idx < 35:
-        # Người đi vào hành lang tới Ghế 1A mang theo ba lô
+        # Người đi vào hành lang tới ghế mang theo ba lô
         progress = f_idx / 35.0
         px = int(320 - progress * 190)
         py = int(320 - progress * 200)
         _draw_person(frame, px, py)
-        # Ba lô trên vai
         _draw_backpack(frame, px + 18, py - 15, px + 55, py + 25)
     elif 35 <= f_idx < 100:
-        # Người ngồi tại Ghế 1A (bên trái), đặt ba lô bên cạnh (phần ghế bên phải)
+        # Người ngồi tại ghế (bên trái), đặt ba lô bên cạnh (phần ghế bên phải)
         _draw_person(frame, 100, 120)
         _draw_backpack(frame, bag_box[0], bag_box[1], bag_box[2], bag_box[3])
     elif 100 <= f_idx < 140:
-        # Người đứng lên đi ra hành lang hướng ra cửa thoát hiểm
+        # Người đứng lên đi ra hành lang hướng ra cửa
         progress = (f_idx - 100) / 40.0
         px = int(100 + progress * 220)
         py = int(120 + progress * 210)
         _draw_person(frame, px, py)
-        # Ba lô BỊ BỎ QUÊN lại trên Ghế 1A!
+        # Ba lô BỊ BỎ QUÊN lại trên ghế!
         _draw_backpack(frame, bag_box[0], bag_box[1], bag_box[2], bag_box[3])
     else:
-        # Ghế 1A hoàn toàn trống, ba lô bị bỏ quên nằm yên!
+        # Ghế hoàn toàn trống, ba lô bị bỏ quên nằm yên!
         _draw_backpack(frame, bag_box[0], bag_box[1], bag_box[2], bag_box[3])
 
-    # Chú thích timestamp mô phỏng
+    # Chú thích timestamp mô phỏng bằng Unicode tiếng Việt chuẩn
     time_sec = f_idx / fps
     status_text = (
-        "Hanh khach len xe" if f_idx < 35 else
-        "Hanh khach dang ngoi Ghe 1A" if f_idx < 100 else
-        "Hanh khach dung day xuong xe" if f_idx < 140 else
-        "CANH BAO: Do vat bi bo quen tren Ghe 1A!"
+        "Hành khách lên xe" if f_idx < 35 else
+        "Hành khách đang ngồi ghế" if f_idx < 100 else
+        "Hành khách đứng dậy xuống xe" if f_idx < 140 else
+        "CẢNH BÁO: Đồ vật bị bỏ quên trên ghế!"
     )
-    cv2.putText(
-        frame, f"CAM-BUS-CEILING | {time_sec:.1f}s | {status_text}", (15, 25),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 229, 255), 1
+    banner_text = f"CAM-TRẦN-XE-BUÝT | {time_sec:.1f}s | {status_text}"
+    draw_text_unicode(
+        frame=frame,
+        text=banner_text,
+        pos=(15, 8),
+        font_size=12,
+        text_color=(0, 229, 255),
+        bg_color=(20, 24, 32),
+        padding=3,
     )
     return frame
 

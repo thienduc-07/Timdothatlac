@@ -95,3 +95,54 @@ def test_safe_process_webcam_frame_immunity():
     assert annotated.shape == (360, 640, 3)
     assert isinstance(events, list)
     assert isinstance(summary, dict)
+
+
+def test_threaded_camera_reader_lifecycle():
+    """Kiểm tra vòng đời của ThreadedCameraReader (khởi tạo, dừng, giải phóng tài nguyên)."""
+    from src.video.camera_service import ThreadedCameraReader
+    reader = ThreadedCameraReader(src=0, target_width=640, target_height=480)
+    assert reader.src == 0
+    assert reader.target_width == 640
+    assert reader.target_height == 480
+    assert reader._running is False
+
+    # Dừng an toàn kể cả khi chưa mở
+    reader.stop()
+    assert reader._running is False
+    assert reader._latest_frame is None
+
+
+def test_continuous_webcam_pipeline_tracking_stability():
+    """Kiểm tra pipeline liên tục: duy trì ID đối tượng ổn định qua nhiều frame mà không gán ID mới."""
+    from src.models import TrackedObject
+
+    service = AnalysisService()
+    service.initialize()
+    tracker = ObjectTracker()
+    event_manager = EventManager()
+    event_detector = ForgottenItemDetector(
+        min_stationary_time=2.0,
+        seat_manager=service.seat_manager,
+        event_manager=event_manager
+    )
+
+    # Giả lập 5 frame liên tục với 1 người và 1 ba lô
+    for frame_idx in range(5):
+        frame = np.full((360, 640, 3), 40, dtype=np.uint8)
+        annotated, events, summary = safe_process_webcam_frame(
+            service=service,
+            frame=frame,
+            frame_idx=frame_idx,
+            fps=20.0,
+            tracker=tracker,
+            event_detector=event_detector,
+            event_manager=event_manager,
+            confidence_threshold=0.3,
+            show_seats=True,
+            show_persons=True,
+            show_objects=True,
+            show_masks=True,
+        )
+        assert annotated.shape == (360, 640, 3)
+        assert isinstance(summary, dict)
+

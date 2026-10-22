@@ -27,6 +27,7 @@ from config.settings import (
     PERSON_CLASS,
     SEAT_CLASS,
     MODELS_DIR,
+    PROJECT_ROOT,
 )
 
 logger = get_logger(__name__)
@@ -36,7 +37,7 @@ class YOLODetector:
     """
     Bao bọc (wrapper) cho model YOLO (Detection & Instance Segmentation) của Ultralytics.
     Hỗ trợ cả model Object Detection thông thường và YOLO26 / YOLO Instance Segmentation:
-    - Tự động ưu tiên weights custom models/best.pt nếu có.
+    - Tự động ưu tiên weights custom models/best.pt hoặc yolo26n-seg.pt nếu có.
     - Nhận diện tác vụ model (task='segment' hoặc task='detect').
     - Trích xuất polygon từ segmentation masks (result.masks.xy).
     - Hỗ trợ chia sẻ model instance với SeatDetector để tránh load trùng bộ nhớ.
@@ -51,15 +52,19 @@ class YOLODetector:
     ):
         """
         Args:
-            model_name: Đường dẫn hoặc tên file model. Nếu None, tự động kiểm tra CUSTOM_SEGMENTATION_WEIGHTS_PATH
+            model_name: Đường dẫn hoặc tên file model. Nếu None, tự động kiểm tra weights segmentation ưu tiên
             confidence_threshold: Ngưỡng confidence tối thiểu
             device: "cpu" hoặc "cuda"
             target_classes: Danh sách lớp cần phát hiện (None = tất cả các lớp quan tâm)
         """
-        # Xác định đường dẫn model ưu tiên
+        # Xác định đường dẫn model ưu tiên (Ưu tiên Instance Segmentation weights)
         if model_name is None:
             if Path(CUSTOM_SEGMENTATION_WEIGHTS_PATH).exists():
                 self.model_name = str(CUSTOM_SEGMENTATION_WEIGHTS_PATH)
+            elif (PROJECT_ROOT / "yolo26n-seg.pt").exists():
+                self.model_name = str(PROJECT_ROOT / "yolo26n-seg.pt")
+            elif (MODELS_DIR / "yolo26n-seg.pt").exists():
+                self.model_name = str(MODELS_DIR / "yolo26n-seg.pt")
             else:
                 self.model_name = YOLO_MODEL_NAME
         else:
@@ -136,11 +141,18 @@ class YOLODetector:
         try:
             from ultralytics import YOLO
 
-            # Kiểm tra nếu đang dùng YOLO_MODEL_NAME mặc định nhưng có file custom weights best.pt
+            # Kiểm tra nếu đường dẫn hiện tại không tồn tại, tự động tìm weights thay thế
             target_path = Path(self.model_name)
-            if not target_path.exists() and Path(CUSTOM_SEGMENTATION_WEIGHTS_PATH).exists():
-                self.model_name = str(CUSTOM_SEGMENTATION_WEIGHTS_PATH)
-                logger.info(f"Phát hiện file weights custom tại {CUSTOM_SEGMENTATION_WEIGHTS_PATH}. Tự động ưu tiên sử dụng.")
+            if not target_path.exists():
+                if Path(CUSTOM_SEGMENTATION_WEIGHTS_PATH).exists():
+                    self.model_name = str(CUSTOM_SEGMENTATION_WEIGHTS_PATH)
+                    logger.info(f"Phát hiện file weights custom tại {CUSTOM_SEGMENTATION_WEIGHTS_PATH}. Tự động ưu tiên sử dụng.")
+                elif (PROJECT_ROOT / "yolo26n-seg.pt").exists():
+                    self.model_name = str(PROJECT_ROOT / "yolo26n-seg.pt")
+                    logger.info("Phát hiện file weights yolo26n-seg.pt tại PROJECT_ROOT. Tự động ưu tiên sử dụng.")
+                elif (MODELS_DIR / "yolo26n-seg.pt").exists():
+                    self.model_name = str(MODELS_DIR / "yolo26n-seg.pt")
+                    logger.info("Phát hiện file weights yolo26n-seg.pt tại MODELS_DIR. Tự động ưu tiên sử dụng.")
 
             logger.info(f"Đang tải model {self.model_name} trên thiết bị '{self.device}'...")
             self.model = YOLO(self.model_name)

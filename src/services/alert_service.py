@@ -20,6 +20,7 @@ from config.settings import (
     NotificationChannel,
     CLASS_NAMES_VI,
 )
+from src.detection.class_mapper import get_user_facing_label, format_seat_label
 
 logger = get_logger(__name__)
 
@@ -65,11 +66,11 @@ class AlertService:
         # Xác định mức độ ưu tiên
         priority = AlertPriority.HIGH if event.status == "suspected" else AlertPriority.MEDIUM
         now_iso = datetime.now().isoformat()
-        vi_class = CLASS_NAMES_VI.get(event.class_name, event.class_name)
-        seat_desc = f"ghế {event.seat_id}" if event.seat_id else "khu vực xe buýt"
+        vi_class = get_user_facing_label(event.class_name)
+        seat_desc = format_seat_label(event.seat_id) if event.seat_id else "khu vực xe buýt"
 
         reason = (
-            f"Phát hiện {vi_class} nghi ngờ bị bỏ quên trên {seat_desc} "
+            f"Cảnh báo: Đồ vật có thể bị bỏ quên trên {seat_desc} "
             f"sau {event.vacant_duration:.1f}s ghế trống."
         )
 
@@ -112,12 +113,12 @@ class AlertService:
         webhook_config: Optional[Dict] = None,
     ):
         """Gửi thông báo tới các kênh được cấu hình và ghi nhận log thực tế."""
-        vi_class = CLASS_NAMES_VI.get(event.class_name, event.class_name)
+        vi_class = get_user_facing_label(event.class_name)
         msg_title = f"⚠️ [LOST & FOUND AI] CẢNH BÁO ĐỒ BỎ QUÊN"
         msg_body = (
             f"<b>Mã cảnh báo:</b> {alert.alert_id}\n"
             f"<b>Vật thể:</b> {vi_class} ({alert.object_id})\n"
-            f"<b>Vị trí:</b> Ghế {alert.seat_id}\n"
+            f"<b>Vị trí:</b> {format_seat_label(alert.seat_id)}\n"
             f"<b>Mức độ:</b> {alert.priority}\n"
             f"<b>Lý do:</b> {alert.reason}\n"
             f"<b>Thời điểm:</b> {datetime.now().strftime('%H:%M:%S %d/%m/%Y')}"

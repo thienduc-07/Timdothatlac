@@ -1,16 +1,16 @@
 # Lost & Found AI - Dependencies
 # Core AI / Computer Vision
-ultralytics>=8.2.0
+ultralytics>=8.4.0,<9.0.0
 opencv-python-headless>=4.8.0
 numpy>=1.24.0
 
 # Web UI
-streamlit>=1.35.0
+streamlit>=1.40.0
 pandas>=2.0.0
 
-# Database (built-in sqlite3, no extra package needed)
 # Testing
 pytest>=8.0.0
 
 # Utilities
-Pillow>=10.0.0
+supervision>=0.29.1
+python-dotenv>=1.0.0

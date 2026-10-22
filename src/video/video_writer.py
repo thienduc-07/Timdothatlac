@@ -15,12 +15,16 @@ import numpy as np
 from src.models import Event, TrackedObject, SeatState
 from src.seats.seat_manager import SeatManager
 from src.utils.logger import get_logger
+from src.utils.text_renderer import draw_text_unicode
+from src.detection.class_mapper import format_seat_label, get_user_facing_label
 from config.settings import (
     OUTPUT_VIDEO_CODEC,
     OUTPUT_VIDEO_EXTENSION,
     CLASS_NAMES_VI,
     EventStatus,
+    USE_SUPERVISION,
 )
+
 
 logger = get_logger(__name__)
 
@@ -87,6 +91,7 @@ class VideoWriter:
         show_confidence: bool = True,
         show_event_markers: bool = True,
         privacy_blur_faces: bool = False,
+        show_masks: bool = True,
     ):
         """Vẽ chú thích toàn diện lên frame và ghi vào video đầu ra."""
         if not self._opened or self._writer is None:
@@ -107,6 +112,7 @@ class VideoWriter:
             show_confidence=show_confidence,
             show_event_markers=show_event_markers,
             privacy_blur_faces=privacy_blur_faces,
+            show_masks=show_masks,
         )
 
         self._writer.write(annotated)
@@ -188,77 +194,92 @@ class VideoWriter:
                 else:
                     associated_seat = seat_manager.find_seat_for_bbox(obj.bbox, w, h) or ""
 
-            # Chọn màu và format ID chuẩn theo Part 4
+            formatted_seat = format_seat_label(associated_seat) if associated_seat else ""
+            seat_info = f" | {formatted_seat}" if formatted_seat else ""
+            conf_info = f" | {obj.confidence:.0%}" if show_confidence else ""
+
+            # Chuẩn hóa nhãn giao diện người dùng theo Requirement 2:
+            # - Seats: Ghế 001, Ghế 002...
+            # - People: Người
+            # - Belongings / Objects: Đồ vật (không hiển thị tên chi tiết như phone, wallet, backpack)
+            # - Potential forgotten-item alert: Cảnh báo: Đồ vật có thể bị bỏ quên
             if is_person:
                 color = COLOR_PERSON
-                id_prefix = f"P{obj.track_id}" if show_track_ids else "Người"
-                seat_info = f" | {associated_seat}" if associated_seat else ""
-                conf_info = f" | {obj.confidence:.0%}" if show_confidence else ""
+                id_prefix = f"Người #{obj.track_id}" if show_track_ids else "Người"
                 label = f"{id_prefix}{seat_info}{conf_info}"
                 thickness = 2
             else:
-                vi_name = CLASS_NAMES_VI.get(obj.class_name, obj.class_name)
-                id_prefix = f"O{obj.track_id}" if show_track_ids else vi_name
-                seat_info = f" | {associated_seat}" if associated_seat else ""
-                conf_info = f" | {obj.confidence:.0%}" if show_confidence else ""
-
                 if status == EventStatus.SUSPECTED:
                     color = COLOR_ALERT_CRITICAL
-                    marker = " | ⚠ NGHI NGỜ" if show_event_markers else ""
+                    label = f"Cảnh báo: Đồ vật có thể bị bỏ quên{seat_info}{conf_info}"
                     thickness = 3
                 elif status == EventStatus.ITEM_LEFT:
                     color = COLOR_OBJECT
-                    marker = " | 🪑 GHẾ TRỐNG" if show_event_markers else ""
+                    id_prefix = f"Đồ vật #{obj.track_id}" if show_track_ids else "Đồ vật"
+                    marker = " | Ghế trống" if show_event_markers else ""
+                    label = f"{id_prefix}{seat_info}{conf_info}{marker}"
                     thickness = 2
                 elif status == EventStatus.OCCLUDED:
                     color = COLOR_OBJECT_OCCLUDED
-                    marker = " | 🛡 CHE KHUẤT" if show_event_markers else ""
+                    id_prefix = f"Đồ vật #{obj.track_id}" if show_track_ids else "Đồ vật"
+                    marker = " | Che khuất" if show_event_markers else ""
+                    label = f"{id_prefix}{seat_info}{conf_info}{marker}"
                     thickness = 2
                 elif status == EventStatus.REVIEW_REQUIRED:
                     color = COLOR_ALERT_CRITICAL
-                    marker = " | 📋 CẦN DUYỆT" if show_event_markers else ""
+                    id_prefix = f"Đồ vật #{obj.track_id}" if show_track_ids else "Đồ vật"
+                    marker = " | Cần duyệt" if show_event_markers else ""
+                    label = f"{id_prefix}{seat_info}{conf_info}{marker}"
                     thickness = 2
                 else:
                     color = COLOR_OBJECT
-                    marker = ""
+                    id_prefix = f"Đồ vật #{obj.track_id}" if show_track_ids else "Đồ vật"
+                    label = f"{id_prefix}{seat_info}{conf_info}"
                     thickness = 2
 
-                label = f"{id_prefix} ({vi_name}){seat_info}{conf_info}{marker}"
 
-            # Vẽ segmentation mask polygon nếu có (Instance Segmentation)
-            if show_masks and getattr(obj, "polygon", None) is not None and len(obj.polygon) >= 3:
-                mask_pts = np.array(
-                    [(int(p[0]), int(p[1])) for p in obj.polygon], dtype=np.int32
-                ).reshape((-1, 1, 2))
-                mask_overlay = annotated.copy()
-                cv2.fillPoly(mask_overlay, [mask_pts], color)
-                cv2.polylines(annotated, [mask_pts], isClosed=True, color=color, thickness=1)
-                cv2.addWeighted(mask_overlay, 0.30, annotated, 0.70, 0, annotated)
+            if is_person:
+                # ── NGƯỜI (PERSONS) ──────────────────────────────────────────────────
+                # Giữ nguyên cách hiển thị hiện tại: LUÔN DÙNG BOUNDING BOX
+                # Tuyệt đối không vẽ polygon mask cho người ngay cả khi model segmentation trả về mask
+                cv2.rectangle(annotated, (x1, y1), (x2, y2), color, thickness)
+                label_x = max(0, x1)
+                label_y = max(4, y1 - 20)
+            else:
+                # ── ĐỒ VẬT (OBJECTS / BELONGINGS) ────────────────────────────────────
+                # Chỉ áp dụng Instance Segmentation Polygon thật khi model thực sự cung cấp mask
+                has_polygon = show_masks and getattr(obj, "polygon", None) is not None and len(obj.polygon) >= 3
+                if has_polygon:
+                    mask_pts = np.array(
+                        [(int(p[0]), int(p[1])) for p in obj.polygon], dtype=np.int32
+                    ).reshape((-1, 1, 2))
+                    mask_overlay = annotated.copy()
+                    cv2.fillPoly(mask_overlay, [mask_pts], color)
+                    cv2.polylines(annotated, [mask_pts], isClosed=True, color=color, thickness=2)
+                    cv2.addWeighted(mask_overlay, 0.35, annotated, 0.65, 0, annotated)
 
-            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, thickness)
+                    # Vị trí nhãn tại đỉnh trên của polygon bám theo hình dạng đồ vật
+                    poly_min_y = min(p[1] for p in obj.polygon)
+                    poly_min_x = min(p[0] for p in obj.polygon)
+                    label_x = max(0, int(poly_min_x))
+                    label_y = max(4, int(poly_min_y) - 20)
+                else:
+                    # Bounding-box fallback: Khi model chỉ là Object Detection (không có mask)
+                    # Giữ nguyên bounding box, tuyệt đối KHÔNG giả lập polygon từ box
+                    cv2.rectangle(annotated, (x1, y1), (x2, y2), color, thickness)
+                    label_x = max(0, x1)
+                    label_y = max(4, y1 - 20)
 
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.45
-            (text_w, text_h), _ = cv2.getTextSize(label, font, font_scale, 1)
-            label_y = max(y1 - 6, text_h + 6)
-            cv2.rectangle(
-                annotated,
-                (x1, label_y - text_h - 4),
-                (x1 + text_w + 6, label_y + 4),
-                color,
-                -1,
-            )
-            # Text màu đen nếu nền sáng (Cyan/Amber), màu trắng nếu nền tối
+            # Vẽ nhãn Unicode (tiếng Việt có dấu đầy đủ) với nền badge
             text_color = (0, 0, 0) if (color == COLOR_SEAT_VACANT or color == COLOR_OBJECT) else (255, 255, 255)
-            cv2.putText(
-                annotated,
-                label,
-                (x1 + 3, label_y - 2),
-                font,
-                font_scale,
-                text_color,
-                1,
-                cv2.LINE_AA,
+            draw_text_unicode(
+                frame=annotated,
+                text=label,
+                pos=(label_x, label_y),
+                font_size=12,
+                text_color=text_color,
+                bg_color=color,
+                padding=3,
             )
 
         return annotated
@@ -295,20 +316,20 @@ class VideoWriter:
             cv2.fillPoly(overlay, [pts_arr], color)
             cv2.polylines(frame, [pts_arr], isClosed=True, color=color, thickness=2)
 
-            # Tính tâm ghế để vẽ nhãn
+            # Tính tâm ghế để vẽ nhãn Unicode
             cx = int(np.mean([pt[0] for pt in poly_pts]))
             cy = int(np.mean([pt[1] for pt in poly_pts]))
 
-            label = f"{seat.seat_id} [{state_text}]"
-            cv2.putText(
-                frame,
-                label,
-                (cx - 40, cy),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (255, 255, 255),
-                1,
-                cv2.LINE_AA,
+            seat_title = format_seat_label(seat.seat_id)
+            label = f"{seat_title} [{state_text}]"
+            draw_text_unicode(
+                frame=frame,
+                text=label,
+                pos=(max(0, cx - 45), max(4, cy - 10)),
+                font_size=12,
+                text_color=(255, 255, 255),
+                bg_color=(20, 25, 35),
+                padding=3,
             )
 
         cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
@@ -331,33 +352,36 @@ class VideoWriter:
             if event.last_track_id in currently_detected_tracks:
                 continue
 
-            if event.status in (EventStatus.OCCLUDED, EventStatus.RECHECK, EventStatus.REVIEW_REQUIRED):
+            if event.status in (EventStatus.OCCLUDED, EventStatus.RECHECK, EventStatus.REVIEW_REQUIRED, EventStatus.SUSPECTED):
                 bx1, by1, bx2, by2 = event.last_known_bbox
                 if bx1 == 0 and by1 == 0 and bx2 == 0 and by2 == 0:
                     continue
 
-                if event.status == EventStatus.OCCLUDED:
+                if event.status == EventStatus.SUSPECTED:
+                    color = COLOR_ALERT_CRITICAL
+                    tag = "Cảnh báo: Đồ vật có thể bị bỏ quên"
+                elif event.status == EventStatus.OCCLUDED:
                     color = COLOR_OBJECT_OCCLUDED
-                    tag = f"O{event.last_track_id} [Dự đoán/Che khuất {event.occlusion_duration:.0f}s]"
+                    tag = f"Đồ vật #{event.last_track_id} [Che khuất {event.occlusion_duration:.0f}s]"
                 elif event.status == EventStatus.RECHECK:
                     color = COLOR_OBJECT
-                    tag = f"O{event.last_track_id} [Đang xác minh]"
+                    tag = f"Đồ vật #{event.last_track_id} [Đang xác minh]"
                 else:
                     color = COLOR_ALERT_CRITICAL
-                    tag = f"O{event.last_track_id} [Cần kiểm tra]"
+                    tag = f"Đồ vật #{event.last_track_id} [Cần kiểm tra]"
 
                 # Vẽ viền nét đứt hoặc nét kép biểu thị vị trí được ghi nhớ
                 cv2.rectangle(frame, (bx1, by1), (bx2, by2), color, 2)
-                cv2.putText(
-                    frame,
-                    tag,
-                    (bx1, max(20, by1 - 8)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.45,
-                    color,
-                    1,
-                    cv2.LINE_AA,
+                draw_text_unicode(
+                    frame=frame,
+                    text=tag,
+                    pos=(max(0, bx1), max(4, by1 - 20)),
+                    font_size=11,
+                    text_color=(255, 255, 255),
+                    bg_color=color,
+                    padding=2,
                 )
+
 
     def close(self):
         """Đóng video writer và giải phóng tài nguyên."""

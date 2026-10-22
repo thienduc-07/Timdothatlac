@@ -7,6 +7,14 @@ Mọi giá trị cấu hình nên được import từ file này thay vì hard-c
 import os
 from pathlib import Path
 
+# Load environment variables from .env if present (optional)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    # dotenv not installed or .env missing – ignore
+    pass
+
 # ──────────────────────────────────────────────
 # Đường dẫn gốc của dự án
 # ──────────────────────────────────────────────
@@ -32,18 +40,26 @@ DATABASE_PATH = PROJECT_ROOT / "lost_and_found.db"
 # ──────────────────────────────────────────────
 # YOLO Model & Instance Segmentation (YOLO26 / YOLO-seg)
 # ──────────────────────────────────────────────
+# Model Instance Segmentation mặc định (YOLO26-seg)
+YOLO_SEGMENTATION_MODEL_NAME = "yolo26n-seg.pt"
+
 # Đường dẫn weights custom ưu tiên cho model Instance Segmentation (3 lớp: seat, person, item)
 CUSTOM_SEGMENTATION_WEIGHTS_PATH = MODELS_DIR / "best.pt"
 
-# Danh sách các file weights custom được hỗ trợ tìm kiếm
+# Danh sách các file weights segmentation được ưu tiên tìm kiếm
 SUPPORTED_CUSTOM_WEIGHTS_PATHS = [
     MODELS_DIR / "best.pt",
+    PROJECT_ROOT / "yolo26n-seg.pt",
+    MODELS_DIR / "yolo26n-seg.pt",
     MODELS_DIR / "bus_seat_yolo.pt",
     MODELS_DIR / "bus_seat_yolov8.pt",
 ]
 
-# Model fallback phát hiện cơ bản (nếu chưa có custom weights)
-YOLO_MODEL_NAME = "yolov8n.pt"
+# Model fallback: Tự động ưu tiên yolo26n-seg.pt (Instance Segmentation) nếu có trong project
+YOLO_MODEL_NAME = os.getenv(
+    "YOLO_MODEL_NAME",
+    "yolo26n-seg.pt" if (PROJECT_ROOT / "yolo26n-seg.pt").exists() else "yolo26n.pt",
+)
 
 # Cấu hình hiển thị Segmentation Mask
 DEFAULT_SHOW_SEGMENTATION_MASKS = True
@@ -54,6 +70,32 @@ DEFAULT_CONFIDENCE_THRESHOLD = 0.35
 
 # Thiết bị: "cpu" hoặc "cuda" (tự động fallback về cpu nếu không có GPU)
 DEVICE = os.environ.get("DEVICE", "cpu")
+# Enable Supervision visual utilities (set to 'false' to disable)
+USE_SUPERVISION = os.getenv("USE_SUPERVISION", "true").lower() == "true"
+
+# Inference mode – local YOLO, Roboflow serverless, or hybrid (local+Roboflow)
+INFERENCE_MODE = os.getenv("INFERENCE_MODE", "local").lower()  # "local", "roboflow", "hybrid"
+
+# Path to YOLO weights – can be overridden via env var; defaults to available segmentation weights.
+DEFAULT_MODEL_PATH = (
+    str(CUSTOM_SEGMENTATION_WEIGHTS_PATH)
+    if CUSTOM_SEGMENTATION_WEIGHTS_PATH.exists()
+    else (
+        str(PROJECT_ROOT / "yolo26n-seg.pt")
+        if (PROJECT_ROOT / "yolo26n-seg.pt").exists()
+        else str(PROJECT_ROOT / "yolo26n.pt")
+    )
+)
+MODEL_PATH = os.getenv("MODEL_PATH", DEFAULT_MODEL_PATH)
+
+# Roboflow Serverless Workflow & Hosted Model Configuration
+ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY", "")
+ROBOFLOW_WORKFLOW_URL = os.getenv("ROBOFLOW_WORKFLOW_URL", "https://serverless.roboflow.com")
+ROBOFLOW_WORKSPACE = os.getenv("ROBOFLOW_WORKSPACE", "le-uc-s-workspace")
+ROBOFLOW_PROJECT_ID = os.getenv("ROBOFLOW_PROJECT_ID", "bus-seat-and-belongings-monitori")
+ROBOFLOW_WORKFLOW_ID = os.getenv("ROBOFLOW_WORKFLOW_ID", "bus-seat-and-belongings-monitori")
+ROBOFLOW_MODEL_VERSION = os.getenv("ROBOFLOW_MODEL_VERSION", "1")
+
 
 # ──────────────────────────────────────────────
 # Chế độ hoạt động của hệ thống
@@ -124,6 +166,10 @@ CLASS_NAMES_VI = {
     "person": "Người",
     "item": "Đồ vật / Hành lý",
     "seat": "Ghế xe buýt",
+    "bus_seat": "Ghế xe buýt",
+    "empty_seat": "Ghế trống",
+    "human_occupied": "Ghế có người",
+    "object_occupied": "Ghế có đồ",
     "backpack": "Ba lô",
     "handbag": "Túi xách",
     "suitcase": "Vali",

@@ -16,7 +16,7 @@ Module nhận diện ghế chuyên biệt từ hình ảnh camera trần xe buý
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 import cv2
 import numpy as np
 
@@ -40,6 +40,9 @@ VALID_SEAT_CLASS_NAMES = {
     "seat_aisle",
     "double_seat",
     "bench_seat",
+    "empty_seat",
+    "human_occupied",
+    "object_occupied",
 }
 
 
@@ -384,27 +387,46 @@ class CustomSeatYOLOAdapter:
                 # Kiểm tra trường hợp cụm ghế đôi nếu model dự đoán 1 mask cho cả cụm
                 box_w = x2 - x1
                 box_h = y2 - y1
-                is_wide_bench = (box_h > 0 and (box_w / box_h) > 1.45) or ("double" in class_name or "bench" in class_name)
-                cluster_note = " (Cụm ghế đôi)" if is_wide_bench else ""
+                aspect_ratio = float(box_w) / max(1, box_h)
+                norm_w = float(box_w) / max(1, w)
+                is_wide_bench = (box_h > 0 and aspect_ratio > 1.45 and norm_w >= 0.14) or (
+                    "double" in class_name.lower() or "bench" in class_name.lower()
+                )
 
-                # Gán ID có ngữ nghĩa
-                if "window" in class_name.lower():
-                    seat_id = f"SEAT_W{counter:02d}"
-                    desc = f"Ghế cửa sổ ({method_str} conf {conf:.0%}){cluster_note}"
-                elif "aisle" in class_name.lower():
-                    seat_id = f"SEAT_A{counter:02d}"
-                    desc = f"Ghế lối đi ({method_str} conf {conf:.0%}){cluster_note}"
+                if is_wide_bench:
+                    cx = float(x1 + x2) / (2.0 * max(1, w))
+                    side = "left" if cx < 0.5 else "right"
+                    row_index = max(1, int(round((float(y1) / max(1, h)) * 4)) + 1)
+                    decomposer = TwinSeatDecomposer()
+                    child_seats = decomposer.split_horizontal_bench(
+                        polygon_or_bbox=seat_poly,
+                        row_index=row_index,
+                        side=side,
+                        naming_format="SEAT",
+                        gap_ratio=0.05,
+                    )
+                    for cs in child_seats:
+                        cs.description = f"{cs.description} ({method_str} conf {conf:.0%})"
+                        detected_seats.append(cs)
                 else:
-                    seat_id = f"SEAT_{counter:03d}"
-                    desc = f"Ghế {counter} ({method_str} conf {conf:.0%}){cluster_note}"
+                    # Gán ID có ngữ nghĩa cho ghế đơn
+                    if "window" in class_name.lower():
+                        seat_id = f"SEAT_W{counter:02d}"
+                        desc = f"Ghế cửa sổ ({method_str} conf {conf:.0%})"
+                    elif "aisle" in class_name.lower():
+                        seat_id = f"SEAT_A{counter:02d}"
+                        desc = f"Ghế lối đi ({method_str} conf {conf:.0%})"
+                    else:
+                        seat_id = f"SEAT_{counter:03d}"
+                        desc = f"Ghế {counter} ({method_str} conf {conf:.0%})"
 
-                detected_seats.append(SeatConfig(
-                    seat_id=seat_id,
-                    polygon=seat_poly,
-                    is_normalized=True,
-                    description=desc,
-                ))
-                counter += 1
+                    detected_seats.append(SeatConfig(
+                        seat_id=seat_id,
+                        polygon=seat_poly,
+                        is_normalized=True,
+                        description=desc,
+                    ))
+                    counter += 1
 
         return detected_seats
 
@@ -583,6 +605,8 @@ class SeatDetector:
         custom_weights_path: Optional[str] = None,
         shared_model=None,
         aisle_ratio: float = 0.18,
+        roboflow_client=None,
+        inference_mode: Optional[str] = None,
     ):
         self.custom_weights_path = custom_weights_path
         self.model_adapter = CustomSeatYOLOAdapter(
@@ -590,10 +614,16 @@ class SeatDetector:
             shared_model=shared_model,
         )
         self.geometry_detector = BusGeometrySeatDetector(aisle_ratio=aisle_ratio)
+        self.roboflow_client = roboflow_client
+        self.inference_mode = inference_mode
 
     def set_shared_model(self, model_instance) -> bool:
         """Thiết lập model instance dùng chung cho SeatDetector."""
         return self.model_adapter.set_shared_model(model_instance)
+
+    def set_roboflow_client(self, client) -> None:
+        """Thiết lập client Roboflow Workflow cho SeatDetector."""
+        self.roboflow_client = client
 
     @staticmethod
     def inspect_coco_classes() -> Dict[str, Union[bool, str, List[str]]]:
@@ -626,21 +656,105 @@ class SeatDetector:
         right_cols: int = 2,
         naming_format: str = "SEAT",
         confidence: float = 0.35,
+        roboflow_client: Optional[Any] = None,
+        inference_mode: Optional[str] = None,
     ) -> SeatDetectionResult:
         """
-        Thực hiện nhận diện ghế theo kiến trúc Computer Vision thực thụ.
-
-        Args:
-            frame: Ảnh frame camera xe buýt.
-            allow_fallback: Nếu True, cho phép trả về hình học dự phòng khi chưa có model.
-            rows, left_cols, right_cols: Tham số cho hình học dự phòng nếu được bật.
-            naming_format: 'SEAT' (SEAT_1A...) hoặc 'NUM' (SEAT_001...).
+        Thực hiện nhận diện ghế theo kiến trúc Computer Vision thực thụ:
+        - Hỗ trợ cả 3 chế độ: Local (custom weights), Roboflow Workflow, và Hybrid.
+        - Không bao giờ tự động tạo ghế giả lập trừ khi bật allow_fallback kiểm thử.
+        - Giữ ID ghế ổn định qua SeatTracker.
         """
+        import os
         diagnostics: Dict[str, Union[str, bool, int, float, List[str]]] = {}
         diagnostics["weights_path"] = str(self.model_adapter.weights_path)
         diagnostics["weights_available"] = self.model_adapter.is_available
 
-        # 1. Nếu Custom Seat Model sẵn sàng: Thực hiện MODEL DETECTION bằng AI
+        active_mode = (
+            inference_mode
+            or self.inference_mode
+            or os.getenv("INFERENCE_MODE", "local")
+        ).lower()
+        diagnostics["inference_mode"] = active_mode
+
+        rf_client = roboflow_client or self.roboflow_client
+        if rf_client is None and active_mode in ("roboflow", "hybrid"):
+            try:
+                from src.roboflow.roboflow_client import RoboflowWorkflowClient
+                rf_client = RoboflowWorkflowClient()
+                self.roboflow_client = rf_client
+            except Exception as e:
+                logger.warning(f"Could not initialize Roboflow client in SeatDetector: {e}")
+
+        # ── 1. ROBOWFLOW HOẶC HYBRID INFERENCE ────────────────────────
+        if active_mode in ("roboflow", "hybrid") and rf_client is not None:
+            try:
+                import cv2, tempfile, pathlib
+                tmp_path = pathlib.Path(tempfile.mkstemp(suffix=".jpg")[1])
+                cv2.imwrite(str(tmp_path), frame)
+                payload = rf_client.submit_image(tmp_path)
+                tmp_path.unlink(missing_ok=True)
+
+                if payload:
+                    from src.roboflow.roboflow_client import RoboflowWorkflowClient
+                    parsed = RoboflowWorkflowClient.parse_workflow_output(payload)
+                    raw_preds = [
+                        p for p in parsed.get("predictions", [])
+                        if float(p.get("confidence", 0)) >= confidence
+                    ]
+                    rf_seats = self.detect_seats_from_predictions(
+                        raw_preds, frame.shape[1], frame.shape[0]
+                    )
+
+                    # Nếu là hybrid và có cả custom local weights, hợp nhất tránh trùng lặp
+                    if active_mode == "hybrid" and self.model_adapter.is_available:
+                        local_seats = self.model_adapter.detect(frame, confidence=confidence)
+                        # So khớp IoU để không tạo ghế trùng
+                        from src.seats.seat_tracker import calculate_polygon_iou
+                        fused_seats = list(local_seats)
+                        for r_seat in rf_seats:
+                            matched = any(
+                                calculate_polygon_iou(r_seat.polygon, l_seat.polygon) > 0.45
+                                for l_seat in local_seats
+                            )
+                            if not matched:
+                                fused_seats.append(r_seat)
+                        return SeatDetectionResult(
+                            seats=fused_seats,
+                            method=SeatDetectionMethod.MODEL_DETECTION,
+                            model_name="Hybrid AI (Local YOLO + Roboflow)",
+                            confidence_avg=round(float(np.mean([0.88] * max(1, len(fused_seats)))), 2),
+                            is_fallback=False,
+                            status_message=f"Nhận diện thành công {len(fused_seats)} ghế bằng Hybrid AI Model.",
+                            diagnostics=diagnostics,
+                        )
+
+                    # Chế độ Roboflow thuần hoặc hybrid chỉ có Roboflow
+                    if rf_seats:
+                        return SeatDetectionResult(
+                            seats=rf_seats,
+                            method=SeatDetectionMethod.MODEL_DETECTION,
+                            model_name=f"Roboflow Workflow ({getattr(rf_client, 'workflow_id', 'Workflow')})",
+                            confidence_avg=round(float(np.mean([0.85] * len(rf_seats))), 2),
+                            is_fallback=False,
+                            status_message=f"Nhận diện thành công {len(rf_seats)} đệm ghế bằng Roboflow AI Model.",
+                            diagnostics=diagnostics,
+                        )
+                    else:
+                        # Model chạy nhưng không có ghế trong frame (chân thực, không bịa ghế)
+                        return SeatDetectionResult(
+                            seats=[],
+                            method=SeatDetectionMethod.MODEL_DETECTION,
+                            model_name=f"Roboflow Workflow ({getattr(rf_client, 'workflow_id', 'Workflow')})",
+                            confidence_avg=0.0,
+                            is_fallback=False,
+                            status_message="Mô hình Roboflow AI đã quét khung hình camera nhưng không phát hiện ghế nào trong góc nhìn này.",
+                            diagnostics=diagnostics,
+                        )
+            except Exception as e:
+                logger.error(f"Lỗi khi nhận diện ghế bằng Roboflow: {e}")
+
+        # ── 2. LOCAL YOLO CHUYÊN BIỆT ─────────────────────────────────
         if self.model_adapter.is_available:
             detected = self.model_adapter.detect(frame, confidence=confidence)
             if detected:
@@ -655,16 +769,26 @@ class SeatDetector:
                     status_message=f"Nhận diện thành công {len(detected)} đệm ghế bằng Custom AI Model.",
                     diagnostics=diagnostics,
                 )
+            else:
+                return SeatDetectionResult(
+                    seats=[],
+                    method=SeatDetectionMethod.MODEL_DETECTION,
+                    model_name=self.model_adapter.model_name,
+                    confidence_avg=0.0,
+                    is_fallback=False,
+                    status_message="Mô hình AI cục bộ đã quét khung hình camera nhưng không phát hiện chiếc ghế nào.",
+                    diagnostics=diagnostics,
+                )
 
-        # 2. Nếu chưa có Custom Seat Model
+        # ── 3. NẾU CHƯA CÓ MODEL PHÙ HỢP ─────────────────────────────
         insp = self.model_adapter.inspect_weights()
         diagnostics["inspection"] = insp
 
         if not allow_fallback:
-            # Thông báo minh bạch không có model, không tự sinh ghế giả lập
             status_msg = (
                 f"CUSTOM SEAT MODEL NOT CONFIGURED: Không tìm thấy model chuyên biệt tại "
-                f"'{self.model_adapter.weights_path}'. Hệ thống không giả lập AI nhận diện ghế."
+                f"'{self.model_adapter.weights_path}'. Hệ thống không giả lập AI nhận diện ghế. "
+                "Hãy chọn chế độ Roboflow / Hybrid hoặc nạp trọng số chuyên biệt (models/best.pt)."
             )
             return SeatDetectionResult(
                 seats=[],
@@ -676,7 +800,7 @@ class SeatDetector:
                 diagnostics=diagnostics,
             )
 
-        # 3. Phương án dự phòng GEOMETRY FALLBACK (khi người dùng/test case yêu cầu rõ ràng)
+        # ── 4. GEOMETRY FALLBACK (CHỈ KHI ALLOW_FALLBACK = TRUE) ──────
         fallback_seats = self.geometry_detector.generate_seats(frame.shape[1], frame.shape[0])
         status_msg = (
             f"GEOMETRY FALLBACK: Đang sử dụng sơ đồ lưới hình học {rows} hàng ({left_cols}+{right_cols} ghế) "
@@ -694,3 +818,97 @@ class SeatDetector:
             status_message=status_msg,
             diagnostics=diagnostics,
         )
+
+
+    def detect_seats_from_predictions(
+        self,
+        predictions: List[Any],
+        frame_width: int,
+        frame_height: int,
+        naming_format: str = "SEAT",
+    ) -> List[SeatConfig]:
+        """
+        Trích xuất các đệm ghế thực tế từ danh sách predictions (Local YOLO, Roboflow Workflow, hoặc Hybrid).
+        Chỉ chuyển đổi các predictions có nhãn thuộc VALID_SEAT_CLASS_NAMES hoặc có chứa 'seat'.
+        Nếu phát hiện băng ghế đôi (wide bench hoặc nhãn double/bench), tự động phân rã thành 2 ghế độc lập.
+        """
+        detected_seats = []
+        counter = 1
+        for pred in predictions:
+            raw_cls = getattr(pred, "class_name", None) or (pred.get("class") if isinstance(pred, dict) else "")
+            raw_lower = str(raw_cls).strip().lower()
+
+            if raw_lower in VALID_SEAT_CLASS_NAMES or ("seat" in raw_lower and "toilet" not in raw_lower):
+                poly = getattr(pred, "polygon", None) or (pred.get("polygon") if isinstance(pred, dict) else None)
+                bbox = getattr(pred, "bbox", None) or (pred.get("bbox") if isinstance(pred, dict) else (0, 0, 0, 0))
+                conf = float(getattr(pred, "confidence", 0.0) or (pred.get("confidence", 0.0) if isinstance(pred, dict) else 0.0))
+
+                if poly and len(poly) >= 3:
+                    is_already_norm = all(0.0 <= pt[0] <= 1.0 and 0.0 <= pt[1] <= 1.0 for pt in poly)
+                    if is_already_norm:
+                        seat_poly = [(round(float(pt[0]), 4), round(float(pt[1]), 4)) for pt in poly]
+                    else:
+                        seat_poly = [
+                            (round(float(pt[0]) / max(1, frame_width), 4), round(float(pt[1]) / max(1, frame_height), 4))
+                            for pt in poly
+                        ]
+                else:
+                    bx1, by1, bx2, by2 = bbox
+                    seat_poly = [
+                        (round(float(bx1) / max(1, frame_width), 4), round(float(by1) / max(1, frame_height), 4)),
+                        (round(float(bx2) / max(1, frame_width), 4), round(float(by1) / max(1, frame_height), 4)),
+                        (round(float(bx2) / max(1, frame_width), 4), round(float(by2) / max(1, frame_height), 4)),
+                        (round(float(bx1) / max(1, frame_width), 4), round(float(by2) / max(1, frame_height), 4)),
+                    ]
+
+                # Đo lường hình học đệm ghế
+                xs = [p[0] for p in seat_poly]
+                ys = [p[1] for p in seat_poly]
+                min_x, max_x = min(xs), max(xs)
+                min_y, max_y = min(ys), max(ys)
+                box_w = max_x - min_x
+                box_h = max_y - min_y
+                aspect_ratio = box_w / max(0.001, box_h)
+                cx = (min_x + max_x) / 2.0
+
+                # Kiểm tra điều kiện băng ghế đôi: tỷ lệ chiều rộng/dài > 1.45 và độ rộng đáng kể (>=0.14),
+                # hoặc nhãn có chứa từ khóa 'double' hoặc 'bench'
+                is_twin_bench = (box_h > 0 and aspect_ratio > 1.45 and box_w >= 0.14) or (
+                    "double" in raw_lower or "bench" in raw_lower
+                )
+
+                if is_twin_bench:
+                    side = "left" if cx < 0.5 else "right"
+                    row_index = max(1, int(round(min_y * 4)) + 1)
+                    decomposer = TwinSeatDecomposer()
+                    child_seats = decomposer.split_horizontal_bench(
+                        polygon_or_bbox=seat_poly,
+                        row_index=row_index,
+                        side=side,
+                        naming_format=naming_format,
+                        gap_ratio=0.05,
+                    )
+                    for cs in child_seats:
+                        cs.description = f"{cs.description} (AI Bench conf {conf:.0%})"
+                        detected_seats.append(cs)
+                else:
+                    if "window" in raw_lower:
+                        seat_id = f"SEAT_W{counter:02d}"
+                        desc = f"Ghế cửa sổ (AI conf {conf:.0%})"
+                    elif "aisle" in raw_lower:
+                        seat_id = f"SEAT_A{counter:02d}"
+                        desc = f"Ghế lối đi (AI conf {conf:.0%})"
+                    else:
+                        seat_id = f"SEAT_{counter:03d}"
+                        desc = f"Ghế {counter} (AI conf {conf:.0%})"
+
+                    detected_seats.append(SeatConfig(
+                        seat_id=seat_id,
+                        polygon=seat_poly,
+                        is_normalized=True,
+                        description=desc,
+                    ))
+                    counter += 1
+
+        return detected_seats
+

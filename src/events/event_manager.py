@@ -17,6 +17,7 @@ import numpy as np
 
 from src.models import Event, TrackObservation, TrackedObject
 from src.utils.logger import get_logger
+from src.utils.text_renderer import draw_text_unicode
 from config.settings import EventStatus, SNAPSHOTS_DIR, CLASS_NAMES_VI
 
 logger = get_logger(__name__)
@@ -332,14 +333,14 @@ class EventManager:
 
             vi_name = CLASS_NAMES_VI.get(event.class_name, event.class_name)
             label = f"{event.event_id} - {vi_name} [{event.status.upper()}]"
-            cv2.putText(
-                snapshot,
-                label,
-                (x1, max(15, y1 - 10)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (0, 0, 255),
-                2,
+            draw_text_unicode(
+                frame=snapshot,
+                text=label,
+                pos=(x1, max(4, y1 - 22)),
+                font_size=13,
+                text_color=(255, 255, 255),
+                bg_color=(0, 0, 200),
+                padding=3,
             )
 
             cv2.imwrite(str(snapshot_path), snapshot)

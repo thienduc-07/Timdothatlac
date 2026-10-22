@@ -29,14 +29,17 @@ from src.events.forgotten_item_detector import ForgottenItemDetector
 from src.seats.seat_config import SeatConfigManager
 from src.seats import SeatDetectionMethod
 from src.models import SeatConfig, SeatState
+from src.detection.class_mapper import format_seat_label, get_user_facing_label
 from src.utils.file_utils import format_file_size, format_duration
+
 from src.video.camera_service import (
     CameraSourceType,
     ensure_demo_video_exists,
     generate_bus_simulation_frame,
     get_demo_ground_truth,
+    ThreadedCameraReader,
 )
-from src.video.video_writer import VideoWriter
+from src.utils.text_renderer import draw_text_unicode
 from config.settings import (
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_SHOW_SEGMENTATION_MASKS,
@@ -66,10 +69,16 @@ st.set_page_config(
 )
 
 # ──────────────────────────────────────────────
-# CSS Giao diện Dark Navy chuyên nghiệp & Hiện đại
+# CSS Giao diện Dark Navy chuyên nghiệp & Hỗ trợ tiếng Việt đầy đủ
 # ──────────────────────────────────────────────
 st.markdown(f"""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+    html, body, [class*="css"], .stMarkdown, .stText, h1, h2, h3, h4, h5, h6, p, div, span, label, button {{
+        font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+    }}
+
     /* Dark Navy Theme Variables */
     :root {{
         --bg-main: #0B132B;
@@ -317,20 +326,31 @@ def main():
         st.caption("Giám sát xe buýt • Nhận biết che khuất • Báo cáo tức thì")
         st.markdown("---")
 
+        page_list = [
+            "🏠 Tổng quan",
+            "🎥 Giám sát Camera",
+            "⚠️ Trung tâm Cảnh báo",
+            "🪑 Quản lý Ghế",
+            "🏷️ AI Training & Dataset",
+            "🤖 Quản lý Model",
+            "🔔 Cấu hình Thông báo",
+            "📊 Lịch sử Phân tích",
+            "⚙️ Cài đặt & Bảo mật",
+        ]
+
+        # Xử lý điều hướng nhanh nếu có yêu cầu chuyển trang từ dashboard
+        nav_target = st.session_state.pop("nav_to", None)
+        selected_index = 0
+        if nav_target:
+            for idx, p in enumerate(page_list):
+                if nav_target in p:
+                    selected_index = idx
+                    break
+
         page = st.radio(
             "CHỨC NĂNG HỆ THỐNG",
-            [
-                "🏠 Tổng quan",
-                "🎥 Giám sát Camera",
-                "⚠️ Trung tâm Cảnh báo",
-                "🪑 Quản lý Ghế",
-                "🏷️ AI Training & Dataset",
-                "🤖 Quản lý Model",
-                "🔔 Cấu hình Thông báo",
-                "📊 Lịch sử Phân tích",
-                "⚙️ Cài đặt & Bảo mật",
-            ],
-            index=0,
+            page_list,
+            index=selected_index,
             label_visibility="collapsed",
         )
 
@@ -602,7 +622,7 @@ def _run_browser_camera_analysis(
 
         mcol1, mcol2, mcol3, mcol4 = st.columns(4)
         with mcol1:
-            st.metric("Tổng số ghế", f"{total_seats}")
+            st.metric("Tổng số ghế AI phát hiện", f"{total_seats}")
         with mcol2:
             st.metric("Ghế có người", f"{occ_seats}", delta=f"{vac_seats} ghế trống")
         with mcol3:
@@ -610,6 +630,9 @@ def _run_browser_camera_analysis(
         with mcol4:
             sus_count = summary.get("suspected", 0)
             st.metric("Nghi ngờ bỏ quên", f"{sus_count}", delta="Cần chú ý" if sus_count > 0 else "An toàn", delta_color="inverse" if sus_count > 0 else "normal")
+
+        if total_seats == 0:
+            st.info("ℹ️ **Trạng thái ghế:** Chưa phát hiện đệm ghế từ hình ảnh camera. Hệ thống chỉ ghi nhận và vẽ ghế khi mô hình AI nhận diện trực tiếp từ thị giác (không dùng tọa độ giả lập).")
 
         if summary.get("suspected", 0) > 0:
             st.error("⚠️ **CẢNH BÁO:** Phát hiện vật thể có dấu hiệu bị bỏ quên trên ghế!")
@@ -761,6 +784,17 @@ def page_camera_monitor(service: AnalysisService):
                             timestamp=frame_idx / fps,
                         ))
                     if gt.get("has_bag") and gt.get("bag_bbox"):
+                        bx1, by1, bx2, by2 = gt["bag_bbox"]
+                        bag_poly = [
+                            (float(bx1 + 12), float(by1)),
+                            (float(bx2 - 12), float(by1)),
+                            (float(bx2), float(by1 + 14)),
+                            (float(bx2), float(by2 - 10)),
+                            (float(bx2 - 8), float(by2)),
+                            (float(bx1 + 8), float(by2)),
+                            (float(bx1), float(by2 - 10)),
+                            (float(bx1), float(by1 + 14)),
+                        ]
                         sim_tracked.append(TrackedObject(
                             track_id=2,
                             class_id=24,
@@ -769,6 +803,7 @@ def page_camera_monitor(service: AnalysisService):
                             confidence=0.89,
                             frame_index=frame_idx,
                             timestamp=frame_idx / fps,
+                            polygon=bag_poly,
                         ))
 
                     if sim_tracked and service.seat_manager and service.seat_manager.is_configured:
@@ -848,144 +883,99 @@ def page_camera_monitor(service: AnalysisService):
                         st.error(f"Lỗi: {result.error_message}")
 
     elif "Live Camera" in source_mode or "Live Webcam" in source_mode:
-        st.markdown("### 🎥 Giám sát Camera Trực Tiếp Thời Gian Thực")
-        st.caption("Hỗ trợ mở camera trên TẤT CẢ các dòng máy: MacBook FaceTime HD, USB Cam, Windows, Android, iPhone và Streamlit Cloud.")
+        st.markdown("### 🎥 Giám sát Camera Trực Tiếp Thời Gian Thực (Live AI Stream)")
+        st.caption("Video chạy liên tục trên giao diện — AI tự động nhận diện người, đồ vật và ghế xe buýt theo thời gian thực (Zero-Click AI).")
 
-        cam_tab1, cam_tab2 = st.tabs([
-            "🌐 Camera Trình Duyệt / Mọi Thiết Bị (Khuyên Dùng cho Streamlit Cloud, Mobile, Mac, Win)",
-            "💻 Camera Cổng Phần Cứng OpenCV (Dành cho máy chạy Local)",
-        ])
+        # Thanh điều khiển luồng Camera
+        ctrl_c1, ctrl_c2, ctrl_c3, ctrl_c4 = st.columns([2, 1, 1, 1])
+        with ctrl_c1:
+            run_cam = st.toggle(
+                "🔴 BẬT / TẮT CAMERA THỜI GIAN THỰC (LIVE STREAM)",
+                value=False,
+                key="toggle_realtime_webcam",
+                help="Bật để bắt đầu truyền luồng video thời gian thực từ camera máy tính vào mô hình AI."
+            )
+        with ctrl_c2:
+            cam_idx = st.number_input("Cổng Camera", 0, 5, 0, key="cam_port_input", help="0 = FaceTime HD / Mặc định, 1 = USB Cam / Continuity")
+        with ctrl_c3:
+            stream_res = st.selectbox("Độ phân giải", ["640x480 (Mượt, 30 FPS)", "960x540", "1280x720"], index=0)
+        with ctrl_c4:
+            infer_stride = st.selectbox("Tần suất AI", ["Mỗi frame (100% Realtime)", "Cách 1 frame (Tối ưu CPU)"], index=0)
 
-        with cam_tab1:
-            st.markdown("""
-            <div style="background: #141E33; border: 1px solid #3A506B; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px;">
-                <span style="font-weight: 600; color: #38BDF8;">✨ Hướng dẫn mở camera trên mọi dòng máy:</span>
-                <p style="color: #94A3B8; font-size: 0.85rem; margin: 4px 0 0 0;">
-                    Trình duyệt sẽ yêu cầu quyền truy cập Camera (FaceTime HD / Webcam). 
-                    Sau khi cho phép, bạn sẽ thấy khung ngắm camera hiển thị ngay bên dưới.
-                    Nhấn nút <b>Take Photo / Quét ngay</b> để AI lập tức phân tích nhận diện người, đồ vật và vùng ghế!
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+        res_w, res_h = (640, 480) if "640x480" in stream_res else (960, 540) if "960x540" in stream_res else (1280, 720)
+        stride_val = 1 if "Mỗi frame" in infer_stride else 2
 
-            # Khung HTML5 Live Video Stream 30 FPS trực tiếp từ trình duyệt
-            st.components.v1.html("""
-            <div style="background: #0F172A; border: 1px solid #334155; border-radius: 10px; padding: 12px; text-align: center; font-family: sans-serif;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 0 8px;">
-                    <span style="color: #38BDF8; font-weight: bold; font-size: 14px;">🔴 Live Viewfinder (FaceTime HD / Webcam Máy Bạn)</span>
-                    <span style="background: #10B98122; color: #10B981; border: 1px solid #10B981; padding: 2px 8px; border-radius: 12px; font-size: 11px;">30 FPS READY</span>
-                </div>
-                <video id="live-stream-vid" autoplay playsinline muted style="width: 100%; max-width: 600px; height: 320px; object-fit: cover; border-radius: 8px; background: #1E293B; border: 2px solid #3B82F6;"></video>
-                <div id="cam-status" style="color: #94A3B8; font-size: 12px; margin-top: 8px;">Đang kết nối camera của thiết bị...</div>
-            </div>
-            <script>
-                const video = document.getElementById('live-stream-vid');
-                const status = document.getElementById('cam-status');
-                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                    navigator.mediaDevices.getUserMedia({
-                        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
-                    }).then(stream => {
-                        video.srcObject = stream;
-                        status.innerHTML = "🟢 Đã mở thành công Camera thiết bị! Luồng hình ảnh 30 FPS đang hoạt động.";
-                        status.style.color = "#10B981";
-                    }).catch(err => {
-                        status.innerHTML = "⚠️ Chưa cấp quyền truy cập Camera: " + err.message + ". Vui lòng nhấn Cho phép (Allow) trên thanh địa chỉ trình duyệt.";
-                        status.style.color = "#F59E0B";
-                    });
-                } else {
-                    status.innerHTML = "❌ Trình duyệt không hỗ trợ mediaDevices.";
-                    status.style.color = "#EF4444";
-                }
-            </script>
-            """, height=400)
+        if run_cam:
+            # Khởi tạo ThreadedCameraReader (Zero-Latency Buffer)
+            reader = ThreadedCameraReader(src=int(cam_idx), target_width=res_w, target_height=res_h)
+            is_opened, open_msg = reader.open()
 
-            cam_photo = st.camera_input("📸 Quét Camera Trực Tiếp (Bấm để chụp & chạy phân tích AI tức thì)", key="universal_cam_input")
-            if cam_photo:
-                _run_browser_camera_analysis(
-                    photo=cam_photo,
-                    service=service,
-                    conf_thresh=conf_thresh,
-                    min_stat_time=min_stat_time,
-                    show_seats=show_seats,
-                    show_persons=show_persons,
-                    show_objects=show_objects,
-                    privacy_blur=privacy_blur,
-                    show_masks=show_masks,
+            if not is_opened:
+                if is_cloud_env:
+                    st.warning(
+                        "☁️ **Môi trường Streamlit Cloud (Linux Container):**\n\n"
+                        "Máy chủ đám mây không có phần cứng webcam vật lý kết nối trực tiếp.\n\n"
+                        "💡 **Để trải nghiệm Live Stream 30 FPS thật với FaceTime HD của bạn:**\n"
+                        "Mở Terminal trên máy tính và chạy lệnh:\n"
+                        "```bash\n"
+                        "./venv/bin/streamlit run app.py\n"
+                        "```"
+                    )
+                else:
+                    st.error(
+                        f"❌ **Không thể mở camera cổng {cam_idx}:** {open_msg}\n\n"
+                        "🔍 **Cách khắc phục trên macOS:**\n"
+                        "1. Mở `Cài đặt hệ thống > Quyền riêng tư & Bảo mật > Camera` và bật quyền cho Terminal / Python / VS Code.\n"
+                        "2. Đảm bảo các ứng dụng khác (FaceTime, Zoom, Teams, Photo Booth) không chiếm dụng camera."
+                    )
+            else:
+                st.success(f"🟢 Đã kết nối thành công Camera cổng {reader.active_port}! Luồng hình ảnh đang chạy liên tục theo thời gian thực...")
+
+                # Vùng hiển thị video và metrics
+                frame_view = st.empty()
+                metrics_view = st.empty()
+                alert_view = st.empty()
+
+                # Nút chụp lưu ảnh bằng chứng (tùy chọn phụ trợ, không bắt buộc để chạy AI)
+                snap_col, _ = st.columns([2, 2])
+                with snap_col:
+                    btn_save_evidence = st.button("📸 Lưu ảnh snapshot bằng chứng hiện tại", key="btn_save_evidence_snapshot")
+
+                # Khởi tạo pipeline tracking liên tục (duy trì xuyên suốt phiên streaming)
+                tracker = ObjectTracker()
+                event_manager = EventManager()
+                event_detector = ForgottenItemDetector(
+                    min_stationary_time=min_stat_time,
+                    movement_threshold=STATIONARY_MOVEMENT_THRESHOLD,
+                    watched_classes=ITEM_CLASSES,
+                    seat_manager=service.seat_manager,
+                    event_manager=event_manager,
                 )
 
-        with cam_tab2:
-            st.markdown("##### 💻 Chế độ Camera Cổng Phần Cứng (Local High-FPS Stream)")
-            st.caption("Dành cho trường hợp chạy local trên máy tính cá nhân bằng lệnh `streamlit run app.py`.")
-            wcol1, wcol2 = st.columns([2, 1])
-            with wcol1:
-                run_cam = st.toggle("🔴 BẬT LUỒNG OPENCV 30 FPS", value=False, key="toggle_live_camera_opencv")
-            with wcol2:
-                cam_idx = st.number_input("Cổng Camera (0 = FaceTime HD / Default, 1 = USB / Continuity)", 0, 5, 0, key="cam_port_input")
+                frame_idx = 0
+                alert_fired = False
+                t_last_metric = time.time()
+                last_annotated = None
+                last_events = []
+                last_summary = {}
 
-            if run_cam:
-                def _open_working_camera(preferred: int):
-                    for port in [preferred, 0, 1, 2]:
-                        cap_candidate = cv2.VideoCapture(port)
-                        if cap_candidate.isOpened():
-                            ret, test_f = cap_candidate.read()
-                            if ret and test_f is not None:
-                                cap_candidate.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                                cap_candidate.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                                return cap_candidate, port
-                            cap_candidate.release()
-                        if sys.platform == "darwin":
-                            cap_candidate = cv2.VideoCapture(port, cv2.CAP_AVFOUNDATION)
-                            if cap_candidate.isOpened():
-                                ret, test_f = cap_candidate.read()
-                                if ret and test_f is not None:
-                                    cap_candidate.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                                    cap_candidate.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                                    return cap_candidate, port
-                                cap_candidate.release()
-                    return None, -1
+                try:
+                    while run_cam:
+                        t0 = time.time()
+                        ret, frame, hardware_frame_cnt = reader.read_latest_frame()
+                        if not ret or frame is None:
+                            time.sleep(0.01)
+                            continue
 
-                cap, active_port = _open_working_camera(int(cam_idx))
-                if cap is None:
-                    if is_cloud_env:
-                        st.warning(
-                            "☁️ **Môi trường Cloud Container:**\n\n"
-                            "Máy chủ đám mây không có phần cứng USB webcam vật lý. "
-                            "👉 Hãy chuyển sang tab **'🌐 Camera Trình Duyệt / Mọi Thiết Bị'** ở bên cạnh để mở webcam trực tiếp trên trình duyệt của bạn!"
-                        )
-                    else:
-                        st.error(
-                            f"❌ Không thể mở camera cổng {cam_idx}. "
-                            "Vui lòng kiểm tra quyền truy cập Camera trong Cài đặt hệ thống (Privacy & Security > Camera)."
-                        )
-                else:
-                    st.success(f"🟢 Đã kết nối Camera cổng {active_port}! Đang truyền luồng hình ảnh 30 FPS...")
-                    cam_view = st.empty()
-                    cam_metrics = st.empty()
-                    tracker = ObjectTracker()
-                    event_manager = EventManager()
-                    event_detector = ForgottenItemDetector(
-                        min_stationary_time=min_stat_time,
-                        movement_threshold=STATIONARY_MOVEMENT_THRESHOLD,
-                        watched_classes=ITEM_CLASSES,
-                        seat_manager=service.seat_manager,
-                        event_manager=event_manager,
-                    )
-                    frame_idx = 0
-                    alert_fired = False
+                        # Điều phối chu kỳ inference theo cấu hình người dùng
+                        should_infer = (frame_idx % stride_val == 0) or (last_annotated is None)
 
-                    try:
-                        while run_cam:
-                            t0 = time.time()
-                            ret, frame = cap.read()
-                            if not ret or frame is None:
-                                st.warning("Mất tín hiệu camera.")
-                                break
-
+                        if should_infer:
                             annotated, events, summary = safe_process_webcam_frame(
                                 service=service,
                                 frame=frame,
                                 frame_idx=frame_idx,
-                                fps=15.0,
+                                fps=reader.fps or 25.0,
                                 tracker=tracker,
                                 event_detector=event_detector,
                                 event_manager=event_manager,
@@ -993,34 +983,84 @@ def page_camera_monitor(service: AnalysisService):
                                 show_seats=show_seats,
                                 show_persons=show_persons,
                                 show_objects=show_objects,
+                                show_track_ids=True,
+                                show_confidence=True,
+                                show_event_markers=True,
                                 privacy_blur_faces=privacy_blur,
                                 show_masks=show_masks,
                             )
+                            last_annotated = annotated
+                            last_events = events
+                            last_summary = summary
+                        else:
+                            annotated = last_annotated if last_annotated is not None else frame
+                            events = last_events
+                            summary = last_summary
 
-                            lat_ms = (time.time() - t0) * 1000.0
-                            rgb_f = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-                            cam_view.image(rgb_f, channels="RGB", use_container_width=True)
+                        latency_ms = (time.time() - t0) * 1000.0
+                        now = time.time()
+                        actual_fps = 1.0 / max(0.001, (now - t_last_metric))
+                        t_last_metric = now
 
-                            total_seats = len(service.seat_manager.seats)
-                            statuses = service.seat_manager.get_all_statuses()
-                            occ_seats = sum(1 for s in statuses.values() if s.state == SeatState.OCCUPIED)
-                            vac_seats = sum(1 for s in statuses.values() if s.state == SeatState.VACANT)
+                        # Lưu ảnh snapshot nếu người dùng bấm nút lưu bằng chứng
+                        if btn_save_evidence and annotated is not None:
+                            snap_dir = Path("data/snapshots")
+                            snap_dir.mkdir(parents=True, exist_ok=True)
+                            snap_path = snap_dir / f"evidence_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+                            cv2.imwrite(str(snap_path), annotated)
+                            st.toast(f"✅ Đã lưu ảnh snapshot bằng chứng: {snap_path.name}")
+                            btn_save_evidence = False
 
-                            cam_metrics.markdown(
-                                f"🪑 **Ghế:** `{total_seats}` (👤 Có người: `{occ_seats}` | 🟢 Trống: `{vac_seats}`) | "
-                                f"🎒 **Đồ theo dõi:** `{len(events)}` | "
-                                f"⚠️ **Nghi ngờ bỏ quên:** `{summary.get('suspected', 0)}` | "
-                                f"🛡️ **Che khuất:** `{summary.get('occluded', 0)}` | "
-                                f"⏱️ **FPS:** `{1000.0/max(1.0, lat_ms):.1f}` (`{lat_ms:.1f}ms`)"
-                            )
+                        # Render frame có chú thích trực tiếp lên màn hình
+                        rgb_f = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+                        frame_view.image(rgb_f, channels="RGB", use_container_width=True)
 
-                            if summary.get("suspected", 0) > 0 and not alert_fired:
+                        # Tính toán và hiển thị các chỉ số giám sát
+                        total_seats = len(service.seat_manager.seats)
+                        statuses = service.seat_manager.get_all_statuses()
+                        occ_seats = sum(1 for s in statuses.values() if s.state == SeatState.OCCUPIED)
+                        vac_seats = sum(1 for s in statuses.values() if s.state == SeatState.VACANT)
+
+                        person_count = sum(1 for obj in tracker.current_tracked_objects if obj.class_name == "person")
+                        item_count = sum(1 for obj in tracker.current_tracked_objects if obj.class_name in ITEM_CLASSES or obj.class_name == "item")
+                        sus_count = summary.get("suspected", 0)
+
+                        status_tag = "🔴 PHÁT HIỆN ĐỒ BỎ QUÊN!" if sus_count > 0 else "🟢 BÌNH THƯỜNG"
+                        status_color = "#EF4444" if sus_count > 0 else "#10B981"
+
+                        metrics_view.markdown(f"""
+                        <div style="background: #141E33; border: 1px solid #3A506B; border-radius: 8px; padding: 10px 16px; margin-top: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <div>
+                                <span style="font-weight: 700; color: #F8FAFC;">● CAMERA ACTIVE</span>
+                                <span style="color: #38BDF8; font-weight: 600; margin-left: 10px;">⚡ {actual_fps:.1f} FPS ({latency_ms:.1f}ms)</span>
+                            </div>
+                            <div style="display: flex; gap: 14px; align-items: center;">
+                                <span style="color: #CBD5E1;">🪑 Ghế: <b>{total_seats}</b> (👤 {occ_seats} | 🟢 {vac_seats})</span>
+                                <span style="color: #CBD5E1;">👤 Người: <b>{person_count}</b></span>
+                                <span style="color: #CBD5E1;">🎒 Đồ vật: <b>{item_count}</b></span>
+                                <span style="color: {status_color}; font-weight: 700; border: 1px solid {status_color}; padding: 2px 8px; border-radius: 6px; font-size: 0.85rem;">{status_tag}</span>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        # Xử lý chuông âm thanh cảnh báo khi phát hiện nghi ngờ bỏ quên
+                        if sus_count > 0:
+                            if not alert_fired:
                                 play_audio_alert()
                                 alert_fired = True
+                            alert_view.error(f"⚠️ **CẢNH BÁO BỎ QUÊN:** Phát hiện {sus_count} đồ vật bị bỏ lại trên ghế trống! Hãy kiểm tra khoang hành khách.")
+                        else:
+                            alert_fired = False
+                            alert_view.empty()
 
-                            frame_idx += 1
-                    finally:
-                        cap.release()
+                        frame_idx += 1
+                        time.sleep(0.01)
+
+                finally:
+                    reader.stop()
+                    st.info("⏹️ Đã dừng luồng camera và giải phóng phần cứng an toàn.")
+        else:
+            st.info("💡 Hãy bật công tắc **'🔴 BẬT / TẮT CAMERA THỜI GIAN THỰC'** ở trên để bắt đầu quan sát luồng video webcam trực tiếp.")
 
     elif "Luồng IP / RTSP" in source_mode:
         rtsp_url = st.text_input("Nhập URL luồng RTSP (ví dụ: rtsp://admin:123456@192.168.1.100:554/stream1):")
@@ -1127,23 +1167,45 @@ def page_seats(service: AnalysisService):
         )
 
         diag = service.get_seat_diagnostics()
+        seat_ready = diag.get("seat_detection_ready", False)
         custom_ready = diag.get("custom_adapter_ready", False)
+        roboflow_ready = diag.get("roboflow_ready", False)
+        mode = diag.get("inference_mode", "local")
 
-        if not custom_ready:
-            st.markdown("""
+        if not seat_ready:
+            diag_explanation = diag.get("diagnostic_message") or (
+                "Chưa kích hoạt được mô hình nhận diện ghế chuyên biệt cho góc nhìn camera trần xe buýt.<br>"
+                "• <b>Mô hình YOLO COCO cục bộ</b> (<code>yolov8n.pt</code>) chỉ có lớp <code>chair</code> (ghế tựa gia đình nhìn ngang), "
+                "<b>không nhận diện được</b> đệm ghế xe buýt nhìn từ trên trần xuống.<br>"
+                "• <b>Để nhận diện ghế bằng AI thực thụ:</b><br>"
+                "&nbsp;&nbsp;1. Chuyển sang <b>Chế độ Roboflow hoặc Hybrid</b> để sử dụng mô hình Roboflow chuyên biệt (đã huấn luyện các lớp ghế: empty_seat, human_occupied, object_occupied).<br>"
+                "&nbsp;&nbsp;2. Hoặc nạp file trọng số YOLO26 chuyên biệt vào đường dẫn <code>models/best.pt</code>.<br>"
+                "• <b>Minh bạch kỹ thuật:</b> Hệ thống tuyệt đối không tự ý sinh sơ đồ hình học rồi mạo nhận là AI."
+            )
+            st.markdown(f"""
             <div style="background: #1C2541; border-left: 4px solid #F59E0B; padding: 14px 16px; border-radius: 6px; margin-bottom: 14px;">
                 <div style="font-weight: 700; color: #FBBF24; font-size: 0.95rem;">
-                    ⚠️ CUSTOM SEAT MODEL NOT CONFIGURED
+                    ⚠️ CUSTOM SEAT MODEL NOT CONFIGURED (Chế độ: {mode.upper()})
                 </div>
                 <div style="color: #CBD5E1; font-size: 0.85rem; margin-top: 6px; line-height: 1.5;">
-                    Chưa nạp file weights mô hình chuyên biệt cho ghế xe buýt (mặc định tìm: <code>models/bus_seat_yolo.pt</code>).<br>
-                    • Model YOLO COCO chuẩn (<code>yolov8n.pt</code>) chỉ có lớp <code>chair</code> (ghế tựa văn phòng nhìn ngang), 
-                    <b>tuyệt đối không nhận diện được</b> đệm ghế xe buýt nhìn từ trên xuống (top-down view).<br>
-                    • <b>Minh bạch kỹ thuật:</b> Hệ thống không tự ý sinh sơ đồ hình học rồi mạo nhận là AI. 
-                    Để kiểm thử luồng hệ thống khi chưa có weights, hãy tích chọn cho phép phương án dự phòng bên dưới.
+                    {diag_explanation}
                 </div>
             </div>
             """, unsafe_allow_html=True)
+            if roboflow_ready:
+                btn_c1, btn_c2 = st.columns(2)
+                with btn_c1:
+                    if st.button("🔄 Chuyển sang Chế độ Hybrid AI (Khuyến nghị)", key="switch_to_hybrid_seat_page"):
+                        service.inference_mode = "hybrid"
+                        os.environ["INFERENCE_MODE"] = "hybrid"
+                        st.toast("✅ Đã chuyển sang chế độ HYBRID!")
+                        st.rerun()
+                with btn_c2:
+                    if st.button("☁️ Chuyển sang Chế độ Roboflow AI", key="switch_to_rf_seat_page"):
+                        service.inference_mode = "roboflow"
+                        os.environ["INFERENCE_MODE"] = "roboflow"
+                        st.toast("✅ Đã chuyển sang chế độ ROBOFLOW!")
+                        st.rerun()
             allow_fallback = st.checkbox(
                 "Cho phép dùng GEOMETRY FALLBACK để kiểm thử luồng (Dự phòng kiểm thử, KHÔNG PHẢI AI)",
                 value=False,
@@ -1151,7 +1213,8 @@ def page_seats(service: AnalysisService):
             )
         else:
             allow_fallback = False
-            st.success(f"✅ Đã kết nối Custom Seat Model chuyên biệt (`{diag.get('model_weights')}`). Sẵn sàng nhận diện trực tiếp từ ảnh!")
+            model_source = "Roboflow Serverless Workflow" if (mode in ("roboflow", "hybrid") and roboflow_ready) else diag.get("model_weights")
+            st.success(f"✅ Sẵn sàng nhận diện ghế AI từ camera! Chế độ: **{mode.upper()}** | Nguồn model: `{model_source}` | Lớp ghế: `{diag.get('supported_classes', [])}`")
 
         col_cfg1, col_cfg2, col_cfg3 = st.columns(3)
         with col_cfg1:
@@ -1163,7 +1226,7 @@ def page_seats(service: AnalysisService):
 
         auto_naming = st.selectbox(
             "Quy tắc đặt Seat ID:",
-            ["SEAT_1A, SEAT_1B... (Khuyên dùng chuẩn hàng không/xe khách)", "SEAT_001, SEAT_002..."],
+            ["SEAT_001, SEAT_002... (Chuẩn số hóa)", "SEAT_1A, SEAT_1B... (Chuẩn hàng không/xe khách)"],
             key="auto_naming"
         )
         naming_format = "SEAT" if "1A" in auto_naming else "NUM"
@@ -1192,11 +1255,11 @@ def page_seats(service: AnalysisService):
 
         if target_frame is None:
             target_frame = np.full((720, 1280, 3), (35, 30, 25), dtype=np.uint8)
-            cv2.putText(target_frame, "OVERHEAD BUS CABIN SIMULATION", (340, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (200, 200, 200), 2)
+            draw_text_unicode(target_frame, "MÔ PHỎNG KHOANG XE BUÝT TỪ TRẦN", (340, 45), font_size=18, text_color=(200, 200, 200), bg_color=(20, 24, 32))
 
         if st.button("🚀 Bắt đầu Quét & Nhận diện Từng Ghế", type="primary", use_container_width=True):
-            if not custom_ready and not allow_fallback:
-                st.error("❌ CUSTOM SEAT MODEL NOT CONFIGURED: Chưa nạp mô hình ghế chuyên biệt và bạn chưa kích hoạt tùy chọn GEOMETRY FALLBACK.")
+            if not seat_ready and not allow_fallback:
+                st.error("❌ CUSTOM SEAT MODEL NOT CONFIGURED: Chưa nạp mô hình ghế chuyên biệt cho chế độ hiện tại và chưa kích hoạt tùy chọn GEOMETRY FALLBACK.")
             else:
                 with st.spinner("Đang chạy phân tích thị giác..."):
                     res = service.auto_detect_seats(
@@ -1210,7 +1273,10 @@ def page_seats(service: AnalysisService):
                     )
                     st.session_state["last_seat_detection_result"] = res
                     if res.method == SeatDetectionMethod.MODEL_DETECTION:
-                        st.success(f"✅ MODEL DETECTION: Đã nhận diện thành công {res.total_seats} ghế bằng mô hình AI chuyên biệt!")
+                        if res.total_seats > 0:
+                            st.success(f"✅ MODEL DETECTION: Đã nhận diện thành công {res.total_seats} ghế bằng mô hình AI ({res.model_name})!")
+                        else:
+                            st.info(f"ℹ️ {res.message}")
                     elif res.method == SeatDetectionMethod.GEOMETRY_FALLBACK:
                         st.warning(f"⚠️ GEOMETRY FALLBACK: Đã sinh {res.total_seats} ghế bằng lưới hình học dự phòng để kiểm thử luồng (KHÔNG PHẢI AI)!")
                     else:
@@ -1225,6 +1291,8 @@ def page_seats(service: AnalysisService):
 
             for s in res.seats:
                 poly = s.get_pixel_polygon(cur_w, cur_h)
+                if len(poly) < 3:
+                    continue
                 pts_arr = np.array(poly, dtype=np.int32).reshape((-1, 1, 2))
                 
                 # Màu sắc: Phân biệt ghế trái (Cyan) và ghế phải (Teal)
@@ -1236,31 +1304,37 @@ def page_seats(service: AnalysisService):
 
                 cx = int(np.mean([p[0] for p in poly]))
                 cy = int(np.mean([p[1] for p in poly]))
-                cv2.putText(preview_img, s.seat_id, (cx - 35, cy + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
+                seat_label = format_seat_label(s.seat_id)
+                draw_text_unicode(preview_img, seat_label, (cx - 30, cy - 8), font_size=12, text_color=(255, 255, 255), bg_color=(20, 25, 35))
 
             cv2.addWeighted(overlay, 0.25, preview_img, 0.75, 0, preview_img)
             method_caption = (
-                f"🎯 [MODEL DETECTION - AI CHUYÊN BIỆT] {res.total_seats} ghế được phát hiện trực tiếp từ hình ảnh"
+                f"🎯 [MODEL DETECTION - AI CHUYÊN BIỆT] {res.total_seats} ghế được phát hiện trực tiếp từ hình ảnh ({res.model_name})"
                 if res.method == SeatDetectionMethod.MODEL_DETECTION
                 else f"⚠️ [GEOMETRY FALLBACK - DỰ PHÒNG KIỂM THỬ, KHÔNG PHẢI AI] {res.total_seats} ghế sinh từ lưới tham số"
             )
             st.image(cv2.cvtColor(preview_img, cv2.COLOR_BGR2RGB), caption=method_caption, use_container_width=True)
 
-            seat_rows_data = []
-            for s in res.seats:
-                poly = s.get_pixel_polygon(cur_w, cur_h)
-                seat_rows_data.append({
-                    "Seat ID": s.seat_id,
-                    "Vị trí / Loại": s.description,
-                    "Cơ chế phát hiện": "🧠 AI Model" if res.method == SeatDetectionMethod.MODEL_DETECTION else "⚙️ Geometry Fallback (Test Only)",
-                    "Tọa độ Pixel (Top-Left → Bottom-Right)": f"({poly[0][0]}, {poly[0][1]}) → ({poly[2][0]}, {poly[2][1]})",
-                    "Phân tách độc lập": "✅ Tách biệt hoàn toàn",
-                })
-            st.dataframe(pd.DataFrame(seat_rows_data), use_container_width=True)
+            if res.seats:
+                seat_rows_data = []
+                for s in res.seats:
+                    poly = s.get_pixel_polygon(cur_w, cur_h)
+                    coord_str = f"({poly[0][0]}, {poly[0][1]}) → ({poly[2][0]}, {poly[2][1]})" if len(poly) >= 3 else "N/A"
+                    seat_rows_data.append({
+                        "Seat ID": format_seat_label(s.seat_id),
+                        "Vị trí / Loại": s.description,
+                        "Cơ chế phát hiện": f"🧠 AI Model ({res.model_name})" if res.method == SeatDetectionMethod.MODEL_DETECTION else "⚙️ Geometry Fallback (Test Only)",
+                        "Tọa độ Pixel": coord_str,
+                        "Phân tách độc lập": "✅ Tách biệt hoàn toàn",
+                    })
+                st.dataframe(pd.DataFrame(seat_rows_data), use_container_width=True)
+            else:
+                st.info("ℹ️ Hiện không có ghế nào được hiển thị do mô hình AI không phát hiện ghế trong khung hình này.")
+
 
     with tab_grid:
-        st.markdown("##### 🚌 Trình sinh nhanh sơ đồ xe buýt (Bus Grid Generator)")
-        st.caption("Ghế xe buýt là các thực thể cố định, giữ ID vĩnh viễn và không phụ thuộc vào vùng chuyển động.")
+        st.markdown("##### 🚌 Tham chiếu hình học mô phỏng (Simulation Geometry Reference)")
+        st.info("ℹ️ **Lưu ý kiến trúc:** Hệ thống hiện tại sử dụng **Genuine AI Seat Detection** trực tiếp từ khung hình camera. Các ghế hiển thị trên camera và video được phát hiện bằng AI model chứ không dùng sơ đồ cố định. Công cụ dưới đây chỉ phục vụ kiểm thử mô phỏng ngoại tuyến (Offline Simulation Test).")
 
         gcol1, gcol2, gcol3 = st.columns(3)
         with gcol1:
@@ -1270,12 +1344,12 @@ def page_seats(service: AnalysisService):
         with gcol3:
             right_cols = st.number_input("Số ghế bên phải lối đi", 1, 3, 2, 1, key="grid_right")
 
-        name_style = st.selectbox("Định dạng tên ghế:", ["SEAT_1A, SEAT_1B...", "S01, S02, S03..."], key="grid_name_style")
+        name_style = st.selectbox("Định dạng tên ghế:", ["SEAT_001, SEAT_002...", "SEAT_1A, SEAT_1B..."], key="grid_name_style")
 
         total_seats = rows * (left_cols + right_cols)
-        st.info(f"Sơ đồ sẽ tạo tổng cộng **{total_seats} ghế cố định**.")
+        st.caption(f"Sơ đồ mô phỏng gồm **{total_seats} ghế**.")
 
-        if st.button("💾 Tạo và Lưu Sơ đồ Ghế mới", type="primary"):
+        if st.button("🧪 Tạo Sơ đồ Ghế Kiểm thử Mô phỏng", type="secondary"):
             from src.seats.seat_manager import SeatManager
             style_code = "SEAT" if "1A" in name_style else "NUM"
             new_grid = SeatManager.generate_bus_grid(
@@ -1285,7 +1359,7 @@ def page_seats(service: AnalysisService):
                 naming_style=style_code,
             )
             service.save_seats(new_grid)
-            st.success(f"✅ Đã tạo thành công {len(new_grid)} ghế cố định!")
+            st.success(f"✅ Đã nạp {len(new_grid)} ghế mô phỏng kiểm thử!")
             st.rerun()
 
     with tab_list:
@@ -1313,34 +1387,42 @@ def page_seats(service: AnalysisService):
         st.markdown("##### 🧠 Báo cáo Khả năng Model & Hỗ trợ Nhận diện Ghế")
         diag = service.get_seat_diagnostics()
         custom_ready = diag.get("custom_adapter_ready", False)
-        weights_path = diag.get("model_weights", "models/bus_seat_yolo.pt")
+        roboflow_ready = diag.get("roboflow_ready", False)
+        seat_ready = diag.get("seat_detection_ready", False)
+        mode = diag.get("inference_mode", "local")
+        weights_path = diag.get("model_weights", "models/best.pt")
 
-        status_color = "#10B981" if custom_ready else "#EF4444"
-        status_text = "ĐÃ SẴN SÀNG (Custom Weights Found)" if custom_ready else "CUSTOM SEAT MODEL NOT CONFIGURED"
+        status_color = "#10B981" if seat_ready else "#EF4444"
+        if seat_ready:
+            status_text = f"ĐÃ SẴN SÀNG ({mode.upper()})"
+        else:
+            status_text = f"CUSTOM SEAT MODEL NOT CONFIGURED ({mode.upper()})"
 
         st.markdown(f"""
         <div style="background: #141E33; border: 1px solid #3A506B; padding: 16px; border-radius: 8px; margin-bottom: 12px;">
-            <h4 style="color: #F8FAFC; margin-top: 0;">📊 Trạng thái Adapter Nhận diện Ghế Chuyên biệt</h4>
+            <h4 style="color: #F8FAFC; margin-top: 0;">📊 Trạng thái Nhận diện Ghế Chuyên biệt từ Camera</h4>
             <div style="margin-bottom: 10px;">
-                <span style="color: #94A3B8;">Trạng thái Model Ghế:</span> 
+                <span style="color: #94A3B8;">Trạng thái Tổng thể:</span> 
                 <span class="badge" style="background: {status_color}22; color: {status_color}; border: 1px solid {status_color}; font-weight: bold;">{status_text}</span>
             </div>
             <ul style="color: #CBD5E1; line-height: 1.6;">
-                <li><b>Đường dẫn kiểm tra trọng số:</b> <code>{weights_path}</code></li>
+                <li><b>Chế độ Inference hiện hành:</b> <code>{mode.upper()}</code></li>
+                <li><b>Roboflow Workflow Seat Model:</b> <span style="color: {'#10B981' if roboflow_ready else '#F59E0B'}; font-weight: bold;">{'ĐÃ KẾT NỐI (empty_seat, human_occupied, object_occupied)' if roboflow_ready else 'CHƯA CẤU HÌNH'}</span></li>
+                <li><b>Local Custom Weights:</b> <span style="color: {'#10B981' if custom_ready else '#EF4444'}; font-weight: bold;">{'SẴN SÀNG (' + weights_path + ')' if custom_ready else 'CHƯA CÓ TRỌNG SỐ TẠI ' + weights_path}</span></li>
                 <li><b>Lớp COCO 56 (chair):</b> <span style="color: #EF4444; font-weight: bold;">TỪ CHỐI TỰ ĐỘNG</span> (ghế tựa văn phòng nhìn ngang, không nhận diện được đệm ghế trần xe buýt).</li>
-                <li><b>Các lớp ghế xe buýt hợp lệ:</b> <code>bus_seat</code>, <code>seat</code>, <code>seat_cushion</code>, <code>seat_window</code>, <code>seat_aisle</code>.</li>
-                <li><b>Cơ chế fallback hiện hành:</b> <code>{service.seat_manager.active_detection_method.value}</code></li>
-                <li><b>Phân tách ghế đôi (Twin-Seat):</b> <span style="color: #10B981; font-weight: bold;">TÍCH HỢP (Độc lập Ghế A & Ghế B)</span></li>
+                <li><b>Lớp ghế đang hỗ trợ:</b> <code>{diag.get('supported_classes', [])}</code></li>
+                <li><b>Phương thức hiện hành:</b> <code>{service.seat_manager.active_detection_method.value}</code></li>
             </ul>
             <div style="background: #0F172A; padding: 12px; border-radius: 6px; border-left: 4px solid #3B82F6; margin-top: 10px;">
                 <p style="margin: 0; color: #94A3B8; font-size: 0.9rem;">
-                    💡 <b>Hướng dẫn nạp model chuyên biệt:</b> Đặt file trọng số <code>models/bus_seat_yolo.pt</code> được huấn luyện trên 
-                    tập dữ liệu camera trần xe buýt vào thư mục dự án. Hệ thống sẽ tự động đọc danh sách class từ file weights và chuyển sang 
-                    nhận diện hoàn toàn bằng AI thực thụ.
+                    💡 <b>Giải pháp nhận diện ghế AI:</b><br>
+                    1. <b>Khuyên dùng:</b> Vào <b>Cài đặt & Bảo mật</b>, chọn chế độ <b>Roboflow</b> hoặc <b>Hybrid</b>. Hệ thống sẽ sử dụng mô hình Roboflow chuyên biệt để nhận diện ghế từ camera.<br>
+                    2. <b>Hoặc:</b> Nạp file weights YOLO26 chuyên biệt vào đường dẫn <code>models/best.pt</code>.
                 </p>
             </div>
         </div>
         """, unsafe_allow_html=True)
+
 
 
 # ══════════════════════════════════════════════
@@ -1364,8 +1446,8 @@ def page_dataset(service: AnalysisService):
     with m4:
         st.metric("Tập Val / Test", f"{dstats.get('splits', {}).get('val', 0)} / {dstats.get('splits', {}).get('test', 0)}")
 
-    tab_upload, tab_extract, tab_annotate, tab_export = st.tabs([
-        "📤 Tải lên ảnh mới", "🎞️ Trích xuất frame từ Video", "🏷️ Gán nhãn Bounding Box", "📦 Xuất chuẩn YOLO (.zip)"
+    tab_upload, tab_extract, tab_annotate, tab_export, tab_roboflow = st.tabs([
+        "📤 Tải lên ảnh mới", "🎞️ Trích xuất frame từ Video", "🏷️ Gán nhãn Bounding Box", "📦 Xuất chuẩn YOLO (.zip)", "☁️ Roboflow Cloud Dataset"
     ])
 
     with tab_upload:
@@ -1444,6 +1526,102 @@ def page_dataset(service: AnalysisService):
             else:
                 st.error(msg)
 
+    with tab_roboflow:
+        st.markdown("##### ☁️ Roboflow Cloud Dataset & Model Training Workflow")
+        st.caption("Đồng bộ dữ liệu trực tiếp với Roboflow Serverless Workflow và dự án Cloud.")
+        from src.roboflow.dataset_workflow import RoboflowDatasetWorkflow
+
+        try:
+            rf_wf = RoboflowDatasetWorkflow()
+            summary = rf_wf.get_project_summary()
+            val = rf_wf.validate_annotations()
+
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.metric("Tổng ảnh trên Roboflow", summary["images_total"])
+            with c2:
+                st.metric("Đã gán nhãn", val["annotated_images"])
+            with c3:
+                st.metric("Chưa gán nhãn", val["unannotated_images"])
+            with c4:
+                st.metric("Số phiên bản Dataset", len(summary.get("versions", [])))
+
+            st.markdown("###### Phân bố lớp đối tượng (Seat & Occupancy Classes):")
+            st.json(summary["classes"])
+
+            if val["issues"]:
+                for issue in val["issues"]:
+                    st.warning(f"⚠️ {issue}")
+            if val["recommendations"]:
+                for rec in val["recommendations"]:
+                    st.info(f"💡 {rec}")
+
+            st.markdown("---")
+            st.markdown("###### 📤 Tải ảnh lên Roboflow Dataset:")
+            rf_files = st.file_uploader("Chọn ảnh để tải lên Roboflow:", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="rf_up")
+            rf_split = st.selectbox("Tập dữ liệu đích (Split):", ["train", "valid", "test"], key="rf_split")
+            if rf_files and st.button("Tải lên Roboflow", type="primary"):
+                import tempfile
+                up_cnt = 0
+                for f in rf_files:
+                    tmp_p = Path(tempfile.mkstemp(suffix=Path(f.name).suffix)[1])
+                    with open(tmp_p, "wb") as tmp_f:
+                        tmp_f.write(f.getvalue())
+                    try:
+                        rf_wf.upload_image(tmp_p, split=rf_split)
+                        up_cnt += 1
+                    except Exception as e:
+                        st.error(f"Lỗi tải {f.name}: {e}")
+                    finally:
+                        tmp_p.unlink(missing_ok=True)
+                st.success(f"Đã tải thành công {up_cnt} ảnh lên Roboflow tập {rf_split}!")
+                st.rerun()
+
+            st.markdown("---")
+            st.markdown("###### 📦 Tạo phiên bản Dataset mới (Version Generation):")
+            v_col1, v_col2 = st.columns([3, 1])
+            with v_col1:
+                v_name = st.text_input("Tên phiên bản mới:", value=f"bus-seat-v{len(summary.get('versions', [])) + 1}")
+            with v_col2:
+                st.write("")
+                st.write("")
+                gen_btn = st.button("🚀 Tạo Version", use_container_width=True)
+            if gen_btn:
+                try:
+                    gen_res = rf_wf.generate_version(version_name=v_name)
+                    st.success(f"✅ Đã gửi yêu cầu tạo phiên bản trên Roboflow: {gen_res}")
+                except Exception as e:
+                    st.error(f"Lỗi tạo version: {e}")
+
+            st.markdown("---")
+            st.markdown("###### 🏆 Đánh giá & Kích hoạt Model Roboflow:")
+            versions_list = summary.get("versions", [])
+            if versions_list:
+                v_nums = [v.get("version", 1) for v in versions_list]
+                chosen_v = st.selectbox("Chọn phiên bản để xem đánh giá & kích hoạt:", v_nums, index=0)
+                eval_data = rf_wf.get_model_evaluation(chosen_v)
+                m_metrics = eval_data.get("metrics", {})
+                e1, e2, e3 = st.columns(3)
+                with e1:
+                    st.metric("mAP50", f"{m_metrics.get('map50', 0.0):.1f}%")
+                with e2:
+                    st.metric("Precision", f"{m_metrics.get('precision', 0.0):.1f}%")
+                with e3:
+                    st.metric("Recall", f"{m_metrics.get('recall', 0.0):.1f}%")
+
+                st.caption(f"Model ID: `{eval_data.get('model_id')}` | Trạng thái: `{eval_data.get('status')}`")
+                ms = getattr(service, "model_service", None) or getattr(service, "_model_service", None)
+                if st.button(f"⭐ Kích hoạt Model Roboflow Version {chosen_v} cho hệ thống", type="primary"):
+                    ok_act, msg_act = rf_wf.activate_model(chosen_v, model_service=ms)
+                    if ok_act:
+                        st.success(msg_act)
+                        st.rerun()
+                    else:
+                        st.error(msg_act)
+        except Exception as e:
+            st.error(f"Không thể kết nối Roboflow Dataset API: {e}")
+
+
 
 # ══════════════════════════════════════════════
 # TRANG 6: QUẢN LÝ MODEL (MODEL VERSIONING)
@@ -1473,7 +1651,12 @@ def page_model_management(service: AnalysisService):
         </div>
         """, unsafe_allow_html=True)
 
-    tab_list, tab_train = st.tabs(["📋 Danh sách các Model", "⚙️ Huấn luyện & Đăng ký Candidate Model"])
+    tab_list, tab_train, tab_roboflow = st.tabs([
+        "📋 Danh sách Model Local",
+        "⚙️ Huấn luyện Model Local",
+        "☁️ Quản lý Version Model Roboflow",
+    ])
+
 
     with tab_list:
         st.markdown("##### 🎯 Model YOLO26 Instance Segmentation (Ultralytics Platform)")
@@ -1715,10 +1898,109 @@ def page_model_management(service: AnalysisService):
                 with st.expander("📜 Xem nhật ký huấn luyện (Log Tail)", expanded=(st_code == "running")):
                     st.code("".join(log_tail), language="text")
 
+    with tab_roboflow:
+        st.markdown("##### ☁️ Quản lý Phiên bản Model Roboflow (Roboflow Workflow & Model Versions)")
+        st.caption("Xem thông tin model đã triển khai, danh sách phiên bản (Versions), và chuyển đổi phiên bản active phục vụ suy luận mà không cần sửa code.")
+
+        rf_client = getattr(service, "roboflow_client", None)
+        if rf_client is None:
+            try:
+                from src.roboflow.roboflow_client import RoboflowWorkflowClient
+                rf_client = RoboflowWorkflowClient()
+            except Exception as e:
+                rf_client = None
+
+        if rf_client and rf_client.api_key:
+            wf_info = rf_client.get_workflow_info()
+            meta = rf_client.get_project_metadata()
+            proj_name = meta.get("name", wf_info["project_id"])
+            proj_type = meta.get("type", "object-detection")
+            active_ver = rf_client.model_version
+
+            st.markdown(f"""
+            <div style="background: #141E33; border: 1px solid #3A506B; padding: 14px 18px; border-radius: 8px; margin-bottom: 14px;">
+                <div style="font-size: 1.1rem; font-weight: 700; color: #F8FAFC;">
+                    🚌 Dự án: {proj_name} (Workspace: <code>{wf_info['workspace']}</code>)
+                </div>
+                <div style="color: #94A3B8; font-size: 0.85rem; margin-top: 4px;">
+                    Tác vụ model: <b>{proj_type.upper()}</b> | Phiên bản active hiện tại: <b>Version {active_ver}</b> | Workflow: <code>{wf_info['workflow_id']}</code>
+                </div>
+                <div style="color: #CBD5E1; font-size: 0.85rem; margin-top: 6px;">
+                    <b>API Key:</b> <code>{wf_info['masked_api_key']}</code> (Bảo mật, không lộ khóa) | <b>Inference SDK:</b> {'✅ Sẵn sàng' if wf_info['sdk_available'] else '⚠️ Fallback HTTP'}
+                </div>
+                <div style="color: #38BDF8; font-size: 0.85rem; margin-top: 4px;">
+                    🎯 <b>Model ID đích (Inference Target):</b> <code>{wf_info.get('target_model_id', f"{wf_info['project_id']}/{active_ver}")}</code> | <b>Trạng thái:</b> <code>{wf_info.get('last_inference_info', {}).get('status', 'READY')}</code>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            last_inf = wf_info.get("last_inference_info", {})
+            if last_inf.get("error"):
+                st.error(
+                    f"⚠️ **Thông báo suy luận Roboflow:** Yêu cầu tới model `{last_inf.get('requested_model_id')}` "
+                    f"thất bại: {last_inf.get('error')}"
+                )
+
+            st.info(
+                "ℹ️ **Minh bạch kỹ thuật về tác vụ model:**\n\n"
+                f"• Dự án Roboflow `{wf_info['project_id']}` hiện tại được cấu hình kiểu **`{proj_type}`**.\n"
+                "• Mô hình xuất ra **khung bao Bounding Box** cho 3 lớp trạng thái ghế: `empty_seat`, `human_occupied`, `object_occupied`.\n"
+                "• Dù ảnh huấn luyện có vẽ polygon, model deployed dạng `object-detection` chỉ trả về bounding box. Để có mặt nạ pixel (Instance Segmentation) từ Roboflow, cần tạo version mới với kiểu `instance-segmentation` và train model segmentation (ví dụ YOLOv8-seg hoặc YOLOv11-seg)."
+            )
+
+            classes = meta.get("classes", {})
+            if classes:
+                st.markdown("###### 📊 Phân bố các lớp đối tượng trong tập dữ liệu:")
+                cls_cols = st.columns(len(classes))
+                for idx, (cname, ccount) in enumerate(classes.items()):
+                    with cls_cols[idx]:
+                        st.metric(label=cname, value=ccount)
+
+            st.markdown("---")
+            st.markdown("##### 🔄 Danh sách Phiên bản (Versions) & Chuyển đổi Model Active")
+
+            versions = rf_client.list_available_versions()
+            if not versions:
+                st.warning("Chưa đọc được danh sách version từ Roboflow REST API. Đang sử dụng Version mặc định.")
+            else:
+                ver_options = [f"Version {v['version']} — {v['name']} ({v.get('images', 0)} ảnh)" for v in versions]
+                current_idx = 0
+                for i, v in enumerate(versions):
+                    if str(v["version"]) == str(active_ver):
+                        current_idx = i
+                        break
+
+                selected_ver_str = st.selectbox(
+                    "Chọn phiên bản model Roboflow để kích hoạt:",
+                    ver_options,
+                    index=current_idx,
+                    key="rf_version_select"
+                )
+                selected_ver_num = selected_ver_str.split(" — ")[0].replace("Version ", "").strip()
+
+                if st.button("🚀 Kích hoạt Phiên bản Model này cho Toàn hệ thống", type="primary"):
+                    ok_switch = rf_client.set_active_version(selected_ver_num)
+                    if ok_switch:
+                        st.success(f"✅ Đã kích hoạt Roboflow Model Version {selected_ver_num} thành công! Hệ thống sẽ dùng phiên bản này cho inference mà không cần sửa code.")
+                        st.rerun()
+
+            st.markdown("---")
+            st.markdown("##### 📋 Quy trình Cập nhật Model Roboflow (Lifecycle Playbook)")
+            st.markdown("""
+            Để thêm dữ liệu và cập nhật model mà không phát sinh lỗi hay tự ý phát sinh chi phí:
+            1. **Bước 1 - Tải ảnh & Gán nhãn:** Thêm ảnh mới vào dự án trên Roboflow Web và gán nhãn chính xác (`empty_seat`, `human_occupied`, `object_occupied`).
+            2. **Bước 2 - Sinh Dataset Version:** Trên Roboflow, chọn *Generate New Version* (chọn tiền xử lý/tăng cường dữ liệu). Thao tác này hoàn toàn **miễn phí**.
+            3. **Bước 3 - Huấn luyện Model (Roboflow Train):** Bấm *Start Training* trên Roboflow. Bước này sẽ sử dụng Roboflow training credits và chỉ chạy khi bạn chủ động xác nhận trên Roboflow. *Ứng dụng không tự ý trigger train ngầm để tránh phát sinh chi phí ngoài ý muốn.*
+            4. **Bước 4 - Kích hoạt vào Ứng dụng:** Sau khi huấn luyện hoàn tất, tải lại tab này, chọn Version vừa sinh trong danh sách ở trên và bấm **Kích hoạt Phiên bản Model**. Toàn bộ luồng nhận diện xe buýt sẽ lập tức chuyển sang model mới!
+            """)
+        else:
+            st.error("Chưa kết nối được Roboflow Client. Vui lòng kiểm tra biến môi trường ROBOFLOW_API_KEY trong file .env.")
+
 
 # ══════════════════════════════════════════════
 # TRANG 7: CẤU HÌNH THÔNG BÁO (NOTIFICATIONS)
 # ══════════════════════════════════════════════
+
 def page_notifications(service: AnalysisService):
     render_header(
         title="Cấu hình Thông báo & Cảnh báo (Notification Center)",
@@ -1828,6 +2110,55 @@ def page_settings(service: AnalysisService):
     with c2:
         st.slider("Ngưỡng di chuyển coi là đứng yên (pixels)", 10.0, 80.0, float(STATIONARY_MOVEMENT_THRESHOLD))
 
+    st.markdown("---")
+    st.markdown("##### 🚀 Tùy chọn Inference & Tracking Đa chế độ")
+    inf_c1, inf_c2 = st.columns(2)
+    current_mode = getattr(service, "inference_mode", os.getenv("INFERENCE_MODE", "local")).lower()
+    mode_options = [
+        "local (Chạy YOLO cục bộ)",
+        "roboflow (Chạy Roboflow Serverless Workflow)",
+        "hybrid (Kết hợp Local YOLO + Roboflow Remote)",
+    ]
+    cur_idx = 1 if current_mode == "roboflow" else (2 if current_mode == "hybrid" else 0)
+
+    with inf_c1:
+        sel_mode = st.selectbox(
+            "Chế độ Inference (Inference Mode):",
+            mode_options,
+            index=cur_idx,
+            help="Chế độ hybrid dung hợp phát hiện từ cả model cục bộ và workflow từ xa mà không loại bỏ nhầm thực thể.",
+            key="settings_inf_mode_select",
+        )
+        new_mode = "roboflow" if "roboflow" in sel_mode else ("hybrid" if "hybrid" in sel_mode else "local")
+        if new_mode != current_mode:
+            service.inference_mode = new_mode
+            os.environ["INFERENCE_MODE"] = new_mode
+            st.toast(f"✅ Đã chuyển sang chế độ {new_mode.upper()}!")
+
+    with inf_c2:
+        st.selectbox(
+            "Kiến trúc Model YOLO:",
+            [
+                "yolo26n-seg.pt (YOLO26 Instance Segmentation - Có Masks)",
+                "yolo26n.pt (YOLO26 Object Detection - Bounding Box)",
+                "models/best.pt (Custom Segmentation Weights)",
+            ],
+            index=0,
+            help="YOLO26 Instance Segmentation trích xuất mask phân đoạn pixel cho ghế, người và vật thể.",
+        )
+
+    st.markdown("---")
+    st.markdown("##### ☁️ Kết nối Roboflow Serverless Workflow")
+    from src.roboflow.roboflow_client import RoboflowWorkflowClient
+    try:
+        rf_client = RoboflowWorkflowClient()
+        wf_info = rf_client.get_workflow_info()
+        st.success(f"✅ Workflow đã sẵn sàng: Workspace `{wf_info['workspace']}` | Workflow ID `{wf_info['workflow_id']}`")
+        st.caption(f"Endpoint: `{wf_info['api_url']}` | inference-sdk: `{'Sẵn sàng' if wf_info['sdk_available'] else 'Không có'}`")
+    except Exception as e:
+        st.warning(f"⚠️ Chưa kết nối Roboflow Workflow: {e}")
+
 
 if __name__ == "__main__":
     main()
+

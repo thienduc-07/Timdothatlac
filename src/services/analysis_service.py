@@ -68,6 +68,9 @@ class AnalysisService:
         self._seat_config_mgr = SeatConfigManager()
         self._seat_manager = SeatManager()
         self._model_loaded = False
+        from config.settings import INFERENCE_MODE
+        self.inference_mode = INFERENCE_MODE
+        self.roboflow_client = None
 
     def initialize(self) -> bool:
         """
@@ -91,6 +94,15 @@ class AnalysisService:
         self._model_repo = ModelRepository(conn)
         self._model_service = ModelService(self._model_repo)
 
+        # Khởi tạo Roboflow client nếu có cấu hình
+        try:
+            from src.roboflow.roboflow_client import RoboflowWorkflowClient
+            self.roboflow_client = RoboflowWorkflowClient()
+            self._seat_manager.detector.set_roboflow_client(self.roboflow_client)
+            logger.info("AnalysisService: Khởi tạo RoboflowWorkflowClient thành công")
+        except Exception as e:
+            logger.info(f"AnalysisService: Chưa cấu hình Roboflow client: {e}")
+
         # Khởi tạo YOLO detector
         self._detector = YOLODetector()
         if not self._detector.load_model():
@@ -106,17 +118,13 @@ class AnalysisService:
                 self._seat_manager.set_shared_model(self._detector.model)
                 logger.info("Đã tự động chia sẻ model instance cho SeatManager")
 
-        # Tải cấu hình vùng ghế nếu có
-        saved_seats = self._seat_config_mgr.load_seats()
-        if saved_seats:
-            self._seat_manager.set_seats(saved_seats)
-            logger.info(f"Đã tải {len(saved_seats)} ghế từ cấu hình")
-        else:
-            logger.warning("Chưa có cấu hình vùng ghế. Người dùng cần thiết lập Seat ROI.")
+        # SeatManager sẵn sàng nhận diện ghế động từ camera feed
+        logger.info("SeatManager đã sẵn sàng nhận diện ghế động từ camera feed")
 
         self._model_loaded = True
         logger.info("AnalysisService khởi tạo thành công toàn bộ hệ thống")
         return True
+
 
     @property
     def alert_service(self) -> Optional[AlertService]:
@@ -197,11 +205,17 @@ class AnalysisService:
             right_cols=right_cols,
             naming_format=naming_format,
             save_to_disk=save_to_disk,
+            roboflow_client=self.roboflow_client,
+            inference_mode=self.inference_mode,
         )
+
 
     def get_seat_diagnostics(self) -> Dict:
         """Lấy thông tin chẩn đoán về model nhận diện ghế."""
-        return self._seat_manager.get_model_diagnostics()
+        return self._seat_manager.get_model_diagnostics(
+            inference_mode=self.inference_mode,
+            roboflow_client=self.roboflow_client,
+        )
 
     def get_model_info(self) -> Dict:
         """Trả về thông tin model để hiển thị."""
@@ -389,18 +403,81 @@ class AnalysisService:
         import time
         from src.video.video_writer import VideoWriter
         t_start = time.time()
-
         cur_h, cur_w = frame.shape[:2]
-        target_ids = list(self._detector._target_class_ids) if (self._detector and self._detector._target_class_ids) else None
+        target_ids = list(self._detector._target_class_ids) if (self._detector and getattr(self._detector, "_target_class_ids", None)) else None
 
-        tracked = tracker.update(
-            model=self._detector.model if self._detector else None,
-            frame=frame,
-            frame_index=frame_idx,
-            fps=fps,
-            confidence_threshold=confidence_threshold,
-            target_class_ids=target_ids,
-        )
+        # -------- Multi-mode Inference handling --------
+        local_detections = []
+        remote_detections = []
+
+        if self.inference_mode in ("local", "hybrid"):
+            if self._detector and hasattr(self._detector, "detect"):
+                local_detections = self._detector.detect(frame)
+            else:
+                local_detections = None
+
+        if self.inference_mode in ("roboflow", "hybrid") and self.roboflow_client:
+            import cv2, tempfile, pathlib
+            tmp_path = pathlib.Path(tempfile.mkstemp(suffix=".jpg")[1])
+            cv2.imwrite(str(tmp_path), frame)
+            payload = self.roboflow_client.submit_image(tmp_path)
+            tmp_path.unlink(missing_ok=True)
+            if payload:
+                from src.roboflow.roboflow_client import RoboflowWorkflowClient
+                parsed = RoboflowWorkflowClient.parse_workflow_output(payload)
+                for pred in parsed.get("predictions", []):
+                    cls = pred.get("class", "")
+                    conf = float(pred.get("confidence", 0))
+                    if conf < confidence_threshold:
+                        continue
+                    bbox = pred.get("bbox", [0, 0, 0, 0])
+                    polygon = pred.get("polygon")
+                    remote_detections.append(
+                        Detection(
+                            class_name=cls,
+                            confidence=conf,
+                            bbox=(int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])),
+                            polygon=polygon,
+                        )
+                    )
+
+        if self.inference_mode == "hybrid":
+            from src.video.video_processor import fuse_hybrid_detections
+            detections_to_track = fuse_hybrid_detections(local_detections or [], remote_detections)
+        elif self.inference_mode == "roboflow":
+            detections_to_track = remote_detections
+        else:
+            detections_to_track = local_detections
+
+        if detections_to_track is not None:
+            tracked = tracker.update(
+                model=getattr(self._detector, "model", None) if self.inference_mode != "roboflow" else None,
+                frame=frame,
+                frame_index=frame_idx,
+                fps=fps,
+                confidence_threshold=confidence_threshold,
+                target_class_ids=target_ids,
+                detections=detections_to_track,
+            )
+        else:
+            tracked = tracker.update(
+                model=self._detector.model if self._detector else None,
+                frame=frame,
+                frame_index=frame_idx,
+                fps=fps,
+                confidence_threshold=confidence_threshold,
+                target_class_ids=target_ids,
+            )
+
+        # Cập nhật nhận diện ghế thực tế từ AI model (AI Seat Detection từ camera feed)
+        if self._seat_manager:
+            self._seat_manager.update_detected_seats(
+                raw_predictions=(detections_to_track if detections_to_track is not None else tracked),
+                frame_idx=frame_idx,
+                frame_width=cur_w,
+                frame_height=cur_h,
+            )
+
 
         # Phân tích sự kiện
         current_time_sec = frame_idx / fps if fps > 0 else 0.0

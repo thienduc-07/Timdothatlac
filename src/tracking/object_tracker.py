@@ -9,7 +9,7 @@ Module phụ trách theo dõi vật thể qua nhiều frame bằng ByteTrack
 """
 
 import numpy as np
-from typing import Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional, Union
 
 from src.models import Detection, TrackedObject, TrackObservation
 from src.utils.logger import get_logger
@@ -24,18 +24,57 @@ from config.settings import (
 logger = get_logger(__name__)
 
 
+_CLASS_NAME_TO_ID_MAP = {
+    "person": 0,
+    "bicycle": 1,
+    "car": 2,
+    "motorcycle": 3,
+    "airplane": 4,
+    "bus": 5,
+    "train": 6,
+    "truck": 7,
+    "boat": 8,
+    "traffic light": 9,
+    "seat": 10,
+    "backpack": 24,
+    "umbrella": 25,
+    "handbag": 26,
+    "tie": 27,
+    "suitcase": 28,
+    "bottle": 39,
+    "cell phone": 67,
+    "laptop": 63,
+    "book": 73,
+    "item": 80,
+    "empty_seat": 81,
+    "human_occupied": 82,
+    "object_occupied": 83,
+}
+
+
 class ObjectTracker:
     """
     Quản lý tracking vật thể qua các frame.
-    Sử dụng model.track() của Ultralytics (ByteTrack tích hợp sẵn).
-    Ghi lại lịch sử quan sát để phục vụ phân tích sự kiện.
+    Hỗ trợ tracking đa chế độ:
+    - Supervision ByteTrack cho normalized detections (Local, Roboflow-only, Hybrid).
+    - Ultralytics model.track() khi chạy trực tiếp với model instance.
+    - Ghi lại lịch sử quan sát (TrackObservation) phục vụ phát hiện đồ bỏ quên.
     """
 
     def __init__(self):
         self._observations: Dict[int, TrackObservation] = {}
-        # track_id -> TrackObservation
         self._frame_count = 0
         self._current_tracked: List[TrackedObject] = []
+        self._sv_tracker = None
+        self._init_sv_tracker()
+
+    def _init_sv_tracker(self):
+        try:
+            import supervision as sv
+            self._sv_tracker = sv.ByteTrack()
+        except Exception as e:
+            logger.warning(f"Supervision ByteTrack không khả dụng: {e}")
+            self._sv_tracker = None
 
     @property
     def observations(self) -> Dict[int, TrackObservation]:
@@ -52,140 +91,247 @@ class ObjectTracker:
         self._observations.clear()
         self._frame_count = 0
         self._current_tracked = []
+        self._init_sv_tracker()
 
     def update(
         self,
-        model,
-        frame: np.ndarray,
-        frame_index: int,
-        fps: float,
+        model=None,
+        frame: Optional[np.ndarray] = None,
+        frame_index: int = 0,
+        fps: float = 10.0,
         confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
         target_class_ids: Optional[List[int]] = None,
+        detections: Optional[List[Any]] = None,
     ) -> List[TrackedObject]:
         """
-        Chạy tracking trên một frame bằng model.track() của Ultralytics.
-        Phương thức này duy trì trạng thái tracker nội bộ (persist=True).
-
-        Args:
-            model: Model YOLO đã load
-            frame: Frame BGR từ OpenCV
-            frame_index: Chỉ số frame hiện tại
-            fps: FPS của video (để tính thời gian)
-            confidence_threshold: Ngưỡng confidence
-            target_class_ids: Danh sách class ID cần theo dõi
+        Chạy tracking trên một frame.
+        Hỗ trợ:
+        1. Pre-computed detections (Supervision ByteTrack: Local, Roboflow, Hybrid).
+        2. Direct model instance (Ultralytics ByteTrack).
 
         Returns:
-            Danh sách TrackedObject trong frame hiện tại
+            Danh sách TrackedObject trong frame hiện tại với track_id nhất quán.
         """
         self._frame_count = frame_index
         current_time = frame_index / fps if fps > 0 else 0.0
 
-        try:
-            # Gọi model.track() — persist=True giữ trạng thái ByteTrack
-            results = model.track(
-                frame,
-                conf=confidence_threshold,
-                device=DEVICE,
-                persist=True,
-                tracker="bytetrack.yaml",
-                verbose=False,
-                classes=target_class_ids,
-            )
-
-            tracked_objects = []
-            current_person_positions = {}  # track_id -> center position (cho người)
+        # Ưu tiên tracking pre-computed normalized detections bằng Supervision ByteTrack
+        if detections is not None:
+            tracked_objects: List[TrackedObject] = []
+            current_person_positions = {}
             current_item_ids = []
 
-            for result in results:
-                if result.boxes is None or result.boxes.id is None:
-                    continue
+            if self._sv_tracker is not None:
+                try:
+                    import supervision as sv
+                    if detections:
+                        boxes = []
+                        confs = []
+                        class_ids = []
+                        class_names = []
+                        polygons = []
+                        for det in detections:
+                            b = det.bbox
+                            boxes.append([float(b[0]), float(b[1]), float(b[2]), float(b[3])])
+                            confs.append(float(det.confidence))
+                            cname = getattr(det, "class_name", "item")
+                            class_names.append(cname)
+                            cid = getattr(det, "class_id", None)
+                            if cid is None:
+                                cid = _CLASS_NAME_TO_ID_MAP.get(cname, abs(hash(cname)) % 1000)
+                            class_ids.append(cid)
+                            polygons.append(getattr(det, "polygon", None))
 
-                has_masks = (
-                    hasattr(result, "masks")
-                    and result.masks is not None
-                    and hasattr(result.masks, "xy")
-                    and result.masks.xy is not None
+                        sv_dets = sv.Detections(
+                            xyxy=np.array(boxes, dtype=np.float32),
+                            confidence=np.array(confs, dtype=np.float32),
+                            class_id=np.array(class_ids, dtype=int),
+                            data={
+                                "class_name": np.array(class_names),
+                                "polygon": np.array(polygons, dtype=object),
+                            },
+                        )
+                    else:
+                        sv_dets = sv.Detections.empty()
+
+                    tracked_sv = self._sv_tracker.update_with_detections(sv_dets)
+
+                    for i in range(len(tracked_sv)):
+                        tid = int(tracked_sv.tracker_id[i]) if tracked_sv.tracker_id is not None else (i + 1)
+                        x1, y1, x2, y2 = [int(v) for v in tracked_sv.xyxy[i]]
+                        c_name = str(tracked_sv.data["class_name"][i]) if "class_name" in tracked_sv.data else "item"
+                        c_conf = float(tracked_sv.confidence[i]) if tracked_sv.confidence is not None else 1.0
+                        cid = int(tracked_sv.class_id[i]) if tracked_sv.class_id is not None else 0
+                        poly = tracked_sv.data["polygon"][i] if "polygon" in tracked_sv.data else None
+
+                        obj = TrackedObject(
+                            track_id=tid,
+                            class_name=c_name,
+                            confidence=c_conf,
+                            bbox=(x1, y1, x2, y2),
+                            class_id=cid,
+                            polygon=poly,
+                        )
+                        tracked_objects.append(obj)
+
+                        center = ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+                        if c_name == PERSON_CLASS:
+                            current_person_positions[tid] = center
+                        elif c_name in ITEM_CLASSES or c_name == "item":
+                            current_item_ids.append(tid)
+
+                        self._update_observation(
+                            track_id=tid,
+                            class_name=c_name,
+                            confidence=c_conf,
+                            bbox=(x1, y1, x2, y2),
+                            frame_index=frame_index,
+                            current_time=current_time,
+                            polygon=poly,
+                        )
+
+                    self._update_person_proximity(
+                        current_person_positions, current_item_ids, frame_index
+                    )
+                    self._current_tracked = tracked_objects
+                    return tracked_objects
+                except Exception as e:
+                    logger.error(f"Lỗi Supervision tracking tại frame {frame_index}: {e}")
+
+            # Fallback nếu Supervision chưa khởi tạo hoặc lỗi
+            for idx, det in enumerate(detections):
+                tid = getattr(det, "track_id", -1)
+                if tid == -1:
+                    tid = idx + 1
+                cname = getattr(det, "class_name", "item")
+                bbox = getattr(det, "bbox", (0, 0, 0, 0))
+                obj = TrackedObject(
+                    track_id=tid,
+                    class_name=cname,
+                    confidence=getattr(det, "confidence", 1.0),
+                    bbox=bbox,
+                    class_id=getattr(det, "class_id", 0),
+                    polygon=getattr(det, "polygon", None),
                 )
-
-                for i, box in enumerate(result.boxes):
-                    try:
-                        track_id = int(box.id[0]) if box.id is not None else -1
-                    except Exception:
-                        track_id = int(result.boxes.id[i]) if result.boxes.id is not None else -1
-
-                    if track_id == -1:
-                        continue
-
-                    try:
-                        class_id = int(box.cls[0])
-                    except Exception:
-                        class_id = int(result.boxes.cls[i])
-
-                    class_name = model.names.get(class_id, f"class_{class_id}")
-
-                    try:
-                        confidence = float(box.conf[0])
-                    except Exception:
-                        confidence = float(result.boxes.conf[i])
-
-                    try:
-                        x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
-                    except Exception:
-                        x1, y1, x2, y2 = [int(v) for v in result.boxes.xyxy[i].tolist()]
-                    bbox = (x1, y1, x2, y2)
-
-                    # Trích xuất polygon nếu có mask
-                    polygon: Optional[List[Tuple[float, float]]] = None
-                    if has_masks and i < len(result.masks.xy):
-                        poly_pts = result.masks.xy[i]
-                        if poly_pts is not None and len(poly_pts) >= 3:
-                            h, w = frame.shape[:2]
-                            valid_pts = []
-                            for pt in poly_pts:
-                                px = max(0.0, min(float(w), float(pt[0])))
-                                py = max(0.0, min(float(h), float(pt[1])))
-                                valid_pts.append((px, py))
-                            if len(valid_pts) >= 3:
-                                polygon = valid_pts
-
-                    obj = TrackedObject(
-                        track_id=track_id,
-                        class_name=class_name,
-                        confidence=confidence,
-                        bbox=bbox,
-                        class_id=class_id,
-                        polygon=polygon,
-                    )
-                    tracked_objects.append(obj)
-
-                    # Ghi nhận vị trí người và đồ vật
-                    center = ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
-                    if class_name == PERSON_CLASS:
-                        current_person_positions[track_id] = center
-                    elif class_name in ITEM_CLASSES or class_name == "item":
-                        current_item_ids.append(track_id)
-
-                    # Cập nhật lịch sử quan sát
-                    self._update_observation(
-                        track_id=track_id,
-                        class_name=class_name,
-                        confidence=confidence,
-                        bbox=bbox,
-                        frame_index=frame_index,
-                        current_time=current_time,
-                        polygon=polygon,
-                    )
-
-            # Cập nhật thông tin người gần đồ vật
-            self._update_person_proximity(
-                current_person_positions, current_item_ids, frame_index
-            )
-
+                tracked_objects.append(obj)
+                self._update_observation(
+                    track_id=tid,
+                    class_name=cname,
+                    confidence=getattr(det, "confidence", 1.0),
+                    bbox=bbox,
+                    frame_index=frame_index,
+                    current_time=current_time,
+                    polygon=getattr(det, "polygon", None),
+                )
             self._current_tracked = tracked_objects
             return tracked_objects
 
-        except Exception as e:
-            logger.error(f"Lỗi tracking tại frame {frame_index}: {e}")
+        # Nếu không truyền detections mà truyền model, dùng Ultralytics track()
+        elif model is not None and hasattr(model, "track") and frame is not None:
+            try:
+                results = model.track(
+                    frame,
+                    conf=confidence_threshold,
+                    device=DEVICE,
+                    persist=True,
+                    tracker="bytetrack.yaml",
+                    verbose=False,
+                    classes=target_class_ids,
+                )
+
+                tracked_objects = []
+                current_person_positions = {}
+                current_item_ids = []
+
+                for result in results:
+                    if result.boxes is None or result.boxes.id is None:
+                        continue
+
+                    has_masks = (
+                        hasattr(result, "masks")
+                        and result.masks is not None
+                        and hasattr(result.masks, "xy")
+                        and result.masks.xy is not None
+                    )
+
+                    for i, box in enumerate(result.boxes):
+                        try:
+                            track_id = int(box.id[0]) if box.id is not None else -1
+                        except Exception:
+                            track_id = int(result.boxes.id[i]) if result.boxes.id is not None else -1
+
+                        if track_id == -1:
+                            continue
+
+                        try:
+                            class_id = int(box.cls[0])
+                        except Exception:
+                            class_id = int(result.boxes.cls[i])
+
+                        class_name = model.names.get(class_id, f"class_{class_id}")
+
+                        try:
+                            confidence = float(box.conf[0])
+                        except Exception:
+                            confidence = float(result.boxes.conf[i])
+
+                        try:
+                            x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
+                        except Exception:
+                            x1, y1, x2, y2 = [int(v) for v in result.boxes.xyxy[i].tolist()]
+                        bbox = (x1, y1, x2, y2)
+
+                        polygon: Optional[List[Tuple[float, float]]] = None
+                        if has_masks and i < len(result.masks.xy):
+                            poly_pts = result.masks.xy[i]
+                            if poly_pts is not None and len(poly_pts) >= 3:
+                                h, w = frame.shape[:2]
+                                valid_pts = []
+                                for pt in poly_pts:
+                                    px = max(0.0, min(float(w), float(pt[0])))
+                                    py = max(0.0, min(float(h), float(pt[1])))
+                                    valid_pts.append((px, py))
+                                if len(valid_pts) >= 3:
+                                    polygon = valid_pts
+
+                        obj = TrackedObject(
+                            track_id=track_id,
+                            class_name=class_name,
+                            confidence=confidence,
+                            bbox=bbox,
+                            class_id=class_id,
+                            polygon=polygon,
+                        )
+                        tracked_objects.append(obj)
+
+                        center = ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+                        if class_name == PERSON_CLASS:
+                            current_person_positions[track_id] = center
+                        elif class_name in ITEM_CLASSES or class_name == "item":
+                            current_item_ids.append(track_id)
+
+                        self._update_observation(
+                            track_id=track_id,
+                            class_name=class_name,
+                            confidence=confidence,
+                            bbox=bbox,
+                            frame_index=frame_index,
+                            current_time=current_time,
+                            polygon=polygon,
+                        )
+
+                self._update_person_proximity(
+                    current_person_positions, current_item_ids, frame_index
+                )
+
+                self._current_tracked = tracked_objects
+                return tracked_objects
+
+            except Exception as e:
+                logger.error(f"Lỗi tracking tại frame {frame_index}: {e}")
+                self._current_tracked = []
+                return []
+        else:
             self._current_tracked = []
             return []
 

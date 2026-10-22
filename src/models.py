@@ -325,3 +325,8 @@ class AnalysisResult:
     success: bool = False
     error_message: str = ""
     analysis_id: Optional[str] = None
+
+    @property
+    def total_frames(self) -> int:
+        """Alias for total_frames_processed."""
+        return self.total_frames_processed

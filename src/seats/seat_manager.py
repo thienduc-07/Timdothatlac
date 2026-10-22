@@ -9,7 +9,7 @@ Quản lý trạng thái các vùng ghế (Seat ROI) trên xe buýt:
 - Không kết luận ghế trống chỉ vì 1 frame không phát hiện thấy người.
 """
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 
 from src.models import SeatConfig, SeatState, SeatStatus, TrackedObject
@@ -80,12 +80,8 @@ class SeatManager:
 
         if seats is not None:
             self.set_seats(seats)
-        else:
-            # Thử nạp từ file cấu hình mặc định
-            loaded = SeatConfigManager().load_seats()
-            if loaded:
-                self.set_seats(loaded)
-                self.active_detection_method = SeatDetectionMethod.MANUAL_CONFIGURATION
+        # KHÔNG tự động nạp cấu hình ghế cố định từ seats_config.json.
+        # Hệ thống chỉ ghi nhận ghế khi AI model phát hiện trực tiếp từ camera.
 
     def set_shared_model(self, model_instance) -> bool:
         """Chia sẻ model instance cho detector của SeatManager."""
@@ -130,6 +126,46 @@ class SeatManager:
         if self._seats:
             self.tracker.register_seats(list(self._seats.values()))
 
+    def update_detected_seats(
+        self,
+        raw_predictions: List[Any],
+        frame_idx: int,
+        frame_width: int,
+        frame_height: int,
+    ) -> List[SeatConfig]:
+        """
+        Cập nhật danh sách ghế phát hiện trực tiếp từ camera frame:
+        - Trích xuất candidate đệm ghế từ raw predictions (Local YOLO, Roboflow Workflow, hoặc Hybrid).
+        - Gửi candidate vào SeatTracker để so khớp IoU, làm mượt EMA và gán ID ổn định (SEAT_001, SEAT_002...).
+        - Cập nhật danh sách ghế hoạt động trong _seats và khởi tạo trạng thái nếu là ghế mới.
+        """
+        candidate_seats = self.detector.detect_seats_from_predictions(
+            raw_predictions, frame_width, frame_height
+        )
+
+        if not candidate_seats and not self.tracker.get_active_seats():
+            # Không phát hiện thấy ghế nào từ model AI
+            return []
+
+        active_seats = self.tracker.update(candidate_seats, frame_idx)
+
+        # Cập nhật danh sách _seats và bảo toàn trạng thái đã có
+        new_seat_map = {}
+        for s in active_seats:
+            new_seat_map[s.seat_id] = s
+            if s.seat_id not in self._statuses:
+                self._statuses[s.seat_id] = SeatStatus(
+                    seat_id=s.seat_id,
+                    state=SeatState.UNKNOWN,
+                    notes="AI phát hiện trực tiếp từ camera",
+                )
+
+        self._seats = new_seat_map
+        if self._seats:
+            self.active_detection_method = SeatDetectionMethod.MODEL_DETECTION
+
+        return self.seats
+
     @staticmethod
     def generate_bus_grid(
         rows: int = 4,
@@ -160,10 +196,13 @@ class SeatManager:
         right_cols: int = 2,
         naming_format: str = "SEAT",
         save_to_disk: bool = True,
+        roboflow_client: Optional[Any] = None,
+        inference_mode: Optional[str] = None,
     ) -> SeatDetectionResult:
         """
         Tự động nhận diện từng ghế từ frame camera bằng Computer Vision Model:
-        - Nếu có Custom Model: Trả về MODEL DETECTION.
+        - Hỗ trợ Roboflow Workflow, Hybrid hoặc Local Custom Model.
+        - Nếu có Custom Model hoặc Roboflow: Trả về MODEL DETECTION.
         - Nếu không có Custom Model và allow_fallback=False: Báo CUSTOM SEAT MODEL NOT CONFIGURED.
         - Nếu allow_fallback=True: Sinh GEOMETRY FALLBACK được công khai rõ ràng.
         """
@@ -174,6 +213,8 @@ class SeatManager:
             left_cols=left_cols,
             right_cols=right_cols,
             naming_format=naming_format,
+            roboflow_client=roboflow_client,
+            inference_mode=inference_mode,
         )
 
         if result.seats:
@@ -186,8 +227,12 @@ class SeatManager:
                 )
         elif result.method == SeatDetectionMethod.NOT_CONFIGURED:
             self.active_detection_method = SeatDetectionMethod.NOT_CONFIGURED
+        elif result.method == SeatDetectionMethod.MODEL_DETECTION and not result.seats:
+            # AI quét nhưng không có ghế trong frame
+            self.active_detection_method = SeatDetectionMethod.MODEL_DETECTION
 
         return result
+
 
     def get_pixel_polygon(
         self, seat_id: str, frame_width: int, frame_height: int
@@ -398,6 +443,60 @@ class SeatManager:
         """Lấy trạng thái của toàn bộ ghế."""
         return self._statuses
 
-    def get_model_diagnostics(self) -> Dict[str, Union[str, bool, int, float, List[str]]]:
-        """Lấy thông tin chẩn đoán về model nhận diện ghế."""
-        return self.detector.inspect_coco_classes()
+    def get_model_diagnostics(
+        self,
+        inference_mode: Optional[str] = None,
+        roboflow_client: Optional[Any] = None,
+    ) -> Dict[str, Union[str, bool, int, float, List[str]]]:
+        """Lấy thông tin chẩn đoán toàn diện về khả năng nhận diện ghế theo chế độ inference hiện hành."""
+        import os
+        from config.settings import INFERENCE_MODE, ROBOFLOW_API_KEY, ROBOFLOW_WORKFLOW_ID
+
+        rf_client = roboflow_client or self.detector.roboflow_client
+        custom_ready = self.detector.model_adapter.is_available
+        roboflow_configured = bool(
+            getattr(rf_client, "configured", False)
+            or (ROBOFLOW_API_KEY and ROBOFLOW_WORKFLOW_ID)
+        )
+        mode = (
+            inference_mode
+            or self.detector.inference_mode
+            or os.getenv("INFERENCE_MODE", INFERENCE_MODE)
+        ).lower()
+
+        # Nhận diện ghế sẵn sàng nếu có local custom weights hoặc nếu đang ở roboflow/hybrid mode và có roboflow
+        if mode in ("roboflow", "hybrid"):
+            seat_ready = roboflow_configured or custom_ready
+        else:
+            seat_ready = custom_ready
+
+        coco_info = self.detector.inspect_coco_classes()
+        supported_classes = list(self.detector.model_adapter.supported_classes)
+        if (mode in ("roboflow", "hybrid") or roboflow_configured) and not supported_classes:
+            supported_classes = ["empty_seat", "human_occupied", "object_occupied"]
+
+        if not seat_ready:
+            diagnostic_msg = (
+                f"Chế độ hiện tại '{mode.upper()}' sử dụng mô hình YOLO COCO cục bộ không có lớp đệm ghế xe buýt nhìn từ trần xuống "
+                f"(chỉ có lớp 56 'chair' - ghế phòng khách nhìn ngang). "
+                f"{'Mô hình Roboflow Serverless Workflow đã được cấu hình với các lớp đệm ghế (empty_seat, human_occupied, object_occupied). Hãy chuyển sang chế độ ROBOFLOW hoặc HYBRID để nhận diện ghế bằng AI thực thụ.' if roboflow_configured else 'Chưa nạp mô hình chuyên biệt models/best.pt.'}"
+            )
+        else:
+            diagnostic_msg = f"Sẵn sàng nhận diện ghế bằng AI ({'Roboflow Workflow' if (mode in ('roboflow', 'hybrid') and roboflow_configured) else 'Custom YOLO'})."
+
+        return {
+            "custom_adapter_ready": custom_ready,
+            "roboflow_ready": roboflow_configured,
+            "seat_detection_ready": seat_ready,
+            "inference_mode": mode,
+            "model_weights": str(self.detector.model_adapter.weights_path),
+            "supported_classes": supported_classes,
+            "active_detection_method": self.active_detection_method.value,
+            "has_overhead_bus_seat_class": seat_ready,
+            "has_coco_chair_class": True,
+            "coco_chair_class_id": 56,
+            "explanation": coco_info.get("explanation", ""),
+            "recommendation": coco_info.get("recommendation", ""),
+            "diagnostic_message": diagnostic_msg,
+        }
+
