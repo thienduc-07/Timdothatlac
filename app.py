@@ -46,6 +46,12 @@ from src.video.webrtc_processor import (
     webrtc_streamer,
     WebRtcMode,
 )
+from src.components.hybrid_camera import hybrid_camera
+from src.detection.inference_backend import (
+    InferenceBackendManager,
+    HybridMode,
+    InferenceBackendType,
+)
 from src.utils.text_renderer import draw_text_unicode
 from config.settings import (
     DEFAULT_CONFIDENCE_THRESHOLD,
@@ -893,381 +899,412 @@ def page_camera_monitor(service: AnalysisService):
         st.markdown("### 🎥 Giám sát Camera Trực Tiếp Thời Gian Thực (Live AI Stream)")
         st.caption("Truyền trực tiếp hình ảnh từ Webcam thiết bị của bạn (Client Browser) vào pipeline AI — Tương thích 100% với Streamlit Cloud, macOS, Windows và Mobile.")
 
-        # Lựa chọn phương thức kết nối camera
-        if is_cloud_env:
-            cam_backend = "🌐 Client Browser Camera (WebRTC)"
-            st.info(
-                "☁️ **Đang chạy trên Streamlit Cloud:** Ứng dụng tự động kích hoạt camera từ chính thiết bị/trình duyệt của bạn qua **WebRTC**. "
-                "Bất kỳ máy tính hoặc điện thoại nào truy cập link đều có thể quét camera trực tiếp và nhận diện đồ vật dưới dạng **Polygons (đa giác bám sát viền)** mà không cần cài đặt code!"
+        # Lựa chọn chế độ vận hành Hybrid AI
+        hybrid_mode_choices = [
+            "⚡ Tự động (AUTO — Ưu tiên AI trực tiếp trên thiết bị, dự phòng Máy chủ)",
+            "💻 Trực tiếp trên thiết bị (ON-DEVICE — WebGPU / WASM Riêng tư 100%)",
+            "🖥️ Máy chủ đám mây (SERVER — WebRTC / Python AI)",
+        ]
+        hybrid_mode_choice = st.radio(
+            "Chế độ vận hành Hybrid AI:",
+            hybrid_mode_choices,
+            index=0,
+            horizontal=True,
+            help="Chế độ Tự động (AUTO) ưu tiên chạy AI trực tiếp trên trình duyệt của bạn với WebGPU/WASM để đạt FPS cao nhất và không tốn tài nguyên máy chủ. Nếu thiết bị không hỗ trợ, hệ thống sẽ tự động dự phòng sang Máy chủ."
+        )
+
+        if hybrid_mode_choice.startswith("⚡") or hybrid_mode_choice.startswith("💻"):
+            st.info("💡 **Gợi ý:** Bấm nút **📷 BẬT CAMERA** trong khung bên dưới để cấp quyền máy ảnh và quét AI Polygons ngay trên thiết bị của bạn (1 nút duy nhất bật/tắt).")
+
+            client_cam_result = hybrid_camera(
+                mode="auto" if hybrid_mode_choice.startswith("⚡") else "on_device",
+                model_url="/app/static/models/yolo26n-seg.onnx",
+                conf_threshold=conf_thresh,
+                show_masks=show_masks,
+                show_seats=show_seats,
+                show_persons=show_persons,
+                show_objects=show_objects,
+                key="hybrid_client_cam_player",
             )
+
+            if client_cam_result.get("active_backend") == "server_fallback_recommended" or client_cam_result.get("status") == "error":
+                st.warning("⚠️ Trình duyệt hoặc phần cứng hiện tại không hỗ trợ WebGPU/WASM hoặc tải model thất bại. Hãy chọn mục **'🖥️ Máy chủ đám mây'** ở trên để dùng luồng Server WebRTC!")
         else:
-            backend_choices = [
-                "🌐 Client Browser Camera (WebRTC) [Khuyên dùng: Streamlit Cloud, Mobile, Laptop]",
-                "🖥️ Server-Side OpenCV Camera [Chỉ dùng khi chạy terminal local có cắm webcam]",
-            ]
-            cam_backend = st.radio(
-                "Phương thức kết nối Camera:",
-                backend_choices,
-                index=0,
-                horizontal=True,
-                help="WebRTC truyền luồng trực tiếp từ trình duyệt của bất kỳ người dùng nào truy cập trang web. OpenCV cục bộ chỉ chạy được khi Streamlit mở trực tiếp trên máy chủ gắn webcam vật lý."
-            )
-
-        if cam_backend.startswith("🌐"):
-            # ── WebRTC Client-Side Streaming (Streamlit Cloud & Mọi thiết bị) ──
-            ctrl_c1, ctrl_c2, ctrl_c3 = st.columns([1, 1, 1])
-            with ctrl_c1:
-                cam_preset = st.selectbox(
-                    "Cấu hình thiết bị & Độ phân giải",
-                    [
-                        "⚡ Tối ưu mượt mà (480x360 - Khuyên dùng cho Mobile & Cloud)",
-                        "⚖️ Cân bằng (640x480 - Mặc định chuẩn)",
-                        "🔍 Độ nét cao (960x540 - Desktop băng thông mạnh)",
-                    ],
-                    index=1,
-                    key="webrtc_preset_select",
-                    help="Độ phân giải nhỏ hơn giúp giảm tải CPU/RAM trên Streamlit Cloud và tăng FPS đáng kể."
+            # Lựa chọn phương thức kết nối camera
+            if is_cloud_env:
+                cam_backend = "🌐 Client Browser Camera (WebRTC)"
+                st.info(
+                    "☁️ **Đang chạy trên Streamlit Cloud:** Ứng dụng tự động kích hoạt camera từ chính thiết bị/trình duyệt của bạn qua **WebRTC**. "
+                    "Bất kỳ máy tính hoặc điện thoại nào truy cập link đều có thể quét camera trực tiếp và nhận diện đồ vật dưới dạng **Polygons (đa giác bám sát viền)** mà không cần cài đặt code!"
                 )
-            with ctrl_c2:
-                infer_stride = st.selectbox(
-                    "Tần suất phân tích AI",
-                    [
-                        "Mỗi frame (100% Realtime)",
-                        "Cách 1 frame (Khuyên dùng Cloud đa người dùng)",
-                        "Cách 2 frame (Siêu tiết kiệm CPU)",
-                    ],
+            else:
+                backend_choices = [
+                    "🌐 Client Browser Camera (WebRTC) [Khuyên dùng: Streamlit Cloud, Mobile, Laptop]",
+                    "🖥️ Server-Side OpenCV Camera [Chỉ dùng khi chạy terminal local có cắm webcam]",
+                ]
+                cam_backend = st.radio(
+                    "Phương thức kết nối Camera:",
+                    backend_choices,
                     index=0,
-                    key="webrtc_stride_select",
-                    help="Bỏ qua phân tích một số frame để ưu tiên độ mượt mà của video WebRTC."
+                    horizontal=True,
+                    help="WebRTC truyền luồng trực tiếp từ trình duyệt của bất kỳ người dùng nào truy cập trang web. OpenCV cục bộ chỉ chạy được khi Streamlit mở trực tiếp trên máy chủ gắn webcam vật lý."
                 )
-            with ctrl_c3:
-                backend_engine = st.selectbox(
-                    "Backend suy luận",
-                    [
-                        "🖥️ Local CPU/GPU Worker (In-Process)",
-                        "☁️ Roboflow Cloud Serverless (Khuyên dùng khi máy chủ quá tải)",
-                    ],
-                    index=0 if service.inference_mode != "roboflow" else 1,
-                    key="webrtc_backend_engine",
-                    help="Nếu máy chủ Streamlit Cloud bị quá tải CPU khi nhiều người dùng truy cập, chuyển sang Roboflow Cloud để offload GPU."
-                )
-
-            if "480x360" in cam_preset:
-                res_w, res_h, infer_sz = 480, 360, 480
-            elif "960x540" in cam_preset:
-                res_w, res_h, infer_sz = 960, 540, 640
-            else:
-                res_w, res_h, infer_sz = 640, 480, 640
-
-            stride_val = 1 if "Mỗi frame" in infer_stride else (2 if "Cách 1 frame" in infer_stride else 3)
-
-            # Đồng bộ chế độ backend suy luận nếu người dùng đổi lựa chọn
-            if "Roboflow" in backend_engine and service.inference_mode != "roboflow":
-                service.inference_mode = "roboflow"
-            elif "Local" in backend_engine and service.inference_mode == "roboflow":
-                service.inference_mode = "local"
-
-            if not WEBRTC_AVAILABLE or webrtc_streamer is None:
-                st.error("⚠️ Thư viện `streamlit-webrtc` hoặc `av` chưa sẵn sàng trên môi trường này. Vui lòng kiểm tra requirements.txt.")
-            else:
-                # Video streamer widget
-                webrtc_ctx = webrtc_streamer(
-                    key="bus_live_webrtc_stream",
-                    mode=WebRtcMode.SENDRECV,
-                    rtc_configuration=RTC_CONFIGURATION,
-                    video_processor_factory=lambda: BusWebRtcVideoProcessor(
-                        service=service,
-                        conf_thresh=conf_thresh,
-                        min_stat_time=min_stat_time,
-                        show_seats=show_seats,
-                        show_persons=show_persons,
-                        show_objects=show_objects,
-                        show_track_ids=True,
-                        show_confidence=True,
-                        show_event_markers=True,
-                        privacy_blur=privacy_blur,
-                        show_masks=show_masks,
-                        stride=stride_val,
-                        infer_imgsz=infer_sz,
-                    ),
-                    media_stream_constraints={
-                        "video": {
-                            "width": {"ideal": res_w},
-                            "height": {"ideal": res_h},
-                            "frameRate": {"ideal": 30},
-                        },
-                        "audio": False,
-                    },
-                    async_processing=True,
-                )
-
-                if webrtc_ctx and webrtc_ctx.state.playing:
-                    st.success("🟢 **Webcam Client đang kết nối thành công.** Luồng AI đang xử lý theo thời gian thực!")
-                    if webrtc_ctx.video_processor:
-                        webrtc_ctx.video_processor.update_config(
+    
+            if cam_backend.startswith("🌐"):
+                # ── WebRTC Client-Side Streaming (Streamlit Cloud & Mọi thiết bị) ──
+                ctrl_c1, ctrl_c2, ctrl_c3 = st.columns([1, 1, 1])
+                with ctrl_c1:
+                    cam_preset = st.selectbox(
+                        "Cấu hình thiết bị & Độ phân giải",
+                        [
+                            "⚡ Tối ưu mượt mà (480x360 - Khuyên dùng cho Mobile & Cloud)",
+                            "⚖️ Cân bằng (640x480 - Mặc định chuẩn)",
+                            "🔍 Độ nét cao (960x540 - Desktop băng thông mạnh)",
+                        ],
+                        index=1,
+                        key="webrtc_preset_select",
+                        help="Độ phân giải nhỏ hơn giúp giảm tải CPU/RAM trên Streamlit Cloud và tăng FPS đáng kể."
+                    )
+                with ctrl_c2:
+                    infer_stride = st.selectbox(
+                        "Tần suất phân tích AI",
+                        [
+                            "Mỗi frame (100% Realtime)",
+                            "Cách 1 frame (Khuyên dùng Cloud đa người dùng)",
+                            "Cách 2 frame (Siêu tiết kiệm CPU)",
+                        ],
+                        index=0,
+                        key="webrtc_stride_select",
+                        help="Bỏ qua phân tích một số frame để ưu tiên độ mượt mà của video WebRTC."
+                    )
+                with ctrl_c3:
+                    backend_engine = st.selectbox(
+                        "Backend suy luận",
+                        [
+                            "🖥️ Local CPU/GPU Worker (In-Process)",
+                            "☁️ Roboflow Cloud Serverless (Khuyên dùng khi máy chủ quá tải)",
+                        ],
+                        index=0 if service.inference_mode != "roboflow" else 1,
+                        key="webrtc_backend_engine",
+                        help="Nếu máy chủ Streamlit Cloud bị quá tải CPU khi nhiều người dùng truy cập, chuyển sang Roboflow Cloud để offload GPU."
+                    )
+    
+                if "480x360" in cam_preset:
+                    res_w, res_h, infer_sz = 480, 360, 480
+                elif "960x540" in cam_preset:
+                    res_w, res_h, infer_sz = 960, 540, 640
+                else:
+                    res_w, res_h, infer_sz = 640, 480, 640
+    
+                stride_val = 1 if "Mỗi frame" in infer_stride else (2 if "Cách 1 frame" in infer_stride else 3)
+    
+                # Đồng bộ chế độ backend suy luận nếu người dùng đổi lựa chọn
+                if "Roboflow" in backend_engine and service.inference_mode != "roboflow":
+                    service.inference_mode = "roboflow"
+                elif "Local" in backend_engine and service.inference_mode == "roboflow":
+                    service.inference_mode = "local"
+    
+                if not WEBRTC_AVAILABLE or webrtc_streamer is None:
+                    st.error("⚠️ Thư viện `streamlit-webrtc` hoặc `av` chưa sẵn sàng trên môi trường này. Vui lòng kiểm tra requirements.txt.")
+                else:
+                    # Video streamer widget
+                    webrtc_ctx = webrtc_streamer(
+                        key="bus_live_webrtc_stream",
+                        mode=WebRtcMode.SENDRECV,
+                        rtc_configuration=RTC_CONFIGURATION,
+                        video_processor_factory=lambda: BusWebRtcVideoProcessor(
+                            service=service,
                             conf_thresh=conf_thresh,
                             min_stat_time=min_stat_time,
                             show_seats=show_seats,
                             show_persons=show_persons,
                             show_objects=show_objects,
+                            show_track_ids=True,
+                            show_confidence=True,
+                            show_event_markers=True,
                             privacy_blur=privacy_blur,
                             show_masks=show_masks,
                             stride=stride_val,
                             infer_imgsz=infer_sz,
-                        )
-                        metrics = webrtc_ctx.video_processor.get_metrics()
-
-                        # Nút chụp lưu ảnh bằng chứng
-                        snap_col, _ = st.columns([2, 2])
-                        with snap_col:
-                            if st.button("📸 Lưu ảnh snapshot bằng chứng hiện tại", key="btn_save_webrtc_evidence"):
-                                snap_frame = webrtc_ctx.video_processor.capture_snapshot()
-                                if snap_frame is not None:
-                                    snap_dir = Path("data/snapshots")
-                                    snap_dir.mkdir(parents=True, exist_ok=True)
-                                    snap_path = snap_dir / f"evidence_webrtc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-                                    cv2.imwrite(str(snap_path), snap_frame)
-                                    st.toast(f"✅ Đã lưu snapshot bằng chứng: {snap_path.name}")
-                                else:
-                                    st.warning("Chưa có frame hình ảnh nào từ luồng camera để lưu.")
-
-                        # Trích xuất toàn bộ metrics chi tiết theo Yêu cầu 8
-                        in_fps = metrics.get("input_fps", 0.0)
-                        inf_fps = metrics.get("infer_fps", 0.0)
-                        out_fps = metrics.get("output_fps", 0.0)
-                        avg_lat = metrics.get("latency_avg_ms", 0.0)
-                        p95_lat = metrics.get("latency_p95_ms", 0.0)
-                        dropped = metrics.get("dropped_frames", 0)
-                        sessions = metrics.get("active_sessions", 1)
-
-                        total_seats = metrics.get("total_seats", 0)
-                        occ_seats = metrics.get("occ_seats", 0)
-                        vac_seats = metrics.get("vac_seats", 0)
-                        person_count = metrics.get("person_count", 0)
-                        item_count = metrics.get("item_count", 0)
-                        sus_count = metrics.get("sus_count", 0)
-                        status_tag = metrics.get("status_tag", "🟢 BÌNH THƯỜNG")
-                        status_color = metrics.get("status_color", "#10B981")
-
-                        cpu_pct = metrics.get("cpu_percent", 0.0)
-                        rss_mb = metrics.get("process_rss_mb", 0.0)
-                        sys_mem = metrics.get("system_mem_percent", 0.0)
-                        device_label = metrics.get("device", "CPU")
-
-                        # Bảng hiển thị telemetry toàn diện & trực quan
-                        st.markdown(f"""
-                        <div style="background: #141E33; border: 1px solid #3A506B; border-radius: 8px; padding: 12px 18px; margin-top: 6px; display: flex; flex-direction: column; gap: 8px;">
-                            <!-- Hàng 1: FPS & Độ trễ chi tiết -->
-                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid #233554; padding-bottom: 6px;">
-                                <div>
-                                    <span style="font-weight: 700; color: #F8FAFC;">● WEBRTC ACTIVE</span>
-                                    <span style="color: #38BDF8; font-weight: 600; margin-left: 12px;">📥 Input: <b>{in_fps:.1f}</b> FPS</span>
-                                    <span style="color: #A78BFA; font-weight: 600; margin-left: 10px;">🧠 AI Infer: <b>{inf_fps:.1f}</b> FPS</span>
-                                    <span style="color: #34D399; font-weight: 600; margin-left: 10px;">📤 Output: <b>{out_fps:.1f}</b> FPS</span>
-                                </div>
-                                <div>
-                                    <span style="color: #CBD5E1;">Độ trễ AI: <b>{avg_lat:.1f}ms</b> (P95: <b>{p95_lat:.1f}ms</b>)</span>
-                                    <span style="color: #F87171; margin-left: 12px;">Bỏ qua (Dropped): <b>{dropped}</b> frames</span>
-                                </div>
-                            </div>
-                            <!-- Hàng 2: Trạng thái hành khách, ghế & cảnh báo -->
-                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                                <div style="display: flex; gap: 14px; align-items: center;">
-                                    <span style="color: #CBD5E1;">🪑 Ghế: <b>{total_seats}</b> (👤 {occ_seats} | 🟢 {vac_seats})</span>
-                                    <span style="color: #CBD5E1;">👤 Người: <b>{person_count}</b></span>
-                                    <span style="color: #CBD5E1;">🎒 Đồ vật: <b>{item_count}</b></span>
-                                    <span style="color: {status_color}; font-weight: 700; border: 1px solid {status_color}; padding: 2px 8px; border-radius: 6px; font-size: 0.85rem;">{status_tag}</span>
-                                </div>
-                                <div style="font-size: 0.82rem; color: #94A3B8;">
-                                    <span>👥 Phiên: <b>{sessions}</b></span> | 
-                                    <span>⚙️ CPU: <b>{cpu_pct:.1f}%</b></span> | 
-                                    <span>💾 RAM: <b>{rss_mb:.0f}MB</b> ({sys_mem:.0f}%)</span> | 
-                                    <span>⚡ {device_label}</span>
-                                </div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-                        if sus_count > 0:
-                            st.error(f"⚠️ **CẢNH BÁO BỎ QUÊN:** Phát hiện {sus_count} đồ vật bị bỏ lại trên ghế trống! Hãy kiểm tra khoang hành khách.")
-                else:
-                    st.info(
-                        """⚪ **Camera đang ở trạng thái Dừng (Offline).**
-
-💡 Nhấn nút **'START'** màu xanh trên khung camera bên trên để cấp quyền webcam của thiết bị và bắt đầu phân tích trực tiếp. Hồ sơ sự kiện và danh sách đồ vật đã phát hiện được bảo lưu an toàn trong hệ thống."""
+                        ),
+                        media_stream_constraints={
+                            "video": {
+                                "width": {"ideal": res_w},
+                                "height": {"ideal": res_h},
+                                "frameRate": {"ideal": 30},
+                            },
+                            "audio": False,
+                        },
+                        async_processing=True,
                     )
-
-                with st.expander("ℹ️ Hướng dẫn cấp quyền Webcam & Khắc phục sự cố khi truy cập từ thiết bị khác", expanded=False):
-                    st.markdown("""
-                    - **Cấp quyền truy cập:** Khi nhấn `START`, trình duyệt sẽ hiển thị thông báo xin cấp quyền truy cập Camera. Hãy bấm **'Allow' (Cho phép)**.
-                    - **Nếu bị chặn quyền (NotAllowedError):** Bấm biểu tượng ổ khóa hoặc camera trên thanh địa chỉ URL của trình duyệt > Chuyển Camera sang **'Cho phép' (Allow)** > Tải lại trang (F5).
-                    - **Trên điện thoại (Safari iOS / Chrome Android):** Trình duyệt yêu cầu kết nối bảo mật HTTPS để mở camera (Streamlit Cloud đã có chứng chỉ HTTPS bảo mật). Đảm bảo không có ứng dụng khác (Zoom, FaceTime, v.v.) đang chiếm quyền camera.
-                    - **Không có Webcam:** Nếu thiết bị không gắn camera, hãy chuyển sang chế độ **'🚌 Video Mẫu Xe Buýt (Demo Mode)'** hoặc **'📁 Tải lên Video'** để kiểm thử hệ thống.
-                    """)
-
-        else:
-            # ── Server-Side OpenCV Camera (Dành cho máy phát triển Local) ──
-            ctrl_c1, ctrl_c2, ctrl_c3, ctrl_c4 = st.columns([2, 1, 1, 1])
-            with ctrl_c1:
-                run_cam = st.toggle(
-                    "🔴 BẬT / TẮT CAMERA LOCAL (OPENCV BUFFER)",
-                    value=False,
-                    key="toggle_realtime_webcam",
-                    help="Bật để bắt đầu đọc webcam gắn trực tiếp trên máy chủ bằng OpenCV."
-                )
-            with ctrl_c2:
-                cam_idx = st.number_input("Cổng Camera", 0, 5, 0, key="cam_port_input", help="0 = FaceTime HD / Mặc định, 1 = USB Cam / Continuity")
-            with ctrl_c3:
-                stream_res = st.selectbox("Độ phân giải", ["640x480 (Mượt, 30 FPS)", "960x540", "1280x720"], index=0, key="cv_res_select")
-            with ctrl_c4:
-                infer_stride = st.selectbox("Tần suất AI", ["Mỗi frame (100% Realtime)", "Cách 1 frame (Tối ưu CPU)"], index=0, key="cv_stride_select")
-
-            res_w, res_h = (640, 480) if "640x480" in stream_res else (960, 540) if "960x540" in stream_res else (1280, 720)
-            stride_val = 1 if "Mỗi frame" in infer_stride else 2
-
-            if run_cam:
-                reader = ThreadedCameraReader(src=int(cam_idx), target_width=res_w, target_height=res_h)
-                is_opened, open_msg = reader.open()
-
-                if not is_opened:
-                    if is_cloud_env:
-                        st.warning(
-                            "☁️ **Môi trường Streamlit Cloud (Linux Container):**\n\n"
-                            "Máy chủ đám mây không có phần cứng webcam vật lý kết nối trực tiếp.\n\n"
-                            "👉 **Hãy chuyển sang tùy chọn '🌐 Client Browser Camera (WebRTC)'** ở trên để cấp quyền webcam từ chính thiết bị/trình duyệt của bạn mà không cần chạy local!"
-                        )
-                    else:
-                        st.error(
-                            f"❌ **Không thể mở camera cổng {cam_idx}:** {open_msg}\n\n"
-                            "🔍 **Cách khắc phục trên macOS:**\n"
-                            "1. Mở `Cài đặt hệ thống > Quyền riêng tư & Bảo mật > Camera` và bật quyền cho Terminal / Python / VS Code.\n"
-                            "2. Đảm bảo các ứng dụng khác (FaceTime, Zoom, Teams, Photo Booth) không chiếm dụng camera."
-                        )
-                else:
-                    st.success(f"🟢 Đã kết nối thành công Camera cổng {reader.active_port}! Luồng hình ảnh đang chạy liên tục theo thời gian thực...")
-
-                    frame_view = st.empty()
-                    metrics_view = st.empty()
-                    alert_view = st.empty()
-
-                    snap_col, _ = st.columns([2, 2])
-                    with snap_col:
-                        btn_save_evidence = st.button("📸 Lưu ảnh snapshot bằng chứng hiện tại", key="btn_save_evidence_snapshot")
-
-                    tracker = ObjectTracker()
-                    event_manager = EventManager()
-                    event_detector = ForgottenItemDetector(
-                        min_stationary_time=min_stat_time,
-                        movement_threshold=STATIONARY_MOVEMENT_THRESHOLD,
-                        watched_classes=ITEM_CLASSES,
-                        seat_manager=service.seat_manager,
-                        event_manager=event_manager,
-                    )
-
-                    frame_idx = 0
-                    alert_fired = False
-                    t_last_metric = time.time()
-                    last_annotated = None
-                    last_events = []
-                    last_summary = {}
-
-                    try:
-                        while run_cam:
-                            t0 = time.time()
-                            ret, frame, hardware_frame_cnt = reader.read_latest_frame()
-                            if not ret or frame is None:
-                                time.sleep(0.01)
-                                continue
-
-                            should_infer = (frame_idx % stride_val == 0) or (last_annotated is None)
-
-                            if should_infer:
-                                annotated, events, summary = safe_process_webcam_frame(
-                                    service=service,
-                                    frame=frame,
-                                    frame_idx=frame_idx,
-                                    fps=reader.fps or 25.0,
-                                    tracker=tracker,
-                                    event_detector=event_detector,
-                                    event_manager=event_manager,
-                                    confidence_threshold=conf_thresh,
-                                    show_seats=show_seats,
-                                    show_persons=show_persons,
-                                    show_objects=show_objects,
-                                    show_track_ids=True,
-                                    show_confidence=True,
-                                    show_event_markers=True,
-                                    privacy_blur_faces=privacy_blur,
-                                    show_masks=show_masks,
-                                )
-                                last_annotated = annotated
-                                last_events = events
-                                last_summary = summary
-                            else:
-                                annotated = last_annotated if last_annotated is not None else frame
-                                events = last_events
-                                summary = last_summary
-
-                            latency_ms = (time.time() - t0) * 1000.0
-                            now = time.time()
-                            actual_fps = 1.0 / max(0.001, (now - t_last_metric))
-                            t_last_metric = now
-
-                            if btn_save_evidence and annotated is not None:
-                                snap_dir = Path("data/snapshots")
-                                snap_dir.mkdir(parents=True, exist_ok=True)
-                                snap_path = snap_dir / f"evidence_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-                                cv2.imwrite(str(snap_path), annotated)
-                                st.toast(f"✅ Đã lưu ảnh snapshot bằng chứng: {snap_path.name}")
-                                btn_save_evidence = False
-
-                            rgb_f = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-                            frame_view.image(rgb_f, channels="RGB", use_container_width=True)
-
-                            total_seats = len(service.seat_manager.seats)
-                            statuses = service.seat_manager.get_all_statuses()
-                            occ_seats = sum(1 for s in statuses.values() if s.state == SeatState.OCCUPIED)
-                            vac_seats = sum(1 for s in statuses.values() if s.state == SeatState.VACANT)
-
-                            person_count = sum(1 for obj in tracker.current_tracked_objects if obj.class_name == "person")
-                            item_count = sum(1 for obj in tracker.current_tracked_objects if obj.class_name in ITEM_CLASSES or obj.class_name == "item")
-                            sus_count = summary.get("suspected", 0)
-
-                            status_tag = "🔴 PHÁT HIỆN ĐỒ BỎ QUÊN!" if sus_count > 0 else "🟢 BÌNH THƯỜNG"
-                            status_color = "#EF4444" if sus_count > 0 else "#10B981"
-
-                            metrics_view.markdown(f"""
-                            <div style="background: #141E33; border: 1px solid #3A506B; border-radius: 8px; padding: 10px 16px; margin-top: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                                <div>
-                                    <span style="font-weight: 700; color: #F8FAFC;">● CAMERA ACTIVE</span>
-                                    <span style="color: #38BDF8; font-weight: 600; margin-left: 10px;">⚡ {actual_fps:.1f} FPS ({latency_ms:.1f}ms)</span>
+    
+                    if webrtc_ctx and webrtc_ctx.state.playing:
+                        st.success("🟢 **Webcam Client đang kết nối thành công.** Luồng AI đang xử lý theo thời gian thực!")
+                        if webrtc_ctx.video_processor:
+                            webrtc_ctx.video_processor.update_config(
+                                conf_thresh=conf_thresh,
+                                min_stat_time=min_stat_time,
+                                show_seats=show_seats,
+                                show_persons=show_persons,
+                                show_objects=show_objects,
+                                privacy_blur=privacy_blur,
+                                show_masks=show_masks,
+                                stride=stride_val,
+                                infer_imgsz=infer_sz,
+                            )
+                            metrics = webrtc_ctx.video_processor.get_metrics()
+    
+                            # Nút chụp lưu ảnh bằng chứng
+                            snap_col, _ = st.columns([2, 2])
+                            with snap_col:
+                                if st.button("📸 Lưu ảnh snapshot bằng chứng hiện tại", key="btn_save_webrtc_evidence"):
+                                    snap_frame = webrtc_ctx.video_processor.capture_snapshot()
+                                    if snap_frame is not None:
+                                        snap_dir = Path("data/snapshots")
+                                        snap_dir.mkdir(parents=True, exist_ok=True)
+                                        snap_path = snap_dir / f"evidence_webrtc_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+                                        cv2.imwrite(str(snap_path), snap_frame)
+                                        st.toast(f"✅ Đã lưu snapshot bằng chứng: {snap_path.name}")
+                                    else:
+                                        st.warning("Chưa có frame hình ảnh nào từ luồng camera để lưu.")
+    
+                            # Trích xuất toàn bộ metrics chi tiết theo Yêu cầu 8
+                            in_fps = metrics.get("input_fps", 0.0)
+                            inf_fps = metrics.get("infer_fps", 0.0)
+                            out_fps = metrics.get("output_fps", 0.0)
+                            avg_lat = metrics.get("latency_avg_ms", 0.0)
+                            p95_lat = metrics.get("latency_p95_ms", 0.0)
+                            dropped = metrics.get("dropped_frames", 0)
+                            sessions = metrics.get("active_sessions", 1)
+    
+                            total_seats = metrics.get("total_seats", 0)
+                            occ_seats = metrics.get("occ_seats", 0)
+                            vac_seats = metrics.get("vac_seats", 0)
+                            person_count = metrics.get("person_count", 0)
+                            item_count = metrics.get("item_count", 0)
+                            sus_count = metrics.get("sus_count", 0)
+                            status_tag = metrics.get("status_tag", "🟢 BÌNH THƯỜNG")
+                            status_color = metrics.get("status_color", "#10B981")
+    
+                            cpu_pct = metrics.get("cpu_percent", 0.0)
+                            rss_mb = metrics.get("process_rss_mb", 0.0)
+                            sys_mem = metrics.get("system_mem_percent", 0.0)
+                            device_label = metrics.get("device", "CPU")
+    
+                            # Bảng hiển thị telemetry toàn diện & trực quan
+                            st.markdown(f"""
+                            <div style="background: #141E33; border: 1px solid #3A506B; border-radius: 8px; padding: 12px 18px; margin-top: 6px; display: flex; flex-direction: column; gap: 8px;">
+                                <!-- Hàng 1: FPS & Độ trễ chi tiết -->
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid #233554; padding-bottom: 6px;">
+                                    <div>
+                                        <span style="font-weight: 700; color: #F8FAFC;">● WEBRTC ACTIVE</span>
+                                        <span style="color: #38BDF8; font-weight: 600; margin-left: 12px;">📥 Input: <b>{in_fps:.1f}</b> FPS</span>
+                                        <span style="color: #A78BFA; font-weight: 600; margin-left: 10px;">🧠 AI Infer: <b>{inf_fps:.1f}</b> FPS</span>
+                                        <span style="color: #34D399; font-weight: 600; margin-left: 10px;">📤 Output: <b>{out_fps:.1f}</b> FPS</span>
+                                    </div>
+                                    <div>
+                                        <span style="color: #CBD5E1;">Độ trễ AI: <b>{avg_lat:.1f}ms</b> (P95: <b>{p95_lat:.1f}ms</b>)</span>
+                                        <span style="color: #F87171; margin-left: 12px;">Bỏ qua (Dropped): <b>{dropped}</b> frames</span>
+                                    </div>
                                 </div>
-                                <div style="display: flex; gap: 14px; align-items: center;">
-                                    <span style="color: #CBD5E1;">🪑 Ghế: <b>{total_seats}</b> (👤 {occ_seats} | 🟢 {vac_seats})</span>
-                                    <span style="color: #CBD5E1;">👤 Người: <b>{person_count}</b></span>
-                                    <span style="color: #CBD5E1;">🎒 Đồ vật: <b>{item_count}</b></span>
-                                    <span style="color: {status_color}; font-weight: 700; border: 1px solid {status_color}; padding: 2px 8px; border-radius: 6px; font-size: 0.85rem;">{status_tag}</span>
+                                <!-- Hàng 2: Trạng thái hành khách, ghế & cảnh báo -->
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                                    <div style="display: flex; gap: 14px; align-items: center;">
+                                        <span style="color: #CBD5E1;">🪑 Ghế: <b>{total_seats}</b> (👤 {occ_seats} | 🟢 {vac_seats})</span>
+                                        <span style="color: #CBD5E1;">👤 Người: <b>{person_count}</b></span>
+                                        <span style="color: #CBD5E1;">🎒 Đồ vật: <b>{item_count}</b></span>
+                                        <span style="color: {status_color}; font-weight: 700; border: 1px solid {status_color}; padding: 2px 8px; border-radius: 6px; font-size: 0.85rem;">{status_tag}</span>
+                                    </div>
+                                    <div style="font-size: 0.82rem; color: #94A3B8;">
+                                        <span>👥 Phiên: <b>{sessions}</b></span> | 
+                                        <span>⚙️ CPU: <b>{cpu_pct:.1f}%</b></span> | 
+                                        <span>💾 RAM: <b>{rss_mb:.0f}MB</b> ({sys_mem:.0f}%)</span> | 
+                                        <span>⚡ {device_label}</span>
+                                    </div>
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
-
+    
                             if sus_count > 0:
-                                if not alert_fired:
-                                    play_audio_alert()
-                                    alert_fired = True
-                                alert_view.error(f"⚠️ **CẢNH BÁO BỎ QUÊN:** Phát hiện {sus_count} đồ vật bị bỏ lại trên ghế trống! Hãy kiểm tra khoang hành khách.")
-                            else:
-                                alert_fired = False
-                                alert_view.empty()
-
-                            frame_idx += 1
-                            time.sleep(0.01)
-
-                    finally:
-                        reader.stop()
-                        st.info("⏹️ Đã dừng luồng camera và giải phóng phần cứng an toàn.")
+                                st.error(f"⚠️ **CẢNH BÁO BỎ QUÊN:** Phát hiện {sus_count} đồ vật bị bỏ lại trên ghế trống! Hãy kiểm tra khoang hành khách.")
+                    else:
+                        st.info(
+                            """⚪ **Camera đang ở trạng thái Dừng (Offline).**
+    
+    💡 Nhấn nút **'START'** màu xanh trên khung camera bên trên để cấp quyền webcam của thiết bị và bắt đầu phân tích trực tiếp. Hồ sơ sự kiện và danh sách đồ vật đã phát hiện được bảo lưu an toàn trong hệ thống."""
+                        )
+    
+                    with st.expander("ℹ️ Hướng dẫn cấp quyền Webcam & Khắc phục sự cố khi truy cập từ thiết bị khác", expanded=False):
+                        st.markdown("""
+                        - **Cấp quyền truy cập:** Khi nhấn `START`, trình duyệt sẽ hiển thị thông báo xin cấp quyền truy cập Camera. Hãy bấm **'Allow' (Cho phép)**.
+                        - **Nếu bị chặn quyền (NotAllowedError):** Bấm biểu tượng ổ khóa hoặc camera trên thanh địa chỉ URL của trình duyệt > Chuyển Camera sang **'Cho phép' (Allow)** > Tải lại trang (F5).
+                        - **Trên điện thoại (Safari iOS / Chrome Android):** Trình duyệt yêu cầu kết nối bảo mật HTTPS để mở camera (Streamlit Cloud đã có chứng chỉ HTTPS bảo mật). Đảm bảo không có ứng dụng khác (Zoom, FaceTime, v.v.) đang chiếm quyền camera.
+                        - **Không có Webcam:** Nếu thiết bị không gắn camera, hãy chuyển sang chế độ **'🚌 Video Mẫu Xe Buýt (Demo Mode)'** hoặc **'📁 Tải lên Video'** để kiểm thử hệ thống.
+                        """)
+    
             else:
-                st.info("💡 Hãy bật công tắc **'🔴 BẬT / TẮT CAMERA LOCAL'** ở trên để bắt đầu quan sát luồng video webcam trực tiếp.")
+                # ── Server-Side OpenCV Camera (Dành cho máy phát triển Local) ──
+                ctrl_c1, ctrl_c2, ctrl_c3, ctrl_c4 = st.columns([2, 1, 1, 1])
+                with ctrl_c1:
+                    run_cam = st.toggle(
+                        "🔴 BẬT / TẮT CAMERA LOCAL (OPENCV BUFFER)",
+                        value=False,
+                        key="toggle_realtime_webcam",
+                        help="Bật để bắt đầu đọc webcam gắn trực tiếp trên máy chủ bằng OpenCV."
+                    )
+                with ctrl_c2:
+                    cam_idx = st.number_input("Cổng Camera", 0, 5, 0, key="cam_port_input", help="0 = FaceTime HD / Mặc định, 1 = USB Cam / Continuity")
+                with ctrl_c3:
+                    stream_res = st.selectbox("Độ phân giải", ["640x480 (Mượt, 30 FPS)", "960x540", "1280x720"], index=0, key="cv_res_select")
+                with ctrl_c4:
+                    infer_stride = st.selectbox("Tần suất AI", ["Mỗi frame (100% Realtime)", "Cách 1 frame (Tối ưu CPU)"], index=0, key="cv_stride_select")
+    
+                res_w, res_h = (640, 480) if "640x480" in stream_res else (960, 540) if "960x540" in stream_res else (1280, 720)
+                stride_val = 1 if "Mỗi frame" in infer_stride else 2
+    
+                if run_cam:
+                    reader = ThreadedCameraReader(src=int(cam_idx), target_width=res_w, target_height=res_h)
+                    is_opened, open_msg = reader.open()
+    
+                    if not is_opened:
+                        if is_cloud_env:
+                            st.warning(
+                                "☁️ **Môi trường Streamlit Cloud (Linux Container):**\n\n"
+                                "Máy chủ đám mây không có phần cứng webcam vật lý kết nối trực tiếp.\n\n"
+                                "👉 **Hãy chuyển sang tùy chọn '🌐 Client Browser Camera (WebRTC)'** ở trên để cấp quyền webcam từ chính thiết bị/trình duyệt của bạn mà không cần chạy local!"
+                            )
+                        else:
+                            st.error(
+                                f"❌ **Không thể mở camera cổng {cam_idx}:** {open_msg}\n\n"
+                                "🔍 **Cách khắc phục trên macOS:**\n"
+                                "1. Mở `Cài đặt hệ thống > Quyền riêng tư & Bảo mật > Camera` và bật quyền cho Terminal / Python / VS Code.\n"
+                                "2. Đảm bảo các ứng dụng khác (FaceTime, Zoom, Teams, Photo Booth) không chiếm dụng camera."
+                            )
+                    else:
+                        st.success(f"🟢 Đã kết nối thành công Camera cổng {reader.active_port}! Luồng hình ảnh đang chạy liên tục theo thời gian thực...")
+    
+                        frame_view = st.empty()
+                        metrics_view = st.empty()
+                        alert_view = st.empty()
+    
+                        snap_col, _ = st.columns([2, 2])
+                        with snap_col:
+                            btn_save_evidence = st.button("📸 Lưu ảnh snapshot bằng chứng hiện tại", key="btn_save_evidence_snapshot")
+    
+                        tracker = ObjectTracker()
+                        event_manager = EventManager()
+                        event_detector = ForgottenItemDetector(
+                            min_stationary_time=min_stat_time,
+                            movement_threshold=STATIONARY_MOVEMENT_THRESHOLD,
+                            watched_classes=ITEM_CLASSES,
+                            seat_manager=service.seat_manager,
+                            event_manager=event_manager,
+                        )
+    
+                        frame_idx = 0
+                        alert_fired = False
+                        t_last_metric = time.time()
+                        last_annotated = None
+                        last_events = []
+                        last_summary = {}
+    
+                        try:
+                            while run_cam:
+                                t0 = time.time()
+                                ret, frame, hardware_frame_cnt = reader.read_latest_frame()
+                                if not ret or frame is None:
+                                    time.sleep(0.01)
+                                    continue
+    
+                                should_infer = (frame_idx % stride_val == 0) or (last_annotated is None)
+    
+                                if should_infer:
+                                    annotated, events, summary = safe_process_webcam_frame(
+                                        service=service,
+                                        frame=frame,
+                                        frame_idx=frame_idx,
+                                        fps=reader.fps or 25.0,
+                                        tracker=tracker,
+                                        event_detector=event_detector,
+                                        event_manager=event_manager,
+                                        confidence_threshold=conf_thresh,
+                                        show_seats=show_seats,
+                                        show_persons=show_persons,
+                                        show_objects=show_objects,
+                                        show_track_ids=True,
+                                        show_confidence=True,
+                                        show_event_markers=True,
+                                        privacy_blur_faces=privacy_blur,
+                                        show_masks=show_masks,
+                                    )
+                                    last_annotated = annotated
+                                    last_events = events
+                                    last_summary = summary
+                                else:
+                                    annotated = last_annotated if last_annotated is not None else frame
+                                    events = last_events
+                                    summary = last_summary
+    
+                                latency_ms = (time.time() - t0) * 1000.0
+                                now = time.time()
+                                actual_fps = 1.0 / max(0.001, (now - t_last_metric))
+                                t_last_metric = now
+    
+                                if btn_save_evidence and annotated is not None:
+                                    snap_dir = Path("data/snapshots")
+                                    snap_dir.mkdir(parents=True, exist_ok=True)
+                                    snap_path = snap_dir / f"evidence_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+                                    cv2.imwrite(str(snap_path), annotated)
+                                    st.toast(f"✅ Đã lưu ảnh snapshot bằng chứng: {snap_path.name}")
+                                    btn_save_evidence = False
+    
+                                rgb_f = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+                                frame_view.image(rgb_f, channels="RGB", use_container_width=True)
+    
+                                total_seats = len(service.seat_manager.seats)
+                                statuses = service.seat_manager.get_all_statuses()
+                                occ_seats = sum(1 for s in statuses.values() if s.state == SeatState.OCCUPIED)
+                                vac_seats = sum(1 for s in statuses.values() if s.state == SeatState.VACANT)
+    
+                                person_count = sum(1 for obj in tracker.current_tracked_objects if obj.class_name == "person")
+                                item_count = sum(1 for obj in tracker.current_tracked_objects if obj.class_name in ITEM_CLASSES or obj.class_name == "item")
+                                sus_count = summary.get("suspected", 0)
+    
+                                status_tag = "🔴 PHÁT HIỆN ĐỒ BỎ QUÊN!" if sus_count > 0 else "🟢 BÌNH THƯỜNG"
+                                status_color = "#EF4444" if sus_count > 0 else "#10B981"
+    
+                                metrics_view.markdown(f"""
+                                <div style="background: #141E33; border: 1px solid #3A506B; border-radius: 8px; padding: 10px 16px; margin-top: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                    <div>
+                                        <span style="font-weight: 700; color: #F8FAFC;">● CAMERA ACTIVE</span>
+                                        <span style="color: #38BDF8; font-weight: 600; margin-left: 10px;">⚡ {actual_fps:.1f} FPS ({latency_ms:.1f}ms)</span>
+                                    </div>
+                                    <div style="display: flex; gap: 14px; align-items: center;">
+                                        <span style="color: #CBD5E1;">🪑 Ghế: <b>{total_seats}</b> (👤 {occ_seats} | 🟢 {vac_seats})</span>
+                                        <span style="color: #CBD5E1;">👤 Người: <b>{person_count}</b></span>
+                                        <span style="color: #CBD5E1;">🎒 Đồ vật: <b>{item_count}</b></span>
+                                        <span style="color: {status_color}; font-weight: 700; border: 1px solid {status_color}; padding: 2px 8px; border-radius: 6px; font-size: 0.85rem;">{status_tag}</span>
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+    
+                                if sus_count > 0:
+                                    if not alert_fired:
+                                        play_audio_alert()
+                                        alert_fired = True
+                                    alert_view.error(f"⚠️ **CẢNH BÁO BỎ QUÊN:** Phát hiện {sus_count} đồ vật bị bỏ lại trên ghế trống! Hãy kiểm tra khoang hành khách.")
+                                else:
+                                    alert_fired = False
+                                    alert_view.empty()
+    
+                                frame_idx += 1
+                                time.sleep(0.01)
+    
+                        finally:
+                            reader.stop()
+                            st.info("⏹️ Đã dừng luồng camera và giải phóng phần cứng an toàn.")
+                else:
+                    st.info("💡 Hãy bật công tắc **'🔴 BẬT / TẮT CAMERA LOCAL'** ở trên để bắt đầu quan sát luồng video webcam trực tiếp.")
 
     elif "Luồng IP / RTSP" in source_mode:
         rtsp_url = st.text_input("Nhập URL luồng RTSP (ví dụ: rtsp://admin:123456@192.168.1.100:554/stream1):")

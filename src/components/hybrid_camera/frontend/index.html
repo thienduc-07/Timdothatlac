@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hybrid AI Camera Stream</title>
+  <!-- ONNX Runtime Web (WebGPU & WASM SIMD) -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.all.min.js"></script>
+  <style>
+    :root {
+      --bg-color: #0F172A;
+      --card-bg: #1E293B;
+      --card-border: #334155;
+      --text-main: #F8FAFC;
+      --text-muted: #94A3B8;
+      --cyan: #00E5FF;
+      --green: #10B981;
+      --amber: #F59E0B;
+      --red: #EF4444;
+      --blue: #3B82F6;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      padding: 10px;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Controls Bar */
+    .controls-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .primary-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 22px;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      color: #fff;
+    }
+
+    .btn-start {
+      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+    }
+    .btn-start:hover {
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      transform: translateY(-1px);
+    }
+
+    .btn-stop {
+      background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+    }
+    .btn-stop:hover {
+      background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
+      transform: translateY(-1px);
+    }
+
+    .btn-disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    .select-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    select {
+      background: #0F172A;
+      color: var(--text-main);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 7px 12px;
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    /* Backend Badge */
+    .backend-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .badge-client {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #34D399;
+    }
+    .badge-server {
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #60A5FA;
+    }
+    .badge-idle {
+      background: rgba(148, 163, 184, 0.15);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      color: #94A3B8;
+    }
+
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: currentColor;
+      box-shadow: 0 0 8px currentColor;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.4; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.1); }
+      100% { opacity: 0.4; transform: scale(0.9); }
+    }
+
+    /* Video Screen Viewport */
+    .viewport {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      max-height: 540px;
+      background: #050B14;
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #1E293B;
+    }
+
+    video {
+      display: none;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .placeholder-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--text-muted);
+      text-align: center;
+      padding: 20px;
+    }
+
+    .loading-bar-container {
+      width: 220px;
+      height: 6px;
+      background: #334155;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 8px;
+      display: none;
+    }
+
+    .loading-bar {
+      width: 0%;
+      height: 100%;
+      background: var(--cyan);
+      transition: width 0.3s ease;
+    }
+
+    /* Telemetry HUD */
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--card-border);
+    }
+
+    .telemetry-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      text-align: center;
+    }
+
+    .telemetry-val {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-main);
+      font-variant-numeric: tabular-nums;
+    }
+    .telemetry-val.green { color: var(--green); }
+    .telemetry-val.cyan { color: var(--cyan); }
+    .telemetry-val.amber { color: var(--amber); }
+
+    .telemetry-lbl {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 2px;
+    }
+
+    .alert-box {
+      margin-top: 12px;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      display: none;
+    }
+    .alert-warn {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #FCD34D;
+    }
+    .alert-error {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #FCA5A5;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Controls Bar -->
+    <div class="controls-bar">
+      <!-- 1 nút điều khiển duy nhất -->
+      <button id="btnToggleCam" class="primary-btn btn-start">
+        📷 BẬT CAMERA
+      </button>
+
+      <div class="select-wrapper">
+        <label for="deviceSelect">Cổng Camera:</label>
+        <select id="deviceSelect">
+          <option value="">Tự động dò tìm camera...</option>
+        </select>
+      </div>
+
+      <div id="backendBadge" class="backend-badge badge-idle">
+        <span class="pulse-dot"></span>
+        <span id="backendText">Chờ kích hoạt</span>
+      </div>
+    </div>
+
+    <!-- Viewport -->
+    <div class="viewport">
+      <video id="webcam" playsinline autoplay muted></video>
+      <canvas id="displayCanvas"></canvas>
+      <div id="placeholder" class="placeholder-overlay">
+        <div style="font-size: 40px;">🎥</div>
+        <div style="font-size: 15px; font-weight: 500;">Camera đang tắt</div>
+        <div style="font-size: 13px; max-width: 380px;">
+          Bấm <strong>📷 BẬT CAMERA</strong> để quét AI trực tiếp trên máy của bạn với <strong>Polygon đa giác viền</strong>.
+        </div>
+        <div id="loadingProgress" class="loading-bar-container">
+          <div id="progressBar" class="loading-bar"></div>
+        </div>
+        <div id="loadingMsg" style="font-size: 12px; color: var(--cyan); display: none;">
+          Đang tải model AI về thiết bị (lần đầu)...
+        </div>
+      </div>
+    </div>
+
+    <!-- Alert Box -->
+    <div id="alertBox" class="alert-box"></div>
+
+    <!-- Telemetry HUD -->
+    <div class="telemetry-grid">
+      <div class="telemetry-card">
+        <div id="valInferFps" class="telemetry-val green">0.0</div>
+        <div class="telemetry-lbl">AI Infer FPS</div>
+      </div>
+      <div class="telemetry-card">
+        <div id="valDisplayFps" class="telemetry-val cyan">0.0</div>
+        <div class="telemetry-lbl">Display FPS</div>
+      </div>
+      <div class="telemetry-card">
+        <div id="valLatency" class="telemetry-val">0 ms</div>
+        <div class="telemetry-lbl">Độ trễ xử lý</div>
+      </div>
+      <div class="telemetry-card">
+        <div id="valItems" class="telemetry-val amber">0</div>
+        <div class="telemetry-lbl">Đồ vật (Polygons)</div>
+      </div>
+      <div class="telemetry-card">
+        <div id="valPersons" class="telemetry-val green">0</div>
+        <div class="telemetry-lbl">Hành khách</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ─────────────────────────────────────────────────────────────
+    // COCO Class Definitions & Vietnamese Mapping
+    // ─────────────────────────────────────────────────────────────
+    const COCO_CLASSES = [
+      "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
+      "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
+      "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
+      "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
+      "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+      "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
+      "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
+      "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
+      "hair drier", "toothbrush"
+    ];
+
+    const ITEM_CLASSES = new Set([
+      "item", "backpack", "handbag", "suitcase", "umbrella", "bottle",
+      "cell phone", "laptop", "book", "cup", "scissors"
+    ]);
+
+    const CLASS_NAMES_VI = {
+      "person": "Người",
+      "backpack": "Ba lô",
+      "handbag": "Túi xách",
+      "suitcase": "Vali",
+      "umbrella": "Ô / Dù",
+      "bottle": "Bình nước",
+      "cell phone": "Điện thoại",
+      "laptop": "Laptop",
+      "book": "Sách",
+      "cup": "Cốc / Ly",
+      "chair": "Ghế xe buýt",
+      "seat": "Ghế xe buýt"
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // Global State
+    // ─────────────────────────────────────────────────────────────
+    let isRunning = false;
+    let videoStream = null;
+    let ortSession = null;
+    let executionProvider = "webgpu";
+    let activeBackendType = "client_webgpu";
+
+    let animFrameId = null;
+    let inferTimeoutId = null;
+    let isInferring = false;
+
+    let confThreshold = 0.35;
+    let iouThreshold = 0.45;
+    let showMasks = true;
+    let showSeats = true;
+    let showPersons = true;
+    let showObjects = true;
+    let modelUrl = "/app/static/models/yolo26n-seg.onnx";
+
+    let lastDisplayTime = performance.now();
+    let displayFps = 0.0;
+    let displayFrameCount = 0;
+    let lastFpsCalcTime = performance.now();
+
+    let inferTimes = [];
+    let inferFps = 0.0;
+    let lastInferTime = performance.now();
+
+    // Client tracking state
+    let trackedObjects = [];
+    let nextTrackId = 1;
+
+    // DOM Elements
+    const btnToggle = document.getElementById("btnToggleCam");
+    const deviceSelect = document.getElementById("deviceSelect");
+    const backendBadge = document.getElementById("backendBadge");
+    const backendText = document.getElementById("backendText");
+    const videoEl = document.getElementById("webcam");
+    const canvasEl = document.getElementById("displayCanvas");
+    const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
+    const placeholder = document.getElementById("placeholder");
+    const loadingProgress = document.getElementById("loadingProgress");
+    const progressBar = document.getElementById("progressBar");
+    const loadingMsg = document.getElementById("loadingMsg");
+    const alertBox = document.getElementById("alertBox");
+
+    const valInferFps = document.getElementById("valInferFps");
+    const valDisplayFps = document.getElementById("valDisplayFps");
+    const valLatency = document.getElementById("valLatency");
+    const valItems = document.getElementById("valItems");
+    const valPersons = document.getElementById("valPersons");
+
+    // Offscreen Canvas for Model Preprocessing (480x480)
+    const offscreenCanvas = document.createElement("canvas");
+    offscreenCanvas.width = 480;
+    offscreenCanvas.height = 480;
+    const offCtx = offscreenCanvas.getContext("2d", { willReadFrequently: true });
+
+    // ─────────────────────────────────────────────────────────────
+    // Streamlit Component Messaging Protocol
+    // ─────────────────────────────────────────────────────────────
+    function notifyStreamlit(val) {
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: "streamlit:setComponentValue",
+        value: val
+      }, "*");
+    }
+
+    function updateFrameHeight() {
+      const height = document.body.scrollHeight + 15;
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: "streamlit:setFrameHeight",
+        height: height
+      }, "*");
+    }
+
+    window.addEventListener("message", (event) => {
+      if (event.data && event.data.type === "streamlit:render") {
+        const args = event.data.args || {};
+        if (args.confThreshold !== undefined) confThreshold = args.confThreshold;
+        if (args.iouThreshold !== undefined) iouThreshold = args.iouThreshold;
+        if (args.showMasks !== undefined) showMasks = args.showMasks;
+        if (args.showSeats !== undefined) showSeats = args.showSeats;
+        if (args.showPersons !== undefined) showPersons = args.showPersons;
+        if (args.showObjects !== undefined) showObjects = args.showObjects;
+        if (args.modelUrl) modelUrl = args.modelUrl;
+      }
+    });
+
+    // Notify ready
+    window.parent.postMessage({
+      isStreamlitMessage: true,
+      type: "streamlit:componentReady",
+      apiVersion: 1
+    }, "*");
+
+    // ─────────────────────────────────────────────────────────────
+    // Camera Device Enumeration
+    // ─────────────────────────────────────────────────────────────
+    async function loadCameras() {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === "videoinput");
+        deviceSelect.innerHTML = "";
+        videoDevices.forEach((dev, idx) => {
+          const opt = document.createElement("option");
+          opt.value = dev.deviceId;
+          opt.text = dev.label || `Camera ${idx + 1}`;
+          deviceSelect.appendChild(opt);
+        });
+        if (videoDevices.length === 0) {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.text = "Camera mặc định";
+          deviceSelect.appendChild(opt);
+        }
+      } catch (err) {
+        console.warn("Lỗi đọc danh sách camera:", err);
+      }
+    }
+    loadCameras();
+
+    // ─────────────────────────────────────────────────────────────
+    // ONNX Runtime Web Model Loading with Cache
+    // ─────────────────────────────────────────────────────────────
+    async function loadONNXModel() {
+      if (ortSession) return ortSession;
+
+      loadingProgress.style.display = "block";
+      loadingMsg.style.display = "block";
+      progressBar.style.width = "20%";
+
+      let modelArrayBuffer = null;
+
+      // 1. Thử đọc từ Cache Storage API
+      try {
+        if (window.caches) {
+          const cache = await caches.open("yolo26-models-v1");
+          const cachedResponse = await cache.match(modelUrl);
+          if (cachedResponse) {
+            progressBar.style.width = "70%";
+            modelArrayBuffer = await cachedResponse.arrayBuffer();
+          }
+        }
+      } catch (e) {
+        console.log("Cache lookup skipped:", e);
+      }
+
+      // 2. Tải qua mạng nếu chưa có cache
+      if (!modelArrayBuffer) {
+        progressBar.style.width = "40%";
+        const resp = await fetch(modelUrl);
+        if (!resp.ok) {
+          throw new Error(`Không thể tải model từ ${modelUrl} (HTTP ${resp.status})`);
+        }
+        progressBar.style.width = "75%";
+        // Lưu vào cache
+        try {
+          if (window.caches) {
+            const cache = await caches.open("yolo26-models-v1");
+            cache.put(modelUrl, resp.clone());
+          }
+        } catch (e) {}
+        modelArrayBuffer = await resp.arrayBuffer();
+      }
+
+      progressBar.style.width = "90%";
+
+      // 3. Khởi tạo session (Thử WebGPU trước, fallback sang WASM)
+      try {
+        if (navigator.gpu) {
+          ortSession = await ort.InferenceSession.create(modelArrayBuffer, {
+            executionProviders: ["webgpu"],
+            graphOptimizationLevel: "all"
+          });
+          executionProvider = "webgpu";
+          activeBackendType = "client_webgpu";
+          console.log("Khởi tạo ONNX Runtime thành công với WebGPU.");
+        } else {
+          throw new Error("WebGPU không có sẵn trên trình duyệt.");
+        }
+      } catch (gpuErr) {
+        console.warn("WebGPU không khả dụng, chuyển sang WASM SIMD:", gpuErr);
+        try {
+          ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency || 2);
+          ort.env.wasm.simd = true;
+          ortSession = await ort.InferenceSession.create(modelArrayBuffer, {
+            executionProviders: ["wasm"],
+            graphOptimizationLevel: "all"
+          });
+          executionProvider = "wasm";
+          activeBackendType = "client_wasm";
+          console.log("Khởi tạo ONNX Runtime thành công với WASM CPU.");
+        } catch (wasmErr) {
+          throw new Error("Không thể khởi tạo ONNX runtime WebGPU hoặc WASM: " + wasmErr.message);
+        }
+      }
+
+      progressBar.style.width = "100%";
+      setTimeout(() => {
+        loadingProgress.style.display = "none";
+        loadingMsg.style.display = "none";
+      }, 400);
+
+      return ortSession;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Single Camera Control Toggle
+    // ─────────────────────────────────────────────────────────────
+    btnToggle.addEventListener("click", async () => {
+      if (!isRunning) {
+        await startCamera();
+      } else {
+        stopCamera();
+      }
+    });
+
+    async function startCamera() {
+      btnToggle.disabled = true;
+      btnToggle.textContent = "⏳ Đang kết nối...";
+      alertBox.style.display = "none";
+
+      try {
+        // Tải model trước
+        await loadONNXModel();
+
+        // Mở MediaStream từ camera client
+        const deviceId = deviceSelect.value;
+        const constraints = {
+          video: {
+            deviceId: deviceId ? { exact: deviceId } : undefined,
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 30 }
+          },
+          audio: false
+        };
+
+        videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+        videoEl.srcObject = videoStream;
+        await videoEl.play();
+
+        canvasEl.width = videoEl.videoWidth || 640;
+        canvasEl.height = videoEl.videoHeight || 480;
+
+        placeholder.style.display = "none";
+        btnToggle.disabled = false;
+        btnToggle.textContent = "⏹️ TẮT CAMERA";
+        btnToggle.className = "primary-btn btn-stop";
+
+        backendBadge.className = "backend-badge badge-client";
+        backendText.textContent = `⚡ AI trên thiết bị (${executionProvider.toUpperCase()})`;
+
+        isRunning = true;
+        lastDisplayTime = performance.now();
+        lastFpsCalcTime = performance.now();
+
+        // Bắt đầu vòng lặp hiển thị & vòng lặp suy luận
+        requestAnimationFrame(renderLoop);
+        runInferenceLoop();
+
+        notifyStreamlit({
+          status: "running",
+          active_backend: activeBackendType,
+          is_running: true
+        });
+
+        loadCameras(); // Cập nhật label các camera sau khi đã được cấp quyền
+      } catch (err) {
+        console.error("Lỗi bật camera:", err);
+        btnToggle.disabled = false;
+        btnToggle.textContent = "📷 BẬT CAMERA";
+        btnToggle.className = "primary-btn btn-start";
+
+        alertBox.className = "alert-box alert-error";
+        alertBox.innerHTML = `❌ <strong>Lỗi truy cập camera hoặc AI:</strong> ${err.message}<br>👉 Hãy kiểm tra quyền camera của trình duyệt. Bạn cũng có thể chọn chế độ <em>'Máy chủ (Server WebRTC)'</em> ở thanh bên.`;
+        alertBox.style.display = "block";
+
+        notifyStreamlit({
+          status: "error",
+          error: err.message,
+          active_backend: "server_fallback_recommended",
+          is_running: false
+        });
+      }
+      updateFrameHeight();
+    }
+
+    function stopCamera() {
+      isRunning = false;
+      if (animFrameId) cancelAnimationFrame(animFrameId);
+      if (inferTimeoutId) clearTimeout(inferTimeoutId);
+
+      if (videoStream) {
+        videoStream.getTracks().forEach(t => t.stop());
+        videoStream = null;
+      }
+      videoEl.srcObject = null;
+
+      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+      placeholder.style.display = "flex";
+
+      btnToggle.textContent = "📷 BẬT CAMERA";
+      btnToggle.className = "primary-btn btn-start";
+      btnToggle.disabled = false;
+
+      backendBadge.className = "backend-badge badge-idle";
+      backendText.textContent = "Chờ kích hoạt";
+
+      valInferFps.textContent = "0.0";
+      valDisplayFps.textContent = "0.0";
+      valLatency.textContent = "0 ms";
+      valItems.textContent = "0";
+      valPersons.textContent = "0";
+
+      trackedObjects = [];
+
+      notifyStreamlit({
+        status: "stopped",
+        is_running: false
+      });
+      updateFrameHeight();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Render Loop (Display at high frame rate)
+    // ─────────────────────────────────────────────────────────────
+    let latestDetections = [];
+
+    function renderLoop() {
+      if (!isRunning) return;
+
+      const now = performance.now();
+      displayFrameCount++;
+      if (now - lastFpsCalcTime >= 1000) {
+        displayFps = (displayFrameCount * 1000) / (now - lastFpsCalcTime);
+        displayFrameCount = 0;
+        lastFpsCalcTime = now;
+        valDisplayFps.textContent = displayFps.toFixed(1);
+      }
+
+      // Vẽ frame video mới nhất lên canvas
+      if (videoEl.readyState >= 2) {
+        ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+
+        // Vẽ lớp overlays (Detections, Polygons, Bounding Boxes)
+        drawDetections(latestDetections);
+      }
+
+      animFrameId = requestAnimationFrame(renderLoop);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // AI Inference Loop (Asynchronous Decoupled Worker)
+    // ─────────────────────────────────────────────────────────────
+    async function runInferenceLoop() {
+      if (!isRunning) return;
+
+      if (!isInferring && videoEl.readyState >= 2 && ortSession) {
+        isInferring = true;
+        const tStart = performance.now();
+
+        try {
+          // 1. Preprocess: vẽ video lên offscreen 480x480
+          const inputSize = 480;
+          const origW = canvasEl.width;
+          const origH = canvasEl.height;
+
+          const r = Math.min(inputSize / origH, inputSize / origW);
+          const nw = Math.round(origW * r);
+          const nh = Math.round(origH * r);
+          const padW = (inputSize - nw) / 2.0;
+          const padH = (inputSize - nh) / 2.0;
+
+          offCtx.fillStyle = "#727272";
+          offCtx.fillRect(0, 0, inputSize, inputSize);
+          offCtx.drawImage(videoEl, Math.round(padW), Math.round(padH), nw, nh);
+
+          // 2. Chuyển ImageData thành Tensor Float32 [1, 3, 480, 480]
+          const imgData = offCtx.getImageData(0, 0, inputSize, inputSize);
+          const pixels = imgData.data;
+          const floatArr = new Float32Array(3 * inputSize * inputSize);
+          const channelSize = inputSize * inputSize;
+
+          for (let i = 0; i < channelSize; i++) {
+            const pIdx = i * 4;
+            floatArr[i] = pixels[pIdx] / 255.0;                   // R
+            floatArr[channelSize + i] = pixels[pIdx + 1] / 255.0; // G
+            floatArr[channelSize * 2 + i] = pixels[pIdx + 2] / 255.0; // B
+          }
+
+          const tensor = new ort.Tensor("float32", floatArr, [1, 3, inputSize, inputSize]);
+
+          // 3. Thực thi suy luận ONNX
+          const feeds = {};
+          feeds[ortSession.inputNames[0]] = tensor;
+          const results = await ortSession.run(feeds);
+
+          const out0 = results[ortSession.outputNames[0]]; // [1, 116, 4725]
+          const out1 = results[ortSession.outputNames[1]]; // [1, 32, 120, 120]
+
+          // 4. Giải mã phát hiện và trích xuất segmentation polygons
+          const dets = decodeYoloSeg(out0, out1, origW, origH, inputSize, padW, padH, r);
+          latestDetections = dets;
+
+          // Cập nhật telemetry
+          const tEnd = performance.now();
+          const latency = Math.round(tEnd - tStart);
+          valLatency.textContent = `${latency} ms`;
+
+          inferTimes.push(tEnd);
+          if (inferTimes.length > 30) inferTimes.shift();
+          if (inferTimes.length >= 2) {
+            const dt = (inferTimes[inferTimes.length - 1] - inferTimes[0]) / 1000;
+            inferFps = (inferTimes.length - 1) / dt;
+            valInferFps.textContent = inferFps.toFixed(1);
+          }
+
+          const pCount = dets.filter(d => d.className === "person").length;
+          const iCount = dets.filter(d => d.className !== "person" && d.className !== "seat").length;
+          valPersons.textContent = pCount;
+          valItems.textContent = iCount;
+
+        } catch (e) {
+          console.error("Lỗi suy luận:", e);
+        } finally {
+          isInferring = false;
+        }
+      }
+
+      inferTimeoutId = setTimeout(runInferenceLoop, 10);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // YOLO Segmentation Post-Processing (NMS + Mask Polygons)
+    // ─────────────────────────────────────────────────────────────
+    function sigmoid(x) {
+      return 1.0 / (1.0 + Math.exp(-x));
+    }
+
+    function decodeYoloSeg(out0, out1, origW, origH, inputSize, padW, padH, r) {
+      const preds = out0.data;       // [1, 116, 4725]
+      const protos = out1.data;     // [1, 32, 120, 120]
+      const numAnchors = 4725;
+      const numAttributes = 116;
+      const numClasses = 80;
+
+      const candidates = [];
+
+      for (let a = 0; a < numAnchors; a++) {
+        // Tìm lớp có xác suất cao nhất
+        let maxScore = -1;
+        let maxClassId = -1;
+        for (let c = 0; c < numClasses; c++) {
+          const score = preds[(4 + c) * numAnchors + a];
+          if (score > maxScore) {
+            maxScore = score;
+            maxClassId = c;
+          }
+        }
+
+        if (maxScore >= confThreshold) {
+          const cx = preds[0 * numAnchors + a];
+          const cy = preds[1 * numAnchors + a];
+          const w = preds[2 * numAnchors + a];
+          const h = preds[3 * numAnchors + a];
+
+          const x1 = cx - w / 2;
+          const y1 = cy - h / 2;
+          const x2 = cx + w / 2;
+          const y2 = cy + h / 2;
+
+          // Lấy 32 mask coefficients
+          const coeffs = new Float32Array(32);
+          for (let m = 0; m < 32; m++) {
+            coeffs[m] = preds[(4 + numClasses + m) * numAnchors + a];
+          }
+
+          let cName = COCO_CLASSES[maxClassId] || "item";
+          if (cName === "chair") cName = "seat";
+
+          candidates.push({
+            classId: maxClassId,
+            className: cName,
+            score: maxScore,
+            box: [x1, y1, x2, y2],
+            coeffs: coeffs
+          });
+        }
+      }
+
+      if (candidates.length === 0) return [];
+
+      // Sort by score descending
+      candidates.sort((a, b) => b.score - a.score);
+
+      // Fast NMS
+      const kept = [];
+      const isSuppressed = new Uint8Array(candidates.length);
+
+      for (let i = 0; i < candidates.length; i++) {
+        if (isSuppressed[i]) continue;
+        kept.push(candidates[i]);
+
+        const boxA = candidates[i].box;
+        const areaA = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1]);
+
+        for (let j = i + 1; j < candidates.length; j++) {
+          if (isSuppressed[j]) continue;
+          const boxB = candidates[j].box;
+          const xx1 = Math.max(boxA[0], boxB[0]);
+          const yy1 = Math.max(boxA[1], boxB[1]);
+          const xx2 = Math.min(boxA[2], boxB[2]);
+          const yy2 = Math.min(boxA[3], boxB[3]);
+
+          const interW = Math.max(0, xx2 - xx1);
+          const interH = Math.max(0, yy2 - yy1);
+          const interArea = interW * interH;
+
+          if (interArea > 0) {
+            const areaB = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1]);
+            const iou = interArea / (areaA + areaB - interArea);
+            if (iou > iouThreshold) {
+              isSuppressed[j] = 1;
+            }
+          }
+        }
+      }
+
+      // Reconstruct Masks and Polygons
+      const protoW = 120;
+      const protoH = 120;
+      const protoScale = protoW / inputSize;
+      const results = [];
+
+      for (const item of kept) {
+        const b = item.box;
+        const mc = item.coeffs;
+
+        // Tọa độ bbox trong ảnh gốc
+        const ox1 = Math.max(0, Math.min(origW, Math.round((b[0] - padW) / r)));
+        const oy1 = Math.max(0, Math.min(origH, Math.round((b[1] - padH) / r)));
+        const ox2 = Math.max(0, Math.min(origW, Math.round((b[2] - padW) / r)));
+        const oy2 = Math.max(0, Math.min(origH, Math.round((b[3] - padH) / r)));
+
+        let polygon = null;
+
+        // Chỉ tính polygon nếu là đồ vật (belonging items) và showMasks bật
+        if (showMasks && (ITEM_CLASSES.has(item.className) || item.className === "item")) {
+          const px1 = Math.max(0, Math.min(protoW - 1, Math.floor(b[0] * protoScale)));
+          const py1 = Math.max(0, Math.min(protoH - 1, Math.floor(b[1] * protoScale)));
+          const px2 = Math.max(0, Math.min(protoW, Math.ceil(b[2] * protoScale)));
+          const py2 = Math.max(0, Math.min(protoH, Math.ceil(b[3] * protoScale)));
+
+          const polyPts = [];
+          const step = 2; // Sample resolution
+
+          // Quét biên mask để tạo polygon bao quanh
+          for (let py = py1; py < py2; py += step) {
+            for (let px = px1; px < px2; px += step) {
+              let val = 0;
+              for (let m = 0; m < 32; m++) {
+                val += mc[m] * protos[m * (protoW * protoH) + py * protoW + px];
+              }
+              if (sigmoid(val) > 0.5) {
+                // Chuyển ngược tọa độ proto (120x120) -> input (480x480) -> frame gốc
+                const inX = px / protoScale;
+                const inY = py / protoScale;
+                const origX = Math.max(0, Math.min(origW, (inX - padW) / r));
+                const origY = Math.max(0, Math.min(origH, (inY - padH) / r));
+                polyPts.push([origX, origY]);
+              }
+            }
+          }
+
+          if (polyPts.length >= 4) {
+            // Tạo convex hull nhẹ để vẽ polygon mượt mà
+            polygon = getConvexHull(polyPts);
+          }
+        }
+
+        results.push({
+          classId: item.classId,
+          className: item.className,
+          score: item.score,
+          bbox: [ox1, oy1, ox2, oy2],
+          polygon: polygon
+        });
+      }
+
+      return results;
+    }
+
+    // Convex hull thuật toán Andrew's Monotone Chain để tạo viền polygon mượt mà
+    function getConvexHull(points) {
+      if (points.length <= 3) return points;
+      points.sort((a, b) => a[0] === b[0] ? a[1] - b[1] : a[0] - b[0]);
+
+      const lower = [];
+      for (let i = 0; i < points.length; i++) {
+        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], points[i]) <= 0) {
+          lower.pop();
+        }
+        lower.push(points[i]);
+      }
+
+      const upper = [];
+      for (let i = points.length - 1; i >= 0; i--) {
+        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], points[i]) <= 0) {
+          upper.pop();
+        }
+        upper.push(points[i]);
+      }
+
+      upper.pop();
+      lower.pop();
+      return lower.concat(upper);
+    }
+
+    function cross(o, a, b) {
+      return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Overlay Rendering (Polygons, Boxes, Labels)
+    // ─────────────────────────────────────────────────────────────
+    function drawDetections(detections) {
+      if (!detections || detections.length === 0) return;
+
+      for (const det of detections) {
+        const [x1, y1, x2, y2] = det.bbox;
+        const bw = x2 - x1;
+        const bh = y2 - y1;
+        const cName = det.className;
+        const viLabel = CLASS_NAMES_VI[cName] || cName;
+        const scoreStr = `${Math.round(det.score * 100)}%`;
+
+        if (cName === "person") {
+          if (!showPersons) continue;
+          // Vẽ bounding box người (Green #10B981)
+          ctx.strokeStyle = "#10B981";
+          ctx.lineWidth = 2.5;
+          ctx.strokeRect(x1, y1, bw, bh);
+
+          drawLabelTag(x1, y1, `👤 ${viLabel} ${scoreStr}`, "#10B981");
+        } else if (cName === "seat") {
+          if (!showSeats) continue;
+          // Vẽ ghế (Cyan #00E5FF)
+          ctx.strokeStyle = "#00E5FF";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x1, y1, bw, bh);
+          drawLabelTag(x1, y1, `🪑 ${viLabel}`, "#00E5FF");
+        } else {
+          if (!showObjects) continue;
+          // Đồ vật cá nhân (Amber #F59E0B)
+          if (det.polygon && det.polygon.length >= 3) {
+            // Vẽ mặt nạ Polygon bám sát viền
+            ctx.beginPath();
+            ctx.moveTo(det.polygon[0][0], det.polygon[0][1]);
+            for (let i = 1; i < det.polygon.length; i++) {
+              ctx.lineTo(det.polygon[i][0], det.polygon[i][1]);
+            }
+            ctx.closePath();
+
+            ctx.fillStyle = "rgba(245, 158, 11, 0.35)";
+            ctx.fill();
+
+            ctx.strokeStyle = "#F59E0B";
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+
+            drawLabelTag(x1, y1, `📦 ${viLabel} ${scoreStr}`, "#F59E0B");
+          } else {
+            // Fallback box nếu không đủ điểm polygon
+            ctx.strokeStyle = "#F59E0B";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x1, y1, bw, bh);
+            drawLabelTag(x1, y1, `📦 ${viLabel} ${scoreStr}`, "#F59E0B");
+          }
+        }
+      }
+    }
+
+    function drawLabelTag(x, y, text, color) {
+      ctx.font = "bold 13px -apple-system, sans-serif";
+      const metrics = ctx.measureText(text);
+      const th = 20;
+      const tw = metrics.width + 12;
+
+      ctx.fillStyle = color;
+      ctx.fillRect(x, Math.max(0, y - th), tw, th);
+
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillText(text, x + 6, Math.max(14, y - 5));
+    }
+  </script>
+</body>
+</html>

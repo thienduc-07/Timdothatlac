@@ -76,6 +76,16 @@ USE_SUPERVISION = os.getenv("USE_SUPERVISION", "true").lower() == "true"
 # Inference mode – local YOLO, Roboflow serverless, or hybrid (local+Roboflow)
 INFERENCE_MODE = os.getenv("INFERENCE_MODE", "local").lower()  # "local", "roboflow", "hybrid"
 
+# ──────────────────────────────────────────────
+# Hybrid AI Inference (Client WebGPU/WASM + Server Fallback)
+# ──────────────────────────────────────────────
+HYBRID_INFERENCE_MODE = os.getenv("HYBRID_INFERENCE_MODE", "auto").lower()  # "auto", "on_device", "server"
+ONNX_SEGMENTATION_MODEL_NAME = "yolo26n-seg.onnx"
+ONNX_MODEL_PATH = MODELS_DIR / ONNX_SEGMENTATION_MODEL_NAME
+CLIENT_MODEL_URL = os.getenv("CLIENT_MODEL_URL", "/app/static/models/yolo26n-seg.onnx")
+CLIENT_PERF_THRESHOLD_FPS = float(os.getenv("CLIENT_PERF_THRESHOLD_FPS", "8.0"))
+BACKEND_SWITCH_COOLDOWN_SEC = float(os.getenv("BACKEND_SWITCH_COOLDOWN_SEC", "5.0"))
+
 # Path to YOLO weights – can be overridden via env var; defaults to available segmentation weights.
 DEFAULT_MODEL_PATH = (
     str(CUSTOM_SEGMENTATION_WEIGHTS_PATH)
