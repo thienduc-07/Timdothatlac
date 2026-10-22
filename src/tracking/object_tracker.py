@@ -71,7 +71,12 @@ class ObjectTracker:
     def _init_sv_tracker(self):
         try:
             import supervision as sv
-            self._sv_tracker = sv.ByteTrack()
+            self._sv_tracker = sv.ByteTrack(
+                track_activation_threshold=0.25,
+                lost_track_buffer=30,
+                minimum_matching_threshold=0.85,
+                frame_rate=30,
+            )
         except Exception as e:
             logger.warning(f"Supervision ByteTrack không khả dụng: {e}")
             self._sv_tracker = None

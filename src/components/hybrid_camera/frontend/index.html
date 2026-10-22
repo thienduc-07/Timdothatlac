@@ -966,6 +966,25 @@
         };
 
         videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+        try {
+          const [videoTrack] = videoStream.getVideoTracks();
+          if (videoTrack && typeof videoTrack.getCapabilities === "function") {
+            const caps = videoTrack.getCapabilities();
+            const advanced = {};
+            if (caps.exposureMode && Array.isArray(caps.exposureMode) && caps.exposureMode.includes("continuous")) {
+              advanced.exposureMode = "continuous";
+            }
+            if (caps.whiteBalanceMode && Array.isArray(caps.whiteBalanceMode) && caps.whiteBalanceMode.includes("continuous")) {
+              advanced.whiteBalanceMode = "continuous";
+            }
+            if (Object.keys(advanced).length > 0 && typeof videoTrack.applyConstraints === "function") {
+              await videoTrack.applyConstraints({ advanced: [advanced] }).catch(() => {});
+            }
+          }
+        } catch (capErr) {
+          console.debug("Camera capabilities inspection skipped:", capErr);
+        }
+
         videoEl.srcObject = videoStream;
         await videoEl.play();
 
@@ -1074,17 +1093,29 @@
         valDisplayFps.textContent = displayFps.toFixed(1);
       }
 
-      // Vẽ frame video mới nhất lên canvas
+      // Vẽ frame video mới nhất lên canvas với bảo vệ trạng thái tuyệt đối (State Isolation)
       if (videoEl.readyState >= 2) {
+        ctx.save();
+        ctx.globalAlpha = 1.0;
+        ctx.filter = "none";
+        ctx.globalCompositeOperation = "source-over";
+        ctx.imageSmoothingEnabled = true;
+
         ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
 
         // Vẽ ghế xe buýt
         if (showSeats) {
+          ctx.save();
           drawSeats(canvasEl.width, canvasEl.height);
+          ctx.restore();
         }
 
         // Vẽ các đối tượng đã được track & trích xuất polygon
+        ctx.save();
         drawTrackedObjects(canvasEl.width, canvasEl.height);
+        ctx.restore();
+
+        ctx.restore();
       }
 
       animFrameId = requestAnimationFrame(renderLoop);
@@ -1486,9 +1517,9 @@
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Robust Bipartite Matching (IoU + Normalized Centroid Distance)
+    // Robust Bipartite Matching (IoU + Centroid Velocity Prediction)
     // ─────────────────────────────────────────────────────────────
-    function matchTracksWithDetections(tracksMap, detections, frameW, frameH, maxDistNorm = 0.16, minIoU = 0.15) {
+    function matchTracksWithDetections(tracksMap, detections, frameW, frameH, maxDistNorm = 0.28, minIoU = 0.15) {
       const matches = [];
       const unmatchedDetections = new Set(detections.map((_, i) => i));
       const unmatchedTracks = new Set(tracksMap.keys());
@@ -1499,8 +1530,9 @@
       for (let tIdx = 0; tIdx < trackEntries.length; tIdx++) {
         const [trackId, track] = trackEntries[tIdx];
         const tBox = track.bbox;
-        const tCx = (tBox[0] + tBox[2]) / 2;
-        const tCy = (tBox[1] + tBox[3]) / 2;
+        // Sử dụng velocity (nếu có) để dự đoán tâm đối tượng ở frame hiện tại
+        const predCx = (tBox[0] + tBox[2]) / 2 + (track.vx || 0);
+        const predCy = (tBox[1] + tBox[3]) / 2 + (track.vy || 0);
         const tW = Math.max(1, tBox[2] - tBox[0]);
         const tH = Math.max(1, tBox[3] - tBox[1]);
 
@@ -1513,21 +1545,22 @@
           const dH = Math.max(1, dBox[3] - dBox[1]);
 
           const iou = calcBoxIoU(tBox, dBox);
-          const dist = Math.hypot((tCx - dCx) / frameW, (tCy - dCy) / frameH);
+          const dist = Math.hypot((predCx - dCx) / frameW, (predCy - dCy) / frameH);
           const sizeRatio = (dW * dH) / (tW * tH);
 
-          // Điều kiện ghép nối hợp lệ
+          // Điều kiện ghép nối hợp lệ: IoU chồng lấn HOẶC khoảng cách dự đoán gần với kích thước đồng nhất
           const isIoUMatch = (iou >= minIoU);
-          const isProximityMatch = (dist <= maxDistNorm && sizeRatio >= 0.35 && sizeRatio <= 2.8);
+          const isProximityMatch = (dist <= maxDistNorm && sizeRatio >= 0.28 && sizeRatio <= 3.5);
 
           if (isIoUMatch || isProximityMatch) {
-            const score = (iou * 0.6) + ((1.0 - Math.min(1.0, dist / maxDistNorm)) * 0.4);
+            const proximityScore = 1.0 - Math.min(1.0, dist / maxDistNorm);
+            const score = (iou * 0.45) + (proximityScore * 0.55);
             costList.push({ trackId, dIdx, score });
           }
         }
       }
 
-      // Ghép nối tham lam
+      // Ghép nối tham lam tối ưu toàn cục
       costList.sort((a, b) => b.score - a.score);
       const matchedT = new Set();
       const matchedD = new Set();
@@ -1666,21 +1699,52 @@
       }
 
       // ─────────────────────────────────────────────────────────
-      // 3. QUẢN LÝ ĐỒ VẬT (ITEM TRACKING & ANTI-FLICKER)
+      // 3. QUẢN LÝ ĐỒ VẬT (ITEM TRACKING & ANTI-FLICKER & ANTI-GHOST)
       // ─────────────────────────────────────────────────────────
-      const itemMatch = matchTracksWithDetections(trackedItems, itemDets, frameW, frameH, 0.16, 0.15);
+      // Lọc trùng lặp raw detections nếu model sinh ra box kép cho cùng 1 vật phẩm
+      const cleanItemDets = [];
+      for (let i = 0; i < itemDets.length; i++) {
+        let isDup = false;
+        for (let j = 0; j < cleanItemDets.length; j++) {
+          if (calcBoxIoU(itemDets[i].bbox, cleanItemDets[j].bbox) > 0.70) {
+            isDup = true;
+            if (itemDets[i].score > cleanItemDets[j].score) {
+              cleanItemDets[j] = itemDets[i];
+            }
+            break;
+          }
+        }
+        if (!isDup) cleanItemDets.push(itemDets[i]);
+      }
 
+      const itemMatch = matchTracksWithDetections(trackedItems, cleanItemDets, frameW, frameH, 0.32, 0.15);
+
+      // Cập nhật các track đã khớp
       for (const m of itemMatch.matches) {
         const it = trackedItems.get(m.trackId);
-        const det = itemDets[m.dIdx];
+        const det = cleanItemDets[m.dIdx];
+
+        // Ước tính vận tốc tức thời và làm mượt EMA
+        const oldCx = (it.bbox[0] + it.bbox[2]) / 2;
+        const oldCy = (it.bbox[1] + it.bbox[3]) / 2;
+        const newCx = (det.bbox[0] + det.bbox[2]) / 2;
+        const newCy = (det.bbox[1] + det.bbox[3]) / 2;
+        const instVx = newCx - oldCx;
+        const instVy = newCy - oldCy;
+        it.vx = it.vx !== undefined ? it.vx * 0.4 + instVx * 0.6 : instVx;
+        it.vy = it.vy !== undefined ? it.vy * 0.4 + instVy * 0.6 : instVy;
+
         it.missCount = 0;
         it.hits++;
         it.confirmed = true;
-        // Spatial EMA smoothing: loại bỏ giật nhấp nháy
-        it.bbox[0] = Math.round(it.bbox[0] * 0.30 + det.bbox[0] * 0.70);
-        it.bbox[1] = Math.round(it.bbox[1] * 0.30 + det.bbox[1] * 0.70);
-        it.bbox[2] = Math.round(it.bbox[2] * 0.30 + det.bbox[2] * 0.70);
-        it.bbox[3] = Math.round(it.bbox[3] * 0.30 + det.bbox[3] * 0.70);
+        it.lifecycle = "CONFIRMED";
+        it.isRenderable = true;
+
+        // Spatial EMA smoothing để chống rung lắc khi đứng yên
+        it.bbox[0] = Math.round(it.bbox[0] * 0.25 + det.bbox[0] * 0.75);
+        it.bbox[1] = Math.round(it.bbox[1] * 0.25 + det.bbox[1] * 0.75);
+        it.bbox[2] = Math.round(it.bbox[2] * 0.25 + det.bbox[2] * 0.75);
+        it.bbox[3] = Math.round(it.bbox[3] * 0.25 + det.bbox[3] * 0.75);
         if (det.polygon && det.polygon.length >= 3) {
           it.polygon = det.polygon;
         }
@@ -1689,25 +1753,101 @@
         it.recheckStartTime = null;
       }
 
+      // Xử lý các track không được phát hiện trong frame này:
+      // TĂNG missCount và ẨN polygon ngay lập tức để không tạo polygon ma (ghost polygon)!
+      for (const itId of itemMatch.unmatchedTracks) {
+        const it = trackedItems.get(itId);
+        if (!it) continue;
+        it.missCount++;
+        it.lifecycle = "TEMPORARILY_MISSING";
+        it.isRenderable = false; // Triệt để xóa bỏ polygon ma
+        it.vx = (it.vx || 0) * 0.5;
+        it.vy = (it.vy || 0) * 0.5;
+      }
+
+      // Xử lý các detection mới chưa được match:
+      // Kiểm tra tái liên kết (reassociation) với track đang tạm mất trước khi tạo ID mới
       for (const dIdx of itemMatch.unmatchedDetections) {
-        const det = itemDets[dIdx];
-        const itId = nextItemId++;
-        trackedItems.set(itId, {
-          id: itId,
-          displayId: `ITEM_${String(itId).padStart(3, "0")}`,
-          bbox: [...det.bbox],
-          polygon: det.polygon,
-          score: det.score,
-          hits: 1,
-          confirmed: true,
-          missCount: 0,
-          firstSeen: now,
-          lastSeen: now,
-          stationarySince: now,
-          status: "NORMAL",
-          associatedSeat: "UNKNOWN_SEAT",
-          recheckStartTime: null
-        });
+        const det = cleanItemDets[dIdx];
+        const dCx = (det.bbox[0] + det.bbox[2]) / 2;
+        const dCy = (det.bbox[1] + det.bbox[3]) / 2;
+        const dW = Math.max(1, det.bbox[2] - det.bbox[0]);
+        const dH = Math.max(1, det.bbox[3] - det.bbox[1]);
+
+        let bestCandidate = null;
+        let bestDist = 0.38; // Bán kính tái liên kết khi đồ vật di chuyển nhanh
+        for (const it of trackedItems.values()) {
+          if (it.missCount > 0 && it.missCount <= 25) {
+            const predCx = (it.bbox[0] + it.bbox[2]) / 2 + (it.vx || 0);
+            const predCy = (it.bbox[1] + it.bbox[3]) / 2 + (it.vy || 0);
+            const dist = Math.hypot((predCx - dCx) / frameW, (predCy - dCy) / frameH);
+            const tW = Math.max(1, it.bbox[2] - it.bbox[0]);
+            const tH = Math.max(1, it.bbox[3] - it.bbox[1]);
+            const sizeRatio = (dW * dH) / (tW * tH);
+            if (dist < bestDist && sizeRatio >= 0.30 && sizeRatio <= 3.2) {
+              bestDist = dist;
+              bestCandidate = it;
+            }
+          }
+        }
+
+        if (bestCandidate) {
+          // Tái liên kết với ID cũ, không tạo ID mới!
+          bestCandidate.missCount = 0;
+          bestCandidate.hits++;
+          bestCandidate.confirmed = true;
+          bestCandidate.lifecycle = "CONFIRMED";
+          bestCandidate.isRenderable = true;
+          bestCandidate.bbox = [...det.bbox];
+          if (det.polygon && det.polygon.length >= 3) {
+            bestCandidate.polygon = det.polygon;
+          }
+          bestCandidate.score = bestCandidate.score * 0.3 + det.score * 0.7;
+          bestCandidate.lastSeen = now;
+          bestCandidate.recheckStartTime = null;
+        } else {
+          // Tạo track mới
+          const itId = nextItemId++;
+          trackedItems.set(itId, {
+            id: itId,
+            displayId: `ITEM_${String(itId).padStart(3, "0")}`,
+            bbox: [...det.bbox],
+            polygon: det.polygon,
+            score: det.score,
+            hits: 1,
+            confirmed: true,
+            lifecycle: "CONFIRMED",
+            missCount: 0,
+            vx: 0,
+            vy: 0,
+            firstSeen: now,
+            lastSeen: now,
+            stationarySince: now,
+            status: "NORMAL",
+            associatedSeat: "UNKNOWN_SEAT",
+            recheckStartTime: null,
+            isRenderable: true
+          });
+        }
+      }
+
+      // Ngăn ngừa và hợp nhất các track trùng lặp (Duplicate-Track Prevention)
+      const currentItemTracks = Array.from(trackedItems.values());
+      for (let i = 0; i < currentItemTracks.length; i++) {
+        for (let j = i + 1; j < currentItemTracks.length; j++) {
+          const tA = currentItemTracks[i];
+          const tB = currentItemTracks[j];
+          if (!trackedItems.has(tA.id) || !trackedItems.has(tB.id)) continue;
+          const iou = calcBoxIoU(tA.bbox, tB.bbox);
+          if (iou > 0.55) {
+            const keep = tA.id < tB.id ? tA : tB;
+            const drop = tA.id < tB.id ? tB : tA;
+            keep.hits += drop.hits;
+            keep.lastSeen = Math.max(keep.lastSeen, drop.lastSeen);
+            if (drop.status === "SUSPECTED") keep.status = "SUSPECTED";
+            trackedItems.delete(drop.id);
+          }
+        }
       }
 
       // ─────────────────────────────────────────────────────────
@@ -1791,6 +1931,8 @@
 
         // B. Xử lý trường hợp Detection bị mất ở frame này
         if (it.missCount > 0) {
+          it.isRenderable = false; // Triệt để không vẽ polygon ma
+
           // Kiểm tra xem có người đang che khuất vị trí đồ vật không (Trường hợp C & D)
           let isCoveredByPerson = false;
           for (const p of activePersonsList) {
@@ -1816,8 +1958,9 @@
             }
           }
 
-          // Xóa track khi missCount vượt quá 30 frames (~2s) hoặc đã chuyển sang ITEM_REMOVED
-          if (it.missCount > 30 || it.status === "ITEM_REMOVED") {
+          // Xóa track khi vượt quá ngưỡng mất (~2s không có người che) hoặc đã xác nhận ITEM_REMOVED
+          const timeMissing = now - it.lastSeen;
+          if (it.missCount > 25 || (timeMissing > 2000 && it.status !== "TEMPORARILY_OCCLUDED") || it.status === "ITEM_REMOVED") {
             trackedItems.delete(itId);
           }
           continue;
@@ -1871,9 +2014,9 @@
       // ─────────────────────────────────────────────────────────
       // 6. CẬP NHẬT GIAO DIỆN & CẢNH BÁO (HUD & BANNER)
       // ─────────────────────────────────────────────────────────
-      const confirmedPersons = Array.from(trackedPersons.values()).filter(p => p.confirmed && p.missCount <= 5);
-      const confirmedItems = Array.from(trackedItems.values()).filter(it => it.confirmed);
-      const suspectItems = confirmedItems.filter(it => it.status === "SUSPECTED");
+      const confirmedPersons = Array.from(trackedPersons.values()).filter(p => p.confirmed && p.missCount === 0);
+      const confirmedItems = Array.from(trackedItems.values()).filter(it => it.confirmed && it.missCount === 0);
+      const suspectItems = Array.from(trackedItems.values()).filter(it => it.status === "SUSPECTED" && it.status !== "ITEM_REMOVED");
 
       if (valSeats) {
         valSeats.textContent = trackedSeats.size > 0 ? `${trackedSeats.size}` : "0";
@@ -1940,11 +2083,12 @@
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Visual Rendering Functions (Overlay Canvas)
+    // Visual Rendering Functions (Overlay Canvas with State Isolation)
     // ─────────────────────────────────────────────────────────────
     function drawSeats(w, h) {
       if (trackedSeats.size === 0) return; // KHÔNG vẽ bất kỳ ô vuông nào nếu không có ghế phát hiện thực tế
 
+      ctx.save();
       for (const seat of trackedSeats.values()) {
         const [x1, y1, x2, y2] = seat.bbox;
         const sw = x2 - x1;
@@ -1982,21 +2126,23 @@
         ctx.fillStyle = "#0F172A";
         ctx.fillText(tagText, x1 + 5, y1 + 14);
       }
+      ctx.restore();
     }
 
     function drawTrackedObjects(w, h) {
+      ctx.save();
+
       // 1. Vẽ Người (PERSONS) - Nhận diện bằng Polygon Segmentation
       if (showPersons) {
         for (const p of trackedPersons.values()) {
-          if (!p.confirmed) continue;
+          // Bỏ qua nếu chưa confirmed hoặc đang tạm mất trong frame này
+          if (!p.confirmed || p.missCount > 0) continue;
           const [x1, y1, x2, y2] = p.bbox;
           const bw = x2 - x1;
           const bh = y2 - y1;
           const scoreStr = `${Math.round(p.score * 100)}%`;
 
-          // Alpha fade nhẹ khi tạm mất detection (anti-flicker)
-          ctx.globalAlpha = Math.max(0.4, 1.0 - (p.missCount / 25) * 0.6);
-
+          ctx.save();
           if (p.polygon && p.polygon.length >= 3) {
             ctx.beginPath();
             ctx.moveTo(p.polygon[0][0], p.polygon[0][1]);
@@ -2024,15 +2170,15 @@
             ctx.fillRect(x1, y1, bw, bh);
             drawLabelTag(x1, y1, `👤 ${p.displayId} ${scoreStr}`, "#10B981", "#FFFFFF");
           }
-
-          ctx.globalAlpha = 1.0;
+          ctx.restore();
         }
       }
 
       // 2. Vẽ Đồ vật (ITEMS) - Nhận diện bằng Polygon Segmentation & nhãn ITEM chuẩn hóa
       if (showObjects) {
         for (const it of trackedItems.values()) {
-          if (!it.confirmed) continue;
+          // Bỏ qua nếu chưa confirmed, đang tạm mất detection trong frame này hoặc không renderable (Chống polygon ma)
+          if (!it.confirmed || it.missCount > 0 || !it.isRenderable) continue;
           const [x1, y1, x2, y2] = it.bbox;
           const bw = x2 - x1;
           const bh = y2 - y1;
@@ -2044,9 +2190,7 @@
           let mainColor = isSuspected ? "#EF4444" : (isOccluded ? "#A855F7" : "#F59E0B");
           let fillColor = isSuspected ? "rgba(239, 68, 68, 0.40)" : (isOccluded ? "rgba(168, 85, 247, 0.28)" : "rgba(245, 158, 11, 0.32)");
 
-          // Alpha fade nhẹ khi tạm mất detection (anti-flicker)
-          ctx.globalAlpha = Math.max(0.4, 1.0 - (it.missCount / 30) * 0.6);
-
+          ctx.save();
           if (it.polygon && it.polygon.length >= 3) {
             ctx.beginPath();
             ctx.moveTo(it.polygon[0][0], it.polygon[0][1]);
@@ -2081,13 +2225,15 @@
             const labelText = `${prefix} ${it.displayId}${seatTag} ${scoreStr}`;
             drawLabelTag(x1, y1, labelText, mainColor, isSuspected ? "#FFFFFF" : "#0F172A");
           }
-
-          ctx.globalAlpha = 1.0;
+          ctx.restore();
         }
       }
+
+      ctx.restore();
     }
 
     function drawLabelTag(x, y, text, bgColor, textColor) {
+      ctx.save();
       ctx.font = "bold 12px -apple-system, sans-serif";
       const metrics = ctx.measureText(text);
       const th = 20;
@@ -2101,6 +2247,7 @@
 
       ctx.fillStyle = textColor;
       ctx.fillText(text, tagX + 6, tagY - 6);
+      ctx.restore();
     }
   </script>
 </body>

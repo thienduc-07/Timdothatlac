@@ -88,6 +88,9 @@ def map_class(
     return raw_lower
 
 
+normalize_category = map_class
+
+
 def is_seat_state_class(semantic_label: str) -> bool:
     """Return ``True`` if the label is a seat-state class from the custom model."""
     return semantic_label.startswith("seat_state_")
