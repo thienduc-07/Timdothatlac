@@ -463,12 +463,11 @@
     let showPersons = true;
     let showObjects = true;
 
-    // Relative and absolute model paths
-    let modelCandidateUrls = [
-      "static/models/yolo26n-seg.onnx",
-      "/app/static/models/yolo26n-seg.onnx",
-      "/static/models/yolo26n-seg.onnx"
-    ];
+    // Model source configuration & integrity metadata
+    let configuredModelUrl = "/app/static/models/yolo26n-seg.onnx";
+    let fallbackModelUrl = "https://raw.githubusercontent.com/thienduc-07/Timdothatlac/main/static/models/yolo26n-seg.onnx";
+    let expectedModelSize = 11078627;
+    let expectedModelSha256 = "02d840d18222fdfbe32e93879f5b4d520f1b6b6af87222cc7b03ca1cce0372b3";
 
     // Frame rates & metrics
     let displayFrameCount = 0;
@@ -551,6 +550,10 @@
     window.addEventListener("message", (event) => {
       if (event.data && event.data.type === "streamlit:render") {
         const args = event.data.args || {};
+        if (args.modelUrl) configuredModelUrl = args.modelUrl;
+        if (args.fallbackModelUrl) fallbackModelUrl = args.fallbackModelUrl;
+        if (args.modelSize) expectedModelSize = Number(args.modelSize);
+        if (args.modelSha256) expectedModelSha256 = String(args.modelSha256);
         if (args.confThreshold !== undefined) confThreshold = args.confThreshold;
         if (args.iouThreshold !== undefined) iouThreshold = args.iouThreshold;
         if (args.showMasks !== undefined) showMasks = args.showMasks;
@@ -616,6 +619,102 @@
     // ─────────────────────────────────────────────────────────────
     // ONNX Runtime Web Model Loading with CacheStorage
     // ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
+    // ONNX Model Candidate URL Resolver & Validation
+    // ─────────────────────────────────────────────────────────────
+    function getCandidateModelUrls() {
+      const urls = [];
+
+      // 1. URL được cấu hình từ Python component args (ví dụ /app/static/models/yolo26n-seg.onnx)
+      if (configuredModelUrl) {
+        try {
+          const u = new URL(configuredModelUrl, window.location.origin).href;
+          if (!urls.includes(u)) urls.push(u);
+        } catch (e) {
+          if (!urls.includes(configuredModelUrl)) urls.push(configuredModelUrl);
+        }
+      }
+
+      // 2. Query param streamlitUrl từ Streamlit parent iframe
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const parentStreamlitUrl = params.get("streamlitUrl");
+        if (parentStreamlitUrl) {
+          const parentOrigin = new URL(parentStreamlitUrl).origin;
+          const u = new URL("/app/static/models/yolo26n-seg.onnx", parentOrigin).href;
+          if (!urls.includes(u)) urls.push(u);
+        }
+      } catch (e) {}
+
+      // 3. Đường dẫn trực tiếp cùng origin
+      try {
+        const direct = `${window.location.origin}/app/static/models/yolo26n-seg.onnx`;
+        if (!urls.includes(direct)) urls.push(direct);
+      } catch (e) {}
+
+      // 4. URL fallback có CORS toàn cầu (GitHub Raw)
+      if (fallbackModelUrl && !urls.includes(fallbackModelUrl)) {
+        urls.push(fallbackModelUrl);
+      }
+
+      return urls;
+    }
+
+    async function validateONNXBuffer(buffer, expectedSize, expectedSha256) {
+      if (!buffer || !(buffer instanceof ArrayBuffer)) {
+        return { valid: false, reason: "Dữ liệu trả về không phải ArrayBuffer hợp lệ." };
+      }
+
+      // Model chuẩn yolo26n-seg.onnx nặng 11,078,627 bytes (~11.08 MB)
+      if (buffer.byteLength < 500000) {
+        let text = "";
+        try {
+          text = new TextDecoder().decode(new Uint8Array(buffer.slice(0, 300)));
+        } catch (e) {}
+        if (text.includes("<!DOCTYPE") || text.includes("<html") || text.includes("not found")) {
+          return { valid: false, reason: "Máy chủ trả về trang HTML 404/fallback thay vì file model binary." };
+        }
+        return { valid: false, reason: `Kích thước dữ liệu quá nhỏ (${buffer.byteLength} bytes), không phải model ONNX.` };
+      }
+
+      const u8 = new Uint8Array(buffer);
+
+      // Nếu bắt đầu bằng ký tự '<' (0x3C), chắc chắn là HTML hoặc XML
+      if (u8[0] === 0x3C) {
+        let text = "";
+        try {
+          text = new TextDecoder().decode(u8.slice(0, 150));
+        } catch (e) {}
+        return { valid: false, reason: `Phát hiện trang HTML thay vì file model binary: ${text.slice(0, 50)}...` };
+      }
+
+      // Protobuf ModelProto trong ONNX chuẩn luôn bắt đầu bằng tag 0x08 (field 1: int64 ir_version)
+      if (u8[0] !== 0x08) {
+        return { valid: false, reason: `Header Protobuf không khớp (byte đầu 0x${u8[0].toString(16)} thay vì 0x08).` };
+      }
+
+      // Kiểm tra SHA-256 nếu có Web Crypto API
+      if (expectedSha256 && window.crypto && crypto.subtle) {
+        try {
+          const hashBuf = await crypto.subtle.digest("SHA-256", buffer);
+          const hashArr = Array.from(new Uint8Array(hashBuf));
+          const hashHex = hashArr.map(b => b.toString(16).padStart(2, "0")).join("");
+          if (hashHex.toLowerCase() !== expectedSha256.toLowerCase()) {
+            console.warn(`SHA-256 mismatch: nhận ${hashHex}, kỳ vọng ${expectedSha256}`);
+            if (expectedSize && buffer.byteLength !== expectedSize) {
+              return { valid: false, reason: `Kích thước dữ liệu (${buffer.byteLength}) không khớp chuẩn (${expectedSize}).` };
+            }
+          }
+        } catch (e) {
+          console.debug("Bỏ qua kiểm tra SHA-256:", e);
+        }
+      }
+
+      return { valid: true, reason: "OK" };
+    }
+
+    const CACHE_NAME = "yolo26-seg-v2";
+
     async function loadONNXModel() {
       if (ortSession) return ortSession;
 
@@ -627,54 +726,104 @@
       let modelArrayBuffer = null;
       let matchedUrl = "";
 
-      // 1. Thử Cache Storage API
-      try {
-        if (window.caches) {
-          const cache = await caches.open("yolo26-seg-v2");
-          for (const url of modelCandidateUrls) {
-            const cachedResponse = await cache.match(url);
-            if (cachedResponse) {
-              progressBar.style.width = "65%";
-              loadingMsg.textContent = "Nạp nhanh mô hình từ bộ nhớ đệm...";
-              modelArrayBuffer = await cachedResponse.arrayBuffer();
-              matchedUrl = url;
-              break;
+      // 1. Kiểm tra Cache Storage
+      if (window.caches) {
+        try {
+          const cache = await caches.open(CACHE_NAME);
+          const keys = await cache.keys();
+          for (const req of keys) {
+            const cachedResp = await cache.match(req);
+            if (cachedResp) {
+              const cachedBuf = await cachedResp.arrayBuffer();
+              const check = await validateONNXBuffer(cachedBuf, expectedModelSize, expectedModelSha256);
+              if (check.valid) {
+                progressBar.style.width = "65%";
+                loadingMsg.textContent = "Nạp nhanh mô hình từ bộ nhớ đệm đã xác minh...";
+                modelArrayBuffer = cachedBuf;
+                matchedUrl = req.url;
+                console.log("Đã nạp model ONNX hợp lệ từ Cache Storage:", req.url);
+                break;
+              } else {
+                // Xóa ngay response lỗi (như file HTML bị lưu nhầm trước đây)
+                console.warn("Xóa cache lỗi không hợp lệ:", req.url, check.reason);
+                await cache.delete(req);
+              }
             }
           }
+        } catch (e) {
+          console.debug("Lỗi đọc Cache Storage:", e);
         }
-      } catch (e) {
-        console.debug("Cache lookup skipped:", e);
       }
 
-      // 2. Tải qua mạng nếu chưa có cache
+      // 2. Tải qua mạng nếu chưa có model hợp lệ trong cache
       if (!modelArrayBuffer) {
         loadingMsg.textContent = "Đang tải mô hình AI về trình duyệt (10.5 MB)...";
         progressBar.style.width = "35%";
 
-        let lastErr = null;
-        for (const url of modelCandidateUrls) {
+        const candidateUrls = getCandidateModelUrls();
+        console.log("Danh sách URL tải model ứng viên:", candidateUrls);
+
+        const errorLogs = [];
+
+        for (let i = 0; i < candidateUrls.length; i++) {
+          const url = candidateUrls[i];
           try {
-            const resp = await fetch(url);
-            if (resp.ok) {
-              progressBar.style.width = "75%";
-              // Lưu vào Cache Storage
-              try {
-                if (window.caches) {
-                  const cache = await caches.open("yolo26-seg-v2");
-                  cache.put(url, resp.clone());
-                }
-              } catch (ce) {}
-              modelArrayBuffer = await resp.arrayBuffer();
-              matchedUrl = url;
-              break;
+            loadingMsg.textContent = `Đang kết nối tải mô hình (${i + 1}/${candidateUrls.length})...`;
+            progressBar.style.width = `${40 + (i / candidateUrls.length) * 35}%`;
+
+            const resp = await fetch(url, { cache: "no-cache" });
+            if (!resp.ok) {
+              errorLogs.push(`URL ${url} trả về HTTP ${resp.status} ${resp.statusText}`);
+              continue;
             }
+
+            const contentType = resp.headers.get("content-type") || "";
+            if (contentType.includes("text/html")) {
+              errorLogs.push(`URL ${url} trả về HTML thay vì binary (Content-Type: ${contentType})`);
+              continue;
+            }
+
+            const buf = await resp.arrayBuffer();
+            const check = await validateONNXBuffer(buf, expectedModelSize, expectedModelSha256);
+            if (!check.valid) {
+              errorLogs.push(`URL ${url} trả về dữ liệu không hợp lệ: ${check.reason}`);
+              continue;
+            }
+
+            // Tải và xác minh thành công!
+            modelArrayBuffer = buf;
+            matchedUrl = url;
+            console.log("Tải thành công và xác minh model ONNX từ:", url);
+
+            // CHỈ LƯU VÀO CACHE KHI DỮ LIỆU ĐÃ HỢP LỆ 100%
+            try {
+              if (window.caches) {
+                const cache = await caches.open(CACHE_NAME);
+                const validResp = new Response(buf, {
+                  headers: {
+                    "Content-Type": "application/octet-stream",
+                    "Content-Length": buf.byteLength.toString(),
+                    "X-Model-Validated": "true"
+                  }
+                });
+                await cache.put(url, validResp);
+                console.log("Đã lưu model đã xác minh vào cache:", url);
+              }
+            } catch (ce) {
+              console.debug("Không thể ghi vào cache:", ce);
+            }
+
+            break;
           } catch (netErr) {
-            lastErr = netErr;
+            errorLogs.push(`URL ${url} lỗi kết nối mạng: ${netErr.message || netErr}`);
           }
         }
 
         if (!modelArrayBuffer) {
-          throw new Error("Không thể tải mô hình ONNX từ máy chủ: " + (lastErr ? lastErr.message : "404 Not Found"));
+          throw new Error(
+            "Không thể tải file model ONNX hợp lệ từ các nguồn máy chủ. " +
+            "Chi tiết kiểm tra: " + errorLogs.join(" | ")
+          );
         }
       }
 
@@ -695,9 +844,9 @@
           throw new Error("Trình duyệt chưa hỗ trợ WebGPU, chuyển sang WASM SIMD.");
         }
       } catch (gpuErr) {
-        console.warn("Chuyển sang WASM SIMD:", gpuErr);
+        console.warn("Khởi tạo WebGPU không thành công, chuyển sang WASM SIMD:", gpuErr);
         try {
-          ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency || 2);
+          ort.env.wasm.numThreads = Math.min(2, navigator.hardwareConcurrency || 2);
           ort.env.wasm.simd = true;
           ortSession = await ort.InferenceSession.create(modelArrayBuffer, {
             executionProviders: ["wasm"],
@@ -707,7 +856,8 @@
           activeBackendType = "client_wasm";
           console.log("Khởi tạo ONNX Runtime thành công với WASM CPU.");
         } catch (wasmErr) {
-          throw new Error("Không thể khởi tạo nhân ONNX: " + wasmErr.message);
+          console.error("Lỗi khởi tạo WASM session:", wasmErr);
+          throw new Error(`Lỗi khởi tạo nhân ONNX WASM: ${wasmErr.message || wasmErr}`);
         }
       }
 
@@ -718,6 +868,65 @@
       }, 350);
 
       return ortSession;
+    }
+
+    function formatErrorMessage(err) {
+      const msg = err && err.message ? err.message : String(err);
+      const name = err && err.name ? err.name : "";
+
+      if (name === "NotAllowedError" || name === "PermissionDeniedError" || msg.includes("Permission denied") || msg.includes("NotAllowedError")) {
+        return {
+          title: "Quyền truy cập Camera bị từ chối",
+          detail: "Trình duyệt chưa được cấp quyền mở webcam.",
+          action: "👉 Hãy bấm vào biểu tượng <strong>ổ khóa hoặc camera</strong> trên thanh địa chỉ URL của trình duyệt > Đổi quyền Camera thành <strong>'Cho phép' (Allow)</strong> > Bấm nút <strong>📷 BẬT CAMERA</strong> lại."
+        };
+      }
+
+      if (name === "NotReadableError" || name === "TrackStartError" || msg.includes("Could not start video source") || msg.includes("NotReadableError")) {
+        return {
+          title: "Webcam đang bị chiếm dụng",
+          detail: "Một ứng dụng khác (Zoom, Teams, Google Meet, OBS) hoặc một tab trình duyệt khác đang sử dụng camera của bạn.",
+          action: "👉 Vui lòng tắt các ứng dụng đang dùng webcam rồi bấm nút <strong>📷 BẬT CAMERA</strong> lại."
+        };
+      }
+
+      if (name === "NotFoundError" || name === "DevicesNotFoundError" || msg.includes("Requested device not found")) {
+        return {
+          title: "Không tìm thấy thiết bị Camera",
+          detail: "Máy tính hoặc thiết bị của bạn không có webcam khả dụng.",
+          action: "👉 Hãy kiểm tra kết nối webcam USB hoặc chuyển sang chế độ <strong>Tải lên Video</strong> ở menu bên trái."
+        };
+      }
+
+      if (msg.includes("Không thể tải file model ONNX") || msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+        return {
+          title: "Lỗi kết nối khi tải mô hình AI",
+          detail: msg,
+          action: "👉 Vui lòng kiểm tra lại kết nối internet của bạn. Bạn cũng có thể dùng chế độ <strong>Dự phòng máy chủ WebRTC</strong> bên dưới."
+        };
+      }
+
+      if (msg.includes("protobuf") || msg.includes("Protobuf") || msg.includes("ERROR_CODE: 7")) {
+        return {
+          title: "Dữ liệu mô hình AI không hợp lệ",
+          detail: "Dữ liệu tải về bị lỗi định dạng (máy chủ trả về trang HTML thay vì file model binary). Bộ nhớ đệm lỗi đã được tự động dọn dẹp.",
+          action: "👉 Hãy bấm nút <strong>📷 BẬT CAMERA</strong> lại để hệ thống tự động tải model từ kênh dự phòng."
+        };
+      }
+
+      if (msg.includes("WASM") || msg.includes("WebGPU") || msg.includes("InferenceSession")) {
+        return {
+          title: "Lỗi nhân AI trên thiết bị",
+          detail: msg,
+          action: "👉 Khuyên dùng trình duyệt Google Chrome hoặc Microsoft Edge bản mới để hỗ trợ WebGPU/WASM tốt nhất."
+        };
+      }
+
+      return {
+        title: "Lỗi khởi động",
+        detail: msg,
+        action: "👉 Vui lòng kiểm tra console trình duyệt hoặc bấm nút <strong>📷 BẬT CAMERA</strong> lại."
+      };
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -791,13 +1000,14 @@
         btnToggle.textContent = "📷 BẬT CAMERA";
         btnToggle.className = "primary-btn btn-start";
 
+        const formatted = formatErrorMessage(err);
         alertBanner.className = "alert-banner error";
-        alertBanner.innerHTML = `❌ <strong>Lỗi truy cập camera hoặc AI:</strong> ${err.message}<br>👉 Hãy nhấn vào biểu tượng ổ khóa/camera trên thanh địa chỉ URL của trình duyệt và bấm <strong>Cho phép (Allow)</strong> truy cập Camera, sau đó bấm <strong>📷 BẬT CAMERA</strong> lại.`;
+        alertBanner.innerHTML = `❌ <strong>${formatted.title}:</strong> ${formatted.detail}<br>${formatted.action}`;
         alertBanner.style.display = "block";
 
         notifyStreamlit({
           status: "error",
-          error: err.message,
+          error: err.message || String(err),
           is_running: false
         });
       }

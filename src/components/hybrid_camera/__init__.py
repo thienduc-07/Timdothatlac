@@ -23,6 +23,7 @@ _hybrid_camera_func = components.declare_component(
 def hybrid_camera(
     mode: str = "auto",
     model_url: str = "/app/static/models/yolo26n-seg.onnx",
+    fallback_model_url: str = "https://raw.githubusercontent.com/thienduc-07/Timdothatlac/main/static/models/yolo26n-seg.onnx",
     conf_threshold: float = 0.35,
     iou_threshold: float = 0.45,
     show_masks: bool = True,
@@ -39,7 +40,8 @@ def hybrid_camera(
 
     Parameters:
     - mode: "auto", "on_device", "server"
-    - model_url: Đường dẫn tải model ONNX (được phục vụ qua static serving)
+    - model_url: Đường dẫn tải model ONNX chính (được phục vụ qua static serving)
+    - fallback_model_url: Đường dẫn tải dự phòng có CORS toàn cầu (GitHub Raw)
     - conf_threshold: Ngưỡng tin cậy (0.1 - 1.0)
     - iou_threshold: Ngưỡng NMS IoU
     - show_masks: Bật/tắt hiển thị polygon segmentation masks
@@ -65,6 +67,9 @@ def hybrid_camera(
     component_value = _hybrid_camera_func(
         mode=mode,
         modelUrl=model_url,
+        fallbackModelUrl=fallback_model_url,
+        modelSize=11078627,
+        modelSha256="02d840d18222fdfbe32e93879f5b4d520f1b6b6af87222cc7b03ca1cce0372b3",
         confThreshold=conf_threshold,
         iouThreshold=iou_threshold,
         showMasks=show_masks,
