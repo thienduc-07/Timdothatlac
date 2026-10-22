@@ -26,6 +26,16 @@ logger = get_logger(__name__)
 
 DEMO_VIDEO_PATH = DATA_DIR / "sample_bus_demo.mp4"
 
+__all__ = [
+    "CameraSourceType",
+    "ThreadedCameraReader",
+    "CameraStreamManager",
+    "ensure_demo_video_exists",
+    "generate_bus_simulation_frame",
+    "get_demo_ground_truth",
+    "DEMO_VIDEO_PATH",
+]
+
 
 class CameraSourceType:
     VIDEO_FILE = "video_file"
@@ -174,6 +184,7 @@ class CameraStreamManager:
         self.error_message: str = ""
 
         self._cap: Optional[cv2.VideoCapture] = None
+        self._reader: Optional[ThreadedCameraReader] = None
         self._last_frame_time: float = 0.0
 
     def start_stream(
@@ -197,10 +208,14 @@ class CameraStreamManager:
                     return False, f"File video không tồn tại: {source_path}"
                 self._cap = cv2.VideoCapture(source_path)
             elif source_type == CameraSourceType.WEBCAM:
-                cam_idx = int(source_path) if source_path.isdigit() else 0
-                self._cap = cv2.VideoCapture(cam_idx)
-                if not self._cap.isOpened():
-                    self._cap = cv2.VideoCapture(cam_idx, cv2.CAP_AVFOUNDATION)
+                cam_idx = int(source_path) if str(source_path).isdigit() else 0
+                self._reader = ThreadedCameraReader(src=cam_idx)
+                opened, msg = self._reader.open()
+                if not opened:
+                    self._reader = None
+                    self._cap = cv2.VideoCapture(cam_idx)
+                    if not self._cap.isOpened() and sys.platform == "darwin":
+                        self._cap = cv2.VideoCapture(cam_idx, cv2.CAP_AVFOUNDATION)
             elif source_type == CameraSourceType.RTSP:
                 if not source_path.startswith("rtsp://") and not source_path.startswith("http://"):
                     return False, "URL RTSP phải bắt đầu bằng rtsp:// hoặc http://"
@@ -208,7 +223,10 @@ class CameraStreamManager:
             else:
                 return False, f"Loại nguồn camera không hợp lệ: {source_type}"
 
-            if self._cap is None or not self._cap.isOpened():
+            is_reader_active = (self._reader is not None and self._reader._running)
+            is_cap_active = (self._cap is not None and self._cap.isOpened())
+
+            if not is_reader_active and not is_cap_active:
                 err = f"Không thể mở nguồn camera: {source_path or source_type}"
                 self.error_message = err
                 return False, err
@@ -227,10 +245,24 @@ class CameraStreamManager:
 
     def read_frame(self) -> Tuple[bool, Optional[np.ndarray]]:
         """Đọc 1 frame từ luồng camera kèm đo FPS đầu vào thực tế."""
-        if not self.is_running or self._cap is None:
+        if not self.is_running:
             return False, None
 
         if self.is_paused:
+            return False, None
+
+        # 1. Đọc qua ThreadedCameraReader (Zero-Latency Buffer) nếu đang kích hoạt
+        if self._reader is not None and self._reader._running:
+            ret, frame, _ = self._reader.read_latest_frame()
+            if not ret or frame is None:
+                return False, None
+            self.input_fps = self._reader.fps
+            self._last_frame_time = time.time()
+            self.total_frames_read += 1
+            return True, frame
+
+        # 2. Đọc trực tiếp từ OpenCV VideoCapture cho file/demo/RTSP
+        if self._cap is None or not self._cap.isOpened():
             return False, None
 
         t0 = time.time()
@@ -282,6 +314,12 @@ class CameraStreamManager:
         """Dừng và giải phóng tài nguyên camera."""
         self.is_running = False
         self.is_paused = False
+        if self._reader is not None:
+            try:
+                self._reader.stop()
+            except Exception:
+                pass
+            self._reader = None
         if self._cap:
             try:
                 self._cap.release()

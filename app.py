@@ -959,6 +959,57 @@ def page_camera_monitor(service: AnalysisService):
                         media_stream_constraints={"video": True, "audio": False},
                         async_processing=True,
                     )
+
+            if not is_cloud_env:
+                with st.expander("🖥️ Chế độ Camera Cục bộ (Local Hardware OpenCV - Cho máy phát triển)", expanded=False):
+                    st.caption("Đọc trực tiếp webcam máy tính thông qua OpenCV và luồng nền ThreadedCameraReader (Zero-Latency Buffer size=1).")
+                    ctrl_l1, ctrl_l2, ctrl_l3 = st.columns([1, 1, 1])
+                    with ctrl_l1:
+                        run_local_cam = st.toggle("BẬT WEBCAM LOCAL", value=False, key="toggle_local_threaded_cam")
+                    with ctrl_l2:
+                        cam_idx = st.number_input("Cổng Camera", 0, 5, 0, key="local_cam_idx")
+                    with ctrl_l3:
+                        local_res = st.selectbox("Độ phân giải", ["640x480 (Mượt, 30 FPS)", "960x540", "1280x720"], index=0, key="local_cam_res")
+
+                    res_w, res_h = (640, 480) if "640x480" in local_res else (960, 540) if "960x540" in local_res else (1280, 720)
+
+                    if run_local_cam:
+                        reader = ThreadedCameraReader(src=int(cam_idx), target_width=res_w, target_height=res_h)
+                        is_opened, open_msg = reader.open()
+                        if not is_opened:
+                            st.error(f"❌ Không thể mở camera cổng {cam_idx}: {open_msg}")
+                        else:
+                            st.success(f"🟢 Đã kết nối Camera cổng {reader.active_port} qua ThreadedCameraReader!")
+                            local_frame_view = st.empty()
+                            local_metric_view = st.empty()
+                            try:
+                                while run_local_cam:
+                                    success, frame, f_count = reader.read_latest_frame()
+                                    if success and frame is not None:
+                                        t0 = time.time()
+                                        annotated, events, summary = safe_process_webcam_frame(
+                                            service=service,
+                                            frame=frame,
+                                            frame_idx=f_count,
+                                            confidence_threshold=conf_thresh,
+                                            show_seats=show_seats,
+                                            show_persons=show_persons,
+                                            show_objects=show_objects,
+                                            privacy_blur=privacy_blur,
+                                            show_masks=show_masks,
+                                        )
+                                        lat_ms = (time.time() - t0) * 1000.0
+                                        rgb_frame = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+                                        local_frame_view.image(rgb_frame, channels="RGB", use_container_width=True)
+                                        local_metric_view.markdown(
+                                            f"⏱️ **FPS Đọc Camera:** `{reader.fps:.1f}` | "
+                                            f"🧠 **Độ trễ AI:** `{lat_ms:.1f}ms` | "
+                                            f"🎒 **Sự kiện:** `{len(events)}` | "
+                                            f"⚠️ **Nghi ngờ:** `{summary.get('suspected', 0)}`"
+                                        )
+                                    time.sleep(0.03)
+                            finally:
+                                reader.stop()
         else:
             # Fallback nếu hybrid_camera component gặp sự cố
             st.warning("Đang kết nối qua kênh WebRTC tiêu chuẩn.")
