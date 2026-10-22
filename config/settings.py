@@ -51,14 +51,20 @@ SUPPORTED_CUSTOM_WEIGHTS_PATHS = [
     MODELS_DIR / "best.pt",
     PROJECT_ROOT / "yolo26n-seg.pt",
     MODELS_DIR / "yolo26n-seg.pt",
+    PROJECT_ROOT / "static/models/yolo26n-seg.onnx",
+    MODELS_DIR / "yolo26n-seg.onnx",
     MODELS_DIR / "bus_seat_yolo.pt",
     MODELS_DIR / "bus_seat_yolov8.pt",
 ]
 
-# Model fallback: Tự động ưu tiên yolo26n-seg.pt (Instance Segmentation) nếu có trong project
+# Model fallback: Tự động ưu tiên yolo26n-seg.pt hoặc yolo26n-seg.onnx (Instance Segmentation) nếu có trong project
 YOLO_MODEL_NAME = os.getenv(
     "YOLO_MODEL_NAME",
-    "yolo26n-seg.pt" if (PROJECT_ROOT / "yolo26n-seg.pt").exists() else "yolo26n.pt",
+    "yolo26n-seg.pt" if (PROJECT_ROOT / "yolo26n-seg.pt").exists() else (
+        str(PROJECT_ROOT / "static/models/yolo26n-seg.onnx")
+        if (PROJECT_ROOT / "static/models/yolo26n-seg.onnx").exists()
+        else "yolov8n-seg.pt"
+    ),
 )
 
 # Cấu hình hiển thị Segmentation Mask
@@ -93,7 +99,15 @@ DEFAULT_MODEL_PATH = (
     else (
         str(PROJECT_ROOT / "yolo26n-seg.pt")
         if (PROJECT_ROOT / "yolo26n-seg.pt").exists()
-        else str(PROJECT_ROOT / "yolo26n.pt")
+        else (
+            str(PROJECT_ROOT / "static/models/yolo26n-seg.onnx")
+            if (PROJECT_ROOT / "static/models/yolo26n-seg.onnx").exists()
+            else (
+                str(PROJECT_ROOT / "yolo26n.pt")
+                if (PROJECT_ROOT / "yolo26n.pt").exists()
+                else "yolov8n-seg.pt"
+            )
+        )
     )
 )
 MODEL_PATH = os.getenv("MODEL_PATH", DEFAULT_MODEL_PATH)

@@ -66,6 +66,10 @@ class YOLODetector:
                 self.model_name = str(PROJECT_ROOT / "yolo26n-seg.pt")
             elif (MODELS_DIR / "yolo26n-seg.pt").exists():
                 self.model_name = str(MODELS_DIR / "yolo26n-seg.pt")
+            elif (PROJECT_ROOT / "static/models/yolo26n-seg.onnx").exists():
+                self.model_name = str(PROJECT_ROOT / "static/models/yolo26n-seg.onnx")
+            elif (MODELS_DIR / "yolo26n-seg.onnx").exists():
+                self.model_name = str(MODELS_DIR / "yolo26n-seg.onnx")
             else:
                 self.model_name = YOLO_MODEL_NAME
         else:
@@ -155,6 +159,12 @@ class YOLODetector:
                 elif (MODELS_DIR / "yolo26n-seg.pt").exists():
                     self.model_name = str(MODELS_DIR / "yolo26n-seg.pt")
                     logger.info("Phát hiện file weights yolo26n-seg.pt tại MODELS_DIR. Tự động ưu tiên sử dụng.")
+                elif (PROJECT_ROOT / "static/models/yolo26n-seg.onnx").exists():
+                    self.model_name = str(PROJECT_ROOT / "static/models/yolo26n-seg.onnx")
+                    logger.info("Phát hiện file model yolo26n-seg.onnx tại static/models. Tự động ưu tiên sử dụng.")
+                elif (MODELS_DIR / "yolo26n-seg.onnx").exists():
+                    self.model_name = str(MODELS_DIR / "yolo26n-seg.onnx")
+                    logger.info("Phát hiện file model yolo26n-seg.onnx tại MODELS_DIR. Tự động ưu tiên sử dụng.")
 
             logger.info(f"Đang tải model {self.model_name} trên thiết bị '{self.device}'...")
             self.model = YOLO(self.model_name)
