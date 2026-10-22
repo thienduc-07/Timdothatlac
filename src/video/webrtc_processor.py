@@ -60,6 +60,7 @@ try:
         RTCConfiguration,
         WebRtcMode,
         webrtc_streamer,
+        Translations,
     )
     WEBRTC_AVAILABLE = True
 except ImportError as err:
@@ -69,6 +70,7 @@ except ImportError as err:
     RTCConfiguration = None
     WebRtcMode = None
     webrtc_streamer = None
+    Translations = None
 
 # Cấu hình STUN servers công khai đáng tin cậy của Google để xuyên NAT/Firewall trên Streamlit Cloud
 if WEBRTC_AVAILABLE and RTCConfiguration is not None:
