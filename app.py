@@ -894,17 +894,24 @@ def page_camera_monitor(service: AnalysisService):
         st.caption("Truyền trực tiếp hình ảnh từ Webcam thiết bị của bạn (Client Browser) vào pipeline AI — Tương thích 100% với Streamlit Cloud, macOS, Windows và Mobile.")
 
         # Lựa chọn phương thức kết nối camera
-        backend_choices = [
-            "🌐 Client Browser Camera (WebRTC) [Khuyên dùng: Streamlit Cloud, Mobile, Laptop]",
-            "🖥️ Server-Side OpenCV Camera [Chỉ dùng khi chạy terminal local có cắm webcam]",
-        ]
-        cam_backend = st.radio(
-            "Phương thức kết nối Camera:",
-            backend_choices,
-            index=0,
-            horizontal=True,
-            help="WebRTC truyền luồng trực tiếp từ trình duyệt của bất kỳ người dùng nào truy cập trang web. OpenCV cục bộ chỉ chạy được khi Streamlit mở trực tiếp trên máy chủ gắn webcam vật lý."
-        )
+        if is_cloud_env:
+            cam_backend = "🌐 Client Browser Camera (WebRTC)"
+            st.info(
+                "☁️ **Đang chạy trên Streamlit Cloud:** Ứng dụng tự động kích hoạt camera từ chính thiết bị/trình duyệt của bạn qua **WebRTC**. "
+                "Bất kỳ máy tính hoặc điện thoại nào truy cập link đều có thể quét camera trực tiếp và nhận diện đồ vật dưới dạng **Polygons (đa giác bám sát viền)** mà không cần cài đặt code!"
+            )
+        else:
+            backend_choices = [
+                "🌐 Client Browser Camera (WebRTC) [Khuyên dùng: Streamlit Cloud, Mobile, Laptop]",
+                "🖥️ Server-Side OpenCV Camera [Chỉ dùng khi chạy terminal local có cắm webcam]",
+            ]
+            cam_backend = st.radio(
+                "Phương thức kết nối Camera:",
+                backend_choices,
+                index=0,
+                horizontal=True,
+                help="WebRTC truyền luồng trực tiếp từ trình duyệt của bất kỳ người dùng nào truy cập trang web. OpenCV cục bộ chỉ chạy được khi Streamlit mở trực tiếp trên máy chủ gắn webcam vật lý."
+            )
 
         if cam_backend.startswith("🌐"):
             # ── WebRTC Client-Side Streaming (Streamlit Cloud & Mọi thiết bị) ──
