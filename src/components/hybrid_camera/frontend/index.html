@@ -384,7 +384,8 @@
     const ITEM_CLASSES = new Set([
       "item", "backpack", "handbag", "suitcase", "umbrella", "bottle",
       "cup", "laptop", "mouse", "remote", "keyboard", "cell phone",
-      "book", "scissors", "tie", "wine glass", "clock"
+      "book", "scissors", "tie", "wine glass", "clock", "teddy bear",
+      "hair drier", "toothbrush", "bowl", "vase"
     ]);
 
     const CLASS_NAMES_VI = {
@@ -531,12 +532,27 @@
     // ─────────────────────────────────────────────────────────────
     // Streamlit Component Messaging Protocol
     // ─────────────────────────────────────────────────────────────
-    function notifyStreamlit(val) {
-      window.parent.postMessage({
-        isStreamlitMessage: true,
-        type: "streamlit:setComponentValue",
-        value: val
-      }, "*");
+    let lastNotifiedStateKey = "";
+    let lastNotifiedTime = 0;
+
+    function notifyStreamlit(val, force = false) {
+      if (!val) return;
+      const now = performance.now();
+      // Khóa trạng thái nghiệp vụ (status, is_running, suspected_count, error).
+      // Loại bỏ hoàn toàn FPS dao động theo từng frame để tránh Streamlit bị kích hoạt rerun vô tận (nguyên nhân gây tối mờ UI)!
+      const stateKey = `${val.status || ""}_${val.is_running ? 1 : 0}_${val.suspected_count || 0}_${val.error || ""}`;
+      const stateChanged = (stateKey !== lastNotifiedStateKey);
+      const throttleElapsed = (now - lastNotifiedTime > 2500);
+
+      if (force || stateChanged || throttleElapsed) {
+        lastNotifiedStateKey = stateKey;
+        lastNotifiedTime = now;
+        window.parent.postMessage({
+          isStreamlitMessage: true,
+          type: "streamlit:setComponentValue",
+          value: val
+        }, "*");
+      }
     }
 
     function updateFrameHeight() {
@@ -1013,7 +1029,7 @@
           status: "running",
           active_backend: activeBackendType,
           is_running: true
-        });
+        }, true);
 
         loadCameras(); // Cập nhật tên camera sau khi người dùng cấp quyền
       } catch (err) {
@@ -1031,7 +1047,7 @@
           status: "error",
           error: err.message || String(err),
           is_running: false
-        });
+        }, true);
       }
       updateFrameHeight();
     }
@@ -1074,7 +1090,7 @@
       notifyStreamlit({
         status: "stopped",
         is_running: false
-      });
+      }, true);
       updateFrameHeight();
     }
 
@@ -1354,50 +1370,54 @@
           }
         }
 
-        if (maxScore >= confThreshold) {
-          const cx = preds[0 * numAnchors + a];
-          const cy = preds[1 * numAnchors + a];
-          const w = preds[2 * numAnchors + a];
-          const h = preds[3 * numAnchors + a];
+        const rawName = (COCO_CLASSES[maxClassId] || "").toLowerCase();
+        let category = null;
+        let semName = null;
 
-          const x1 = cx - w / 2;
-          const y1 = cy - h / 2;
-          const x2 = cx + w / 2;
-          const y2 = cy + h / 2;
-
-          const coeffs = new Float32Array(32);
-          for (let m = 0; m < 32; m++) {
-            coeffs[m] = preds[(4 + numClasses + m) * numAnchors + a];
-          }
-
-          const rawName = (COCO_CLASSES[maxClassId] || "").toLowerCase();
-          let category = null;
-          let semName = null;
-
-          if (PERSON_CLASSES.has(rawName)) {
-            category = "person";
-            semName = "person";
-          } else if (SEAT_CLASSES.has(rawName)) {
-            category = "seat";
-            semName = "seat";
-          } else if (ITEM_CLASSES.has(rawName)) {
-            category = "item";
-            semName = "item";
-          }
-
-          // Chỉ xử lý 3 nhóm đối tượng mục tiêu: SEAT, PERSON, ITEM
-          if (category) {
-            candidates.push({
-              classId: maxClassId,
-              rawClassName: rawName,
-              className: semName,
-              category: category,
-              score: maxScore,
-              box: [x1, y1, x2, y2],
-              coeffs: coeffs
-            });
-          }
+        if (PERSON_CLASSES.has(rawName)) {
+          category = "person";
+          semName = "person";
+        } else if (SEAT_CLASSES.has(rawName)) {
+          category = "seat";
+          semName = "seat";
+        } else if (ITEM_CLASSES.has(rawName)) {
+          category = "item";
+          semName = "item";
         }
+
+        // Chỉ xử lý 3 nhóm đối tượng mục tiêu: SEAT, PERSON, ITEM
+        if (!category) continue;
+
+        // Two-Tier Candidate Admission:
+        // Đồ vật cá nhân (items) dùng ngưỡng nhạy hơn (0.20) để phát hiện ví tiền, điện thoại, túi xách nhỏ.
+        // Người và ghế dùng ngưỡng tiêu chuẩn confThreshold.
+        const requiredConf = (category === "item") ? Math.min(confThreshold, 0.20) : confThreshold;
+        if (maxScore < requiredConf) continue;
+
+        const cx = preds[0 * numAnchors + a];
+        const cy = preds[1 * numAnchors + a];
+        const w = preds[2 * numAnchors + a];
+        const h = preds[3 * numAnchors + a];
+
+        const x1 = cx - w / 2;
+        const y1 = cy - h / 2;
+        const x2 = cx + w / 2;
+        const y2 = cy + h / 2;
+
+        const coeffs = new Float32Array(32);
+        for (let m = 0; m < 32; m++) {
+          coeffs[m] = preds[(4 + numClasses + m) * numAnchors + a];
+        }
+
+        candidates.push({
+          classId: maxClassId,
+          rawClassName: rawName,
+          className: semName,
+          category: category,
+          score: maxScore,
+          box: [x1, y1, x2, y2],
+          coeffs: coeffs
+        });
       }
 
       if (candidates.length === 0) return [];
@@ -1475,7 +1495,7 @@
                 for (let m = 0; m < 32; m++) {
                   val += mc[m] * protos[m * (protoW * protoH) + py * protoW + px];
                 }
-                if (sigmoid(val) > 0.5) {
+                if (sigmoid(val) > 0.45) {
                   submask[rowOffset + x] = 1;
                 }
               }
@@ -1493,8 +1513,8 @@
                 return [origX, origY];
               });
 
-              // RDP làm mịn nhẹ đường viền (1.2px)
-              const simplified = simplifyRDP(mappedPoints, 1.2);
+              // RDP làm mịn đường viền (1.0px giúp giữ góc nhọn của vật phẩm nhỏ)
+              const simplified = simplifyRDP(mappedPoints, 1.0);
               if (simplified.length >= 3) {
                 polygon = simplified;
               }
@@ -1806,7 +1826,12 @@
           bestCandidate.lastSeen = now;
           bestCandidate.recheckStartTime = null;
         } else {
-          // Tạo track mới
+          // Tạo track mới: Áp dụng cơ chế Two-Tier Confirmation
+          // - Nếu score >= confThreshold: Xác nhận ngay lập tức (confirmed = true, isRenderable = true)
+          // - Nếu candidate score < confThreshold (0.20 - 0.35): Khởi tạo TENTATIVE (confirmed = false, isRenderable = false)
+          //   Track chỉ được kích hoạt (CONFIRMED) khi được xác nhận tiếp tục xuất hiện ở frame kế tiếp (hits >= 2)
+          //   hoặc liên kết với track cũ, ngăn chặn hoàn toàn hiện tượng false-positive hoặc nhiễu 1 frame!
+          const isHighConf = (det.score >= confThreshold);
           const itId = nextItemId++;
           trackedItems.set(itId, {
             id: itId,
@@ -1815,8 +1840,8 @@
             polygon: det.polygon,
             score: det.score,
             hits: 1,
-            confirmed: true,
-            lifecycle: "CONFIRMED",
+            confirmed: isHighConf,
+            lifecycle: isHighConf ? "CONFIRMED" : "TENTATIVE",
             missCount: 0,
             vx: 0,
             vy: 0,
@@ -1826,7 +1851,7 @@
             status: "NORMAL",
             associatedSeat: "UNKNOWN_SEAT",
             recheckStartTime: null,
-            isRenderable: true
+            isRenderable: isHighConf
           });
         }
       }
@@ -1897,6 +1922,14 @@
       // 5. PHÂN TÍCH QUAN HỆ ĐỒ VẬT - GHẾ - NGƯỜI (STATE MACHINE)
       // ─────────────────────────────────────────────────────────
       for (const [itId, it] of trackedItems.entries()) {
+        if (!it.confirmed) {
+          // Track TENTATIVE chưa được xác nhận không tham gia máy trạng thái bỏ quên
+          if (it.missCount >= 2) {
+            trackedItems.delete(itId);
+          }
+          continue;
+        }
+
         const [ix1, iy1, ix2, iy2] = it.bbox;
         const iCx = (ix1 + ix2) / 2;
         const iCy = (iy1 + iy2) / 2;
@@ -1958,9 +1991,9 @@
             }
           }
 
-          // Xóa track khi vượt quá ngưỡng mất (~2s không có người che) hoặc đã xác nhận ITEM_REMOVED
+          // Xóa track khi vượt quá ngưỡng mất (~2s không có người che), hoặc đã xác nhận ITEM_REMOVED, hoặc candidate TENTATIVE không xuất hiện tiếp sau 2 frame
           const timeMissing = now - it.lastSeen;
-          if (it.missCount > 25 || (timeMissing > 2000 && it.status !== "TEMPORARILY_OCCLUDED") || it.status === "ITEM_REMOVED") {
+          if ((!it.confirmed && it.missCount >= 2) || it.missCount > 25 || (timeMissing > 2000 && it.status !== "TEMPORARILY_OCCLUDED") || it.status === "ITEM_REMOVED") {
             trackedItems.delete(itId);
           }
           continue;
@@ -2016,7 +2049,7 @@
       // ─────────────────────────────────────────────────────────
       const confirmedPersons = Array.from(trackedPersons.values()).filter(p => p.confirmed && p.missCount === 0);
       const confirmedItems = Array.from(trackedItems.values()).filter(it => it.confirmed && it.missCount === 0);
-      const suspectItems = Array.from(trackedItems.values()).filter(it => it.status === "SUSPECTED" && it.status !== "ITEM_REMOVED");
+      const suspectItems = Array.from(trackedItems.values()).filter(it => it.confirmed && it.status === "SUSPECTED" && it.status !== "ITEM_REMOVED");
 
       if (valSeats) {
         valSeats.textContent = trackedSeats.size > 0 ? `${trackedSeats.size}` : "0";
@@ -2054,16 +2087,20 @@
         alertBanner.style.display = "none";
       }
 
-      notifyStreamlit({
-        status: "running",
-        is_running: true,
-        seat_count: trackedSeats.size,
-        person_count: confirmedPersons.length,
-        item_count: confirmedItems.length,
-        suspected_count: suspectItems.length,
-        display_fps: Number(displayFps.toFixed(1)),
-        infer_fps: Number(inferFps.toFixed(1))
-      });
+      // Chỉ gửi thông báo cho Streamlit khi trạng thái đồ bỏ quên thay đổi hoặc theo nhịp throttle định kỳ (2.5s).
+      // Tuyệt đối không gửi FPS dao động mỗi frame để tránh Streamlit bị kích hoạt rerun liên tục làm tối mờ website!
+      const currentSuspectCount = suspectItems.length;
+      if (currentSuspectCount !== latestSuspectCount || (now - lastNotifiedTime > 2500)) {
+        latestSuspectCount = currentSuspectCount;
+        notifyStreamlit({
+          status: "running",
+          is_running: true,
+          seat_count: trackedSeats.size,
+          person_count: confirmedPersons.length,
+          item_count: confirmedItems.length,
+          suspected_count: currentSuspectCount
+        });
+      }
     }
 
     function calcBoxIoU(boxA, boxB) {

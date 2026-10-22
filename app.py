@@ -116,6 +116,20 @@ st.markdown(f"""
         --color-alert: {COLOR_ALERT_HEX};
     }}
 
+    /* Khắc phục lỗi Streamlit làm tối (dim/opacity reduction) giao diện website khi camera chạy */
+    div[data-testid="stAppViewContainer"],
+    .stApp,
+    .main,
+    [data-testid="stMain"],
+    [data-testid="stVerticalBlock"] {{
+        opacity: 1 !important;
+        filter: none !important;
+    }}
+    div[data-stale="true"] {{
+        opacity: 1 !important;
+        filter: none !important;
+    }}
+
     .main .block-container {{
         padding-top: 1.2rem;
         padding-bottom: 2rem;

@@ -347,3 +347,61 @@ def test_10_rendering_state_isolation():
 
     # Pixel ngoài polygon (ví dụ tại [80, 80]) phải giữ nguyên giá trị 128 (không bị tối hay biến đổi)
     assert np.array_equal(frame_copy[80, 80], [128, 128, 128]), "Vùng ngoài polygon bị thay đổi độ sáng!"
+
+
+# ─────────────────────────────────────────────────────────────
+# Test 11: Website dimming prevention and Streamlit message throttling
+# ─────────────────────────────────────────────────────────────
+def test_11_website_dimming_prevention_and_throttling():
+    """Kiểm tra biện pháp triệt để ngăn chặn lỗi toàn bộ giao diện website bị tối mờ khi camera hoạt động:
+    1. app.py phải chứa CSS bảo vệ chống giảm opacity/filter trên stAppViewContainer và .stApp.
+    2. index.html phải kiểm soát nhịp gửi notifyStreamlit (stateKey & throttle), loại bỏ FPS dao động mỗi frame
+       để Streamlit không bị rơi vào vòng lặp rerun liên tục.
+    """
+    app_py_path = Path(__file__).resolve().parent.parent / "app.py"
+    html_path = Path(__file__).resolve().parent.parent / "src" / "components" / "hybrid_camera" / "frontend" / "index.html"
+
+    assert app_py_path.exists(), "app.py phải tồn tại"
+    assert html_path.exists(), "index.html phải tồn tại"
+
+    app_content = app_py_path.read_text(encoding="utf-8")
+    html_content = html_path.read_text(encoding="utf-8")
+
+    # 1. CSS anti-dimming trong app.py
+    assert 'div[data-testid="stAppViewContainer"]' in app_content, "app.py phải bảo vệ stAppViewContainer"
+    assert "opacity: 1 !important;" in app_content, "app.py phải duy trì opacity 1"
+    assert "filter: none !important;" in app_content, "app.py phải duy trì filter none"
+
+    # 2. index.html throttling
+    assert "lastNotifiedStateKey" in html_content, "index.html phải quản lý lastNotifiedStateKey"
+    assert "lastNotifiedTime" in html_content, "index.html phải quản lý lastNotifiedTime"
+    assert "currentSuspectCount !== latestSuspectCount" in html_content, "index.html chỉ gửi notify khi suspect count đổi hoặc throttle"
+
+
+# ─────────────────────────────────────────────────────────────
+# Test 12: Two-tier detection sensitivity and small belongings admission
+# ─────────────────────────────────────────────────────────────
+def test_12_two_tier_sensitivity_and_small_item_admission():
+    """Kiểm tra độ nhạy nhận diện đồ vật cá nhân nhỏ (smartphones, ví tiền, túi xách nhỏ):
+    1. Ngưỡng tiếp nhận candidate cho items được hạ xuống 0.20 trong decodeTrueInstanceSegmentation.
+    2. Cơ chế Two-Tier Confirmation: Candidate score < confThreshold đưa vào TENTATIVE và yêu cầu corroboration
+       trước khi CONFIRMED (không tạo false positives / polygon ma 1 frame).
+    3. Ngưỡng mask prototype sigmoid được tinh chỉnh 0.45 để bảo tồn biên chi tiết của vật phẩm nhỏ.
+    4. ITEM_CLASSES mở rộng đầy đủ các lớp vật dụng cá nhân COCO.
+    """
+    html_path = Path(__file__).resolve().parent.parent / "src" / "components" / "hybrid_camera" / "frontend" / "index.html"
+    html_content = html_path.read_text(encoding="utf-8")
+
+    # 1. Candidate admission threshold
+    assert "Math.min(confThreshold, 0.20)" in html_content, "index.html phải áp dụng ngưỡng nhạy 0.20 cho item candidates"
+
+    # 2. Two-tier confirmation
+    assert 'lifecycle: isHighConf ? "CONFIRMED" : "TENTATIVE"' in html_content, "index.html phải phân loại CONFIRMED vs TENTATIVE"
+    assert "isRenderable: isHighConf" in html_content, "Candidate TENTATIVE không được render ở frame đầu"
+
+    # 3. Mask threshold 0.45
+    assert "sigmoid(val) > 0.45" in html_content, "index.html phải tinh chỉnh sigmoid threshold về 0.45"
+
+    # 4. Item classes
+    for item_cls in ["cell phone", "backpack", "handbag", "book", "bottle"]:
+        assert f'"{item_cls}"' in html_content, f"ITEM_CLASSES phải chứa {item_cls}"
