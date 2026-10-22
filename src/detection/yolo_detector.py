@@ -12,6 +12,7 @@ Nếu thương mại hóa, cần mua giấy phép Enterprise từ Ultralytics.
 """
 
 import numpy as np
+import threading
 from pathlib import Path
 from typing import List, Optional, Set, Tuple, Union, Dict
 
@@ -85,6 +86,7 @@ class YOLODetector:
         self.is_segmentation: bool = False
         self.is_custom_3class: bool = False
         self._weights_source: str = "default"
+        self._infer_lock = threading.Lock()
 
     @property
     def is_loaded(self) -> bool:
@@ -193,14 +195,15 @@ class YOLODetector:
 
         try:
             h, w = frame.shape[:2]
-            # Chạy inference
-            results = self.model(
-                frame,
-                conf=self.confidence_threshold,
-                device=self.device,
-                verbose=False,
-                classes=list(self._target_class_ids) if self._target_class_ids else None,
-            )
+            # Chạy inference có khóa bảo vệ đa luồng an toàn (Thread-Safe Inference)
+            with self._infer_lock:
+                results = self.model(
+                    frame,
+                    conf=self.confidence_threshold,
+                    device=self.device,
+                    verbose=False,
+                    classes=list(self._target_class_ids) if self._target_class_ids else None,
+                )
 
             detections = []
             for result in results:

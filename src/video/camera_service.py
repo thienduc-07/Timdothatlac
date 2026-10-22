@@ -31,6 +31,7 @@ class CameraSourceType:
     VIDEO_FILE = "video_file"
     DEMO_SAMPLE = "demo_sample"
     WEBCAM = "webcam"
+    WEBRTC = "webrtc"
     RTSP = "rtsp"
 
 

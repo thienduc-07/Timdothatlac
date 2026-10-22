@@ -377,6 +377,7 @@ class AnalysisService:
         tracker: ObjectTracker,
         event_detector: ForgottenItemDetector,
         event_manager: EventManager,
+        seat_manager: Optional[SeatManager] = None,
         confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
         show_seats: bool = True,
         show_persons: bool = True,
@@ -470,8 +471,9 @@ class AnalysisService:
             )
 
         # Cập nhật nhận diện ghế thực tế từ AI model (AI Seat Detection từ camera feed)
-        if self._seat_manager:
-            self._seat_manager.update_detected_seats(
+        active_seat_mgr = seat_manager if seat_manager is not None else self._seat_manager
+        if active_seat_mgr:
+            active_seat_mgr.update_detected_seats(
                 raw_predictions=(detections_to_track if detections_to_track is not None else tracked),
                 frame_idx=frame_idx,
                 frame_width=cur_w,
@@ -481,7 +483,7 @@ class AnalysisService:
 
         # Phân tích sự kiện
         current_time_sec = frame_idx / fps if fps > 0 else 0.0
-        if self._seat_manager and self._seat_manager.is_configured:
+        if active_seat_mgr and active_seat_mgr.is_configured:
             event_detector.process_frame(
                 tracked_objects=tracked,
                 current_frame=frame_idx,
@@ -544,7 +546,7 @@ class AnalysisService:
             frame=frame,
             tracked_objects=tracked,
             event_statuses=event_statuses,
-            seat_manager=self._seat_manager,
+            seat_manager=active_seat_mgr,
             active_events=event_manager.events,
             width=cur_w,
             height=cur_h,
