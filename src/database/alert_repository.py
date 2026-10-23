@@ -62,6 +62,8 @@ class AlertRepository:
         limit: int = 50,
         status: Optional[str] = None,
         active_only: bool = False,
+        *args,
+        **kwargs,
     ) -> List[Dict]:
         """
         Lấy danh sách các alert gần nhất.
@@ -163,6 +165,8 @@ class AlertRepository:
         new_status: str,
         resolution_type: Optional[str] = None,
         resolved_at: Optional[str] = None,
+        *args,
+        **kwargs,
     ) -> bool:
         """Cập nhật trạng thái alert (PENDING, CONFIRMED, DISMISSED, ITEM_RETRIEVED, FALSE_POSITIVE)."""
         try:

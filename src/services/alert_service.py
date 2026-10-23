@@ -139,10 +139,20 @@ class AlertService:
         alert_id: str,
         new_status: str,
         resolution_type: Optional[str] = None,
+        resolved_at: Optional[str] = None,
+        *args,
+        **kwargs,
     ) -> bool:
         """Cập nhật trạng thái một alert trong database."""
         if self._repo:
-            return self._repo.update_alert_status(alert_id, new_status, resolution_type=resolution_type)
+            return self._repo.update_alert_status(
+                alert_id,
+                new_status,
+                resolution_type=resolution_type,
+                resolved_at=resolved_at,
+                *args,
+                **kwargs,
+            )
         return False
 
     def delete_alert_permanently(self, alert_id: str) -> bool:
@@ -156,10 +166,18 @@ class AlertService:
         limit: int = 50,
         status: Optional[str] = None,
         active_only: bool = False,
+        *args,
+        **kwargs,
     ) -> List[Dict]:
         """Lấy danh sách cảnh báo từ repository."""
         if self._repo:
-            return self._repo.get_recent_alerts(limit=limit, status=status, active_only=active_only)
+            return self._repo.get_recent_alerts(
+                limit=limit,
+                status=status,
+                active_only=active_only,
+                *args,
+                **kwargs,
+            )
         return []
 
     def _dispatch_notifications(

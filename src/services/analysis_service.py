@@ -573,10 +573,18 @@ class AnalysisService:
         limit: int = 50,
         status: Optional[str] = None,
         active_only: bool = False,
+        *args,
+        **kwargs,
     ) -> List[Dict]:
         """Lấy danh sách các Alert gần nhất."""
         if self._alert_repo:
-            return self._alert_repo.get_recent_alerts(limit=limit, status=status, active_only=active_only)
+            return self._alert_repo.get_recent_alerts(
+                limit=limit,
+                status=status,
+                active_only=active_only,
+                *args,
+                **kwargs,
+            )
         return []
 
     def update_alert_status(
@@ -585,6 +593,8 @@ class AnalysisService:
         new_status: str,
         resolution_type: Optional[str] = None,
         resolved_at: Optional[str] = None,
+        *args,
+        **kwargs,
     ) -> bool:
         """Cập nhật trạng thái alert (PENDING, CONFIRMED, DISMISSED, ITEM_RETRIEVED, FALSE_POSITIVE)."""
         if self._alert_repo:
@@ -593,13 +603,15 @@ class AnalysisService:
                 new_status,
                 resolution_type=resolution_type,
                 resolved_at=resolved_at,
+                *args,
+                **kwargs,
             )
         return False
 
-    def delete_alert_permanently(self, alert_id: str) -> bool:
+    def delete_alert_permanently(self, alert_id: str, *args, **kwargs) -> bool:
         """Xóa vĩnh viễn Alert khỏi database."""
         if self._alert_repo:
-            return self._alert_repo.delete_alert_permanently(alert_id)
+            return self._alert_repo.delete_alert_permanently(alert_id, *args, **kwargs)
         return False
 
     def get_unresolved_alert_count(self) -> int:

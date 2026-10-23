@@ -37,14 +37,56 @@ class RoboflowWorkflowClient:
     _last_submit: Dict[str, float] = {}
     _lock = threading.Lock()
 
-    def __init__(self) -> None:
-        self.api_key: str = os.getenv("ROBOFLOW_API_KEY", "")
+    def __init__(self, api_key: Optional[str] = None) -> None:
+        raw_key = api_key or os.getenv("ROBOFLOW_API_KEY", "")
+        if not raw_key:
+            try:
+                import streamlit as st
+                if hasattr(st, "session_state") and st.session_state.get("ROBOFLOW_API_KEY"):
+                    raw_key = str(st.session_state.get("ROBOFLOW_API_KEY")).strip()
+                elif hasattr(st, "secrets") and "ROBOFLOW_API_KEY" in st.secrets:
+                    raw_key = str(st.secrets["ROBOFLOW_API_KEY"]).strip()
+                if raw_key:
+                    os.environ["ROBOFLOW_API_KEY"] = raw_key
+            except Exception:
+                pass
+
+        self.api_key: str = raw_key or ""
+
+        # Load workspace, project, workflow with secrets fallback
+        ws = os.getenv("ROBOFLOW_WORKSPACE", "")
+        if not ws:
+            try:
+                import streamlit as st
+                if hasattr(st, "secrets") and "ROBOFLOW_WORKSPACE" in st.secrets:
+                    ws = str(st.secrets["ROBOFLOW_WORKSPACE"]).strip()
+            except Exception:
+                pass
+        self.workspace: str = ws or "le-uc-s-workspace"
+
+        proj = os.getenv("ROBOFLOW_PROJECT_ID", "")
+        if not proj:
+            try:
+                import streamlit as st
+                if hasattr(st, "secrets") and "ROBOFLOW_PROJECT_ID" in st.secrets:
+                    proj = str(st.secrets["ROBOFLOW_PROJECT_ID"]).strip()
+            except Exception:
+                pass
+        self.project_id: str = proj or "bus-seat-and-belongings-monitori"
+
+        wf = os.getenv("ROBOFLOW_WORKFLOW_ID", "")
+        if not wf:
+            try:
+                import streamlit as st
+                if hasattr(st, "secrets") and "ROBOFLOW_WORKFLOW_ID" in st.secrets:
+                    wf = str(st.secrets["ROBOFLOW_WORKFLOW_ID"]).strip()
+            except Exception:
+                pass
+        self.workflow_id: str = wf or "bus-seat-and-belongings-monitori"
+
         self.api_url: str = os.getenv(
             "ROBOFLOW_WORKFLOW_URL", "https://serverless.roboflow.com"
         )
-        self.workspace: str = os.getenv("ROBOFLOW_WORKSPACE", "le-uc-s-workspace")
-        self.project_id: str = os.getenv("ROBOFLOW_PROJECT_ID", "bus-seat-and-belongings-monitori")
-        self.workflow_id: str = os.getenv("ROBOFLOW_WORKFLOW_ID", "bus-seat-and-belongings-monitori")
         self.model_version: str = os.getenv("ROBOFLOW_MODEL_VERSION", "1")
         self.timeout: int = int(os.getenv("ROBOFLOW_TIMEOUT_SECONDS", "10"))
         self.min_interval: float = float(
@@ -54,7 +96,7 @@ class RoboflowWorkflowClient:
         if not self.api_key:
             raise ValueError(
                 "ROBOFLOW_API_KEY is not set. "
-                "Add it to .env or export it as an environment variable."
+                "Vui lòng cấu hình trong Streamlit Secrets (st.secrets) hoặc file .env."
             )
 
         self.last_inference_info: Dict[str, Any] = {

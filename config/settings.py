@@ -17,6 +17,26 @@ except Exception:
     # dotenv not installed or .env missing – ignore
     pass
 
+def get_secret_or_env(key: str, default: str = "") -> str:
+    """
+    Lấy giá trị cấu hình an toàn từ biến môi trường (os.getenv),
+    Streamlit Session State, hoặc Streamlit Secrets (st.secrets) trên Streamlit Cloud.
+    Tự động đồng bộ vào os.environ để các module phụ thuộc cũng nhận diện được.
+    """
+    val = os.getenv(key, "")
+    if not val:
+        try:
+            import streamlit as st
+            if hasattr(st, "session_state") and st.session_state.get(key):
+                val = str(st.session_state.get(key)).strip()
+            elif hasattr(st, "secrets") and key in st.secrets:
+                val = str(st.secrets[key]).strip()
+            if val:
+                os.environ[key] = val
+        except Exception:
+            pass
+    return val.strip() if val else default
+
 # ──────────────────────────────────────────────
 # Múi giờ hệ thống (Timezone Settings)
 # Mặc định: Giờ Việt Nam (Asia/Ho_Chi_Minh - GMT+7)
@@ -138,12 +158,15 @@ DEFAULT_MODEL_PATH = (
 MODEL_PATH = os.getenv("MODEL_PATH", DEFAULT_MODEL_PATH)
 
 # Roboflow Serverless Workflow & Hosted Model Configuration
-ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY", "")
-ROBOFLOW_WORKFLOW_URL = os.getenv("ROBOFLOW_WORKFLOW_URL", "https://serverless.roboflow.com")
-ROBOFLOW_WORKSPACE = os.getenv("ROBOFLOW_WORKSPACE", "le-uc-s-workspace")
-ROBOFLOW_PROJECT_ID = os.getenv("ROBOFLOW_PROJECT_ID", "bus-seat-and-belongings-monitori")
-ROBOFLOW_WORKFLOW_ID = os.getenv("ROBOFLOW_WORKFLOW_ID", "bus-seat-and-belongings-monitori")
-ROBOFLOW_MODEL_VERSION = os.getenv("ROBOFLOW_MODEL_VERSION", "1")
+ROBOFLOW_API_KEY = get_secret_or_env("ROBOFLOW_API_KEY", "")
+ROBOFLOW_WORKFLOW_URL = get_secret_or_env("ROBOFLOW_WORKFLOW_URL", "https://serverless.roboflow.com")
+ROBOFLOW_WORKSPACE = get_secret_or_env("ROBOFLOW_WORKSPACE", "le-uc-s-workspace")
+ROBOFLOW_PROJECT_ID = get_secret_or_env("ROBOFLOW_PROJECT_ID", "bus-seat-and-belongings-monitori")
+ROBOFLOW_WORKFLOW_ID = get_secret_or_env("ROBOFLOW_WORKFLOW_ID", "bus-seat-and-belongings-monitori")
+ROBOFLOW_MODEL_VERSION = get_secret_or_env("ROBOFLOW_MODEL_VERSION", "1")
+
+if ROBOFLOW_API_KEY:
+    os.environ["ROBOFLOW_API_KEY"] = ROBOFLOW_API_KEY
 
 
 # ──────────────────────────────────────────────
@@ -241,21 +264,6 @@ CLASS_NAMES_VI = {
 # ──────────────────────────────────────────────
 ALERT_COOLDOWN_SECONDS = 60.0          # Tránh gửi cảnh báo trùng lặp cho cùng 1 ghế/vật trong 60s
 DEFAULT_NOTIFICATION_RETRY_COUNT = 3  # Số lần thử lại tối đa khi gửi thông báo thất bại
-
-def get_secret_or_env(key: str, default: str = "") -> str:
-    """
-    Lấy giá trị cấu hình an toàn từ biến môi trường (os.getenv)
-    hoặc Streamlit Secrets (st.secrets) nếu triển khai trên Streamlit Cloud.
-    """
-    val = os.getenv(key, "")
-    if not val:
-        try:
-            import streamlit as st
-            if hasattr(st, "secrets") and key in st.secrets:
-                val = str(st.secrets[key])
-        except Exception:
-            pass
-    return val.strip() if val else default
 
 # Cấu hình Telegram Bot
 TELEGRAM_BOT_TOKEN = get_secret_or_env("TELEGRAM_BOT_TOKEN", "")

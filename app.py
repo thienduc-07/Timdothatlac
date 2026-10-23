@@ -38,7 +38,7 @@ os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "2")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "2")
 
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 import json
 import cv2
 import numpy as np
@@ -284,7 +284,7 @@ st.markdown(f"""
 
 
 @st.cache_resource
-def _get_cached_service(_cache_tag: str = "v3.0_universal_cam") -> AnalysisService:
+def _get_cached_service(_cache_tag: str = "v5.0_alert_lifecycle_sync") -> AnalysisService:
     service = AnalysisService()
     service.initialize()
     return service
@@ -295,10 +295,11 @@ def get_service() -> AnalysisService:
     try:
         service = _get_cached_service()
         import inspect
-        sig = inspect.signature(service.process_webcam_frame)
-        if "show_masks" not in sig.parameters:
+        sig_cam = inspect.signature(service.process_webcam_frame)
+        sig_alerts = inspect.signature(service.get_recent_alerts)
+        if "show_masks" not in sig_cam.parameters or "active_only" not in sig_alerts.parameters:
             st.cache_resource.clear()
-            service = _get_cached_service(_cache_tag=f"v3.1_fresh_{time.time()}")
+            service = _get_cached_service(_cache_tag=f"v5.0_fresh_{time.time()}")
         return service
     except Exception as e:
         st.cache_resource.clear()
@@ -307,7 +308,7 @@ def get_service() -> AnalysisService:
         return service
 
 
-def safe_process_webcam_frame(service: AnalysisService, **kwargs):
+def safe_process_webcam_frame(service: Any, **kwargs):
     """
     Gọi service.process_webcam_frame an toàn tuyệt đối.
     Tự động đối chiếu signature để không bao giờ bị TypeError khi chạy trên Streamlit Cloud với cache cũ.
@@ -319,6 +320,80 @@ def safe_process_webcam_frame(service: AnalysisService, **kwargs):
         filtered = {k: v for k, v in kwargs.items() if k in sig.parameters}
         return service.process_webcam_frame(**filtered)
     return service.process_webcam_frame(**kwargs)
+
+
+def safe_get_recent_alerts(
+    service: Any,
+    limit: int = 50,
+    status: Optional[str] = None,
+    active_only: bool = False,
+    **kwargs,
+) -> List[Dict]:
+    """
+    Gọi service.get_recent_alerts an toàn tuyệt đối chống TypeError do cache cũ trên Streamlit Cloud.
+    Tự động fallback lọc in-memory nếu service instance cũ chưa hỗ trợ active_only.
+    """
+    try:
+        import inspect
+        sig = inspect.signature(service.get_recent_alerts)
+        has_varkw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+        if has_varkw or "active_only" in sig.parameters:
+            return service.get_recent_alerts(limit=limit, status=status, active_only=active_only, **kwargs)
+        else:
+            alerts = service.get_recent_alerts(limit=limit, status=status)
+            if active_only and alerts:
+                alerts = [
+                    a for a in alerts
+                    if str(a.get("status", "")).upper() in ("PENDING", "ACTIVE")
+                ]
+            return alerts
+    except TypeError:
+        try:
+            alerts = service.get_recent_alerts(limit=limit, status=status)
+            if active_only and alerts:
+                alerts = [
+                    a for a in alerts
+                    if str(a.get("status", "")).upper() in ("PENDING", "ACTIVE")
+                ]
+            return alerts
+        except Exception:
+            return []
+    except Exception:
+        return []
+
+
+def safe_update_alert_status(
+    service: Any,
+    alert_id: str,
+    new_status: str,
+    resolution_type: Optional[str] = None,
+    resolved_at: Optional[str] = None,
+    **kwargs,
+) -> bool:
+    """
+    Gọi service.update_alert_status an toàn tuyệt đối chống lỗi signature mismatch từ cache cũ.
+    """
+    try:
+        import inspect
+        sig = inspect.signature(service.update_alert_status)
+        has_varkw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+        if has_varkw or "resolution_type" in sig.parameters:
+            return service.update_alert_status(
+                alert_id,
+                new_status,
+                resolution_type=resolution_type,
+                resolved_at=resolved_at,
+                **kwargs,
+            )
+        else:
+            return service.update_alert_status(alert_id, new_status)
+    except TypeError:
+        try:
+            return service.update_alert_status(alert_id, new_status)
+        except Exception:
+            return False
+    except Exception:
+        return False
 
 
 def format_timestamp_display(ts_str: Optional[str]) -> str:
@@ -674,7 +749,7 @@ def page_dashboard(service: AnalysisService):
                 st.rerun()
 
         st.markdown("#### 🔔 Cảnh báo Mới nhất")
-        recent_alerts = service.get_recent_alerts(limit=5)
+        recent_alerts = safe_get_recent_alerts(service, limit=5)
         if recent_alerts:
             for alt in recent_alerts:
                 p_color = "#EF4444" if alt["priority"] == "HIGH" else "#F59E0B"
@@ -1339,7 +1414,7 @@ def page_alert_center(service: AnalysisService):
     else:
         status_query = None
 
-    alerts = service.get_recent_alerts(limit=50, status=status_query, active_only=active_only)
+    alerts = safe_get_recent_alerts(service, limit=50, status=status_query, active_only=active_only)
 
     if not alerts:
         if active_only:
@@ -1402,26 +1477,26 @@ def page_alert_center(service: AnalysisService):
                         b1, b2 = st.columns(2)
                         with b1:
                             if st.button("✅ Xác nhận đúng", key=f"conf_{alt['alert_id']}", use_container_width=True):
-                                service.update_alert_status(alt["alert_id"], "CONFIRMED", resolution_type="CONFIRMED")
+                                safe_update_alert_status(service, alt["alert_id"], "CONFIRMED", resolution_type="CONFIRMED")
                                 st.toast(f"✅ Đã xác nhận cảnh báo {alt['alert_id']}")
                                 st.rerun()
                             if st.button("🎒 Đã lấy đồ", key=f"ret_{alt['alert_id']}", use_container_width=True):
-                                service.update_alert_status(alt["alert_id"], "ITEM_RETRIEVED", resolution_type="ITEM_RETRIEVED")
+                                safe_update_alert_status(service, alt["alert_id"], "ITEM_RETRIEVED", resolution_type="ITEM_RETRIEVED")
                                 st.toast(f"🎒 Đã đánh dấu đồ vật đã được lấy {alt['alert_id']}")
                                 st.rerun()
                         with b2:
                             if st.button("❌ Báo sai (Tin giả)", key=f"fp_{alt['alert_id']}", use_container_width=True):
-                                service.update_alert_status(alt["alert_id"], "FALSE_POSITIVE", resolution_type="FALSE_POSITIVE")
+                                safe_update_alert_status(service, alt["alert_id"], "FALSE_POSITIVE", resolution_type="FALSE_POSITIVE")
                                 st.toast(f"❌ Đã đánh dấu báo sai {alt['alert_id']}")
                                 st.rerun()
                             if st.button("⏹️ Loại bỏ (Dismiss)", key=f"dism_{alt['alert_id']}", use_container_width=True):
-                                service.update_alert_status(alt["alert_id"], "DISMISSED", resolution_type="DISMISSED")
+                                safe_update_alert_status(service, alt["alert_id"], "DISMISSED", resolution_type="DISMISSED")
                                 st.toast(f"⏹️ Đã loại bỏ cảnh báo {alt['alert_id']}")
                                 st.rerun()
                     else:
                         st.markdown("**Tác vụ lịch sử:**")
                         if st.button("🔄 Kích hoạt lại (Reopen)", key=f"reopen_{alt['alert_id']}"):
-                            service.update_alert_status(alt["alert_id"], "PENDING", resolution_type="")
+                            safe_update_alert_status(service, alt["alert_id"], "PENDING", resolution_type="")
                             st.toast(f"🔄 Đã kích hoạt lại cảnh báo {alt['alert_id']}")
                             st.rerun()
 
@@ -1822,95 +1897,112 @@ def page_dataset(service: AnalysisService):
         st.caption("Đồng bộ dữ liệu trực tiếp với Roboflow Serverless Workflow và dự án Cloud.")
         from src.roboflow.dataset_workflow import RoboflowDatasetWorkflow
 
-        try:
-            rf_wf = RoboflowDatasetWorkflow()
-            summary = rf_wf.get_project_summary()
-            val = rf_wf.validate_annotations()
+        rf_wf = RoboflowDatasetWorkflow()
+        if not rf_wf.api_key:
+            st.warning("⚠️ **Chưa cấu hình Roboflow Dataset API:** Cần `ROBOFLOW_API_KEY` để đồng bộ dữ liệu đám mây.")
+            rf_ds_key = st.text_input(
+                "Nhập Roboflow API Key để đồng bộ Dataset:",
+                type="password",
+                value=st.session_state.get("ROBOFLOW_API_KEY", ""),
+                key="rf_ds_key_input",
+                placeholder="rf_...",
+            )
+            if st.button("🔌 Lưu & Kết nối Dataset Cloud", key="btn_connect_rf_ds", type="primary"):
+                if rf_ds_key.strip():
+                    st.session_state["ROBOFLOW_API_KEY"] = rf_ds_key.strip()
+                    os.environ["ROBOFLOW_API_KEY"] = rf_ds_key.strip()
+                    st.toast("✅ Đã lưu Roboflow API Key!")
+                    st.rerun()
+            st.info("💡 Bạn có thể cấu hình vĩnh viễn trong **Streamlit Cloud Secrets** (`st.secrets`) hoặc file `.env` ở máy cục bộ.")
+        else:
+            try:
+                summary = rf_wf.get_project_summary()
+                val = rf_wf.validate_annotations()
 
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                st.metric("Tổng ảnh trên Roboflow", summary["images_total"])
-            with c2:
-                st.metric("Đã gán nhãn", val["annotated_images"])
-            with c3:
-                st.metric("Chưa gán nhãn", val["unannotated_images"])
-            with c4:
-                st.metric("Số phiên bản Dataset", len(summary.get("versions", [])))
+                c1, c2, c3, c4 = st.columns(4)
+                with c1:
+                    st.metric("Tổng ảnh trên Roboflow", summary["images_total"])
+                with c2:
+                    st.metric("Đã gán nhãn", val["annotated_images"])
+                with c3:
+                    st.metric("Chưa gán nhãn", val["unannotated_images"])
+                with c4:
+                    st.metric("Số phiên bản Dataset", len(summary.get("versions", [])))
 
-            st.markdown("###### Phân bố lớp đối tượng (Seat & Occupancy Classes):")
-            st.json(summary["classes"])
+                st.markdown("###### Phân bố lớp đối tượng (Seat & Occupancy Classes):")
+                st.json(summary["classes"])
 
-            if val["issues"]:
-                for issue in val["issues"]:
-                    st.warning(f"⚠️ {issue}")
-            if val["recommendations"]:
-                for rec in val["recommendations"]:
-                    st.info(f"💡 {rec}")
+                if val["issues"]:
+                    for issue in val["issues"]:
+                        st.warning(f"⚠️ {issue}")
+                if val["recommendations"]:
+                    for rec in val["recommendations"]:
+                        st.info(f"💡 {rec}")
 
-            st.markdown("---")
-            st.markdown("###### 📤 Tải ảnh lên Roboflow Dataset:")
-            rf_files = st.file_uploader("Chọn ảnh để tải lên Roboflow:", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="rf_up")
-            rf_split = st.selectbox("Tập dữ liệu đích (Split):", ["train", "valid", "test"], key="rf_split")
-            if rf_files and st.button("Tải lên Roboflow", type="primary"):
-                import tempfile
-                up_cnt = 0
-                for f in rf_files:
-                    tmp_p = Path(tempfile.mkstemp(suffix=Path(f.name).suffix)[1])
-                    with open(tmp_p, "wb") as tmp_f:
-                        tmp_f.write(f.getvalue())
+                st.markdown("---")
+                st.markdown("###### 📤 Tải ảnh lên Roboflow Dataset:")
+                rf_files = st.file_uploader("Chọn ảnh để tải lên Roboflow:", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="rf_up")
+                rf_split = st.selectbox("Tập dữ liệu đích (Split):", ["train", "valid", "test"], key="rf_split")
+                if rf_files and st.button("Tải lên Roboflow", type="primary"):
+                    import tempfile
+                    up_cnt = 0
+                    for f in rf_files:
+                        tmp_p = Path(tempfile.mkstemp(suffix=Path(f.name).suffix)[1])
+                        with open(tmp_p, "wb") as tmp_f:
+                            tmp_f.write(f.getvalue())
+                        try:
+                            rf_wf.upload_image(tmp_p, split=rf_split)
+                            up_cnt += 1
+                        except Exception as e:
+                            st.error(f"Lỗi tải {f.name}: {e}")
+                        finally:
+                            tmp_p.unlink(missing_ok=True)
+                    st.success(f"Đã tải thành công {up_cnt} ảnh lên Roboflow tập {rf_split}!")
+                    st.rerun()
+
+                st.markdown("---")
+                st.markdown("###### 📦 Tạo phiên bản Dataset mới (Version Generation):")
+                v_col1, v_col2 = st.columns([3, 1])
+                with v_col1:
+                    v_name = st.text_input("Tên phiên bản mới:", value=f"bus-seat-v{len(summary.get('versions', [])) + 1}")
+                with v_col2:
+                    st.write("")
+                    st.write("")
+                    gen_btn = st.button("🚀 Tạo Version", use_container_width=True)
+                if gen_btn:
                     try:
-                        rf_wf.upload_image(tmp_p, split=rf_split)
-                        up_cnt += 1
+                        gen_res = rf_wf.generate_version(version_name=v_name)
+                        st.success(f"✅ Đã gửi yêu cầu tạo phiên bản trên Roboflow: {gen_res}")
                     except Exception as e:
-                        st.error(f"Lỗi tải {f.name}: {e}")
-                    finally:
-                        tmp_p.unlink(missing_ok=True)
-                st.success(f"Đã tải thành công {up_cnt} ảnh lên Roboflow tập {rf_split}!")
-                st.rerun()
+                        st.error(f"Lỗi tạo version: {e}")
 
-            st.markdown("---")
-            st.markdown("###### 📦 Tạo phiên bản Dataset mới (Version Generation):")
-            v_col1, v_col2 = st.columns([3, 1])
-            with v_col1:
-                v_name = st.text_input("Tên phiên bản mới:", value=f"bus-seat-v{len(summary.get('versions', [])) + 1}")
-            with v_col2:
-                st.write("")
-                st.write("")
-                gen_btn = st.button("🚀 Tạo Version", use_container_width=True)
-            if gen_btn:
-                try:
-                    gen_res = rf_wf.generate_version(version_name=v_name)
-                    st.success(f"✅ Đã gửi yêu cầu tạo phiên bản trên Roboflow: {gen_res}")
-                except Exception as e:
-                    st.error(f"Lỗi tạo version: {e}")
+                st.markdown("---")
+                st.markdown("###### 🏆 Đánh giá & Kích hoạt Model Roboflow:")
+                versions_list = summary.get("versions", [])
+                if versions_list:
+                    v_nums = [v.get("version", 1) for v in versions_list]
+                    chosen_v = st.selectbox("Chọn phiên bản để xem đánh giá & kích hoạt:", v_nums, index=0)
+                    eval_data = rf_wf.get_model_evaluation(chosen_v)
+                    m_metrics = eval_data.get("metrics", {})
+                    e1, e2, e3 = st.columns(3)
+                    with e1:
+                        st.metric("mAP50", f"{m_metrics.get('map50', 0.0):.1f}%")
+                    with e2:
+                        st.metric("Precision", f"{m_metrics.get('precision', 0.0):.1f}%")
+                    with e3:
+                        st.metric("Recall", f"{m_metrics.get('recall', 0.0):.1f}%")
 
-            st.markdown("---")
-            st.markdown("###### 🏆 Đánh giá & Kích hoạt Model Roboflow:")
-            versions_list = summary.get("versions", [])
-            if versions_list:
-                v_nums = [v.get("version", 1) for v in versions_list]
-                chosen_v = st.selectbox("Chọn phiên bản để xem đánh giá & kích hoạt:", v_nums, index=0)
-                eval_data = rf_wf.get_model_evaluation(chosen_v)
-                m_metrics = eval_data.get("metrics", {})
-                e1, e2, e3 = st.columns(3)
-                with e1:
-                    st.metric("mAP50", f"{m_metrics.get('map50', 0.0):.1f}%")
-                with e2:
-                    st.metric("Precision", f"{m_metrics.get('precision', 0.0):.1f}%")
-                with e3:
-                    st.metric("Recall", f"{m_metrics.get('recall', 0.0):.1f}%")
-
-                st.caption(f"Model ID: `{eval_data.get('model_id')}` | Trạng thái: `{eval_data.get('status')}`")
-                ms = getattr(service, "model_service", None) or getattr(service, "_model_service", None)
-                if st.button(f"⭐ Kích hoạt Model Roboflow Version {chosen_v} cho hệ thống", type="primary"):
-                    ok_act, msg_act = rf_wf.activate_model(chosen_v, model_service=ms)
-                    if ok_act:
-                        st.success(msg_act)
-                        st.rerun()
-                    else:
-                        st.error(msg_act)
-        except Exception as e:
-            st.error(f"Không thể kết nối Roboflow Dataset API: {e}")
+                    st.caption(f"Model ID: `{eval_data.get('model_id')}` | Trạng thái: `{eval_data.get('status')}`")
+                    ms = getattr(service, "model_service", None) or getattr(service, "_model_service", None)
+                    if st.button(f"⭐ Kích hoạt Model Roboflow Version {chosen_v} cho hệ thống", type="primary"):
+                        ok_act, msg_act = rf_wf.activate_model(chosen_v, model_service=ms)
+                        if ok_act:
+                            st.success(msg_act)
+                            st.rerun()
+                        else:
+                            st.error(msg_act)
+            except Exception as e:
+                st.error(f"Không thể kết nối Roboflow Dataset API: {e}")
 
 
 
@@ -2299,7 +2391,50 @@ def page_model_management(service: AnalysisService):
             4. **Bước 4 - Kích hoạt vào Ứng dụng:** Sau khi huấn luyện hoàn tất, tải lại tab này, chọn Version vừa sinh trong danh sách ở trên và bấm **Kích hoạt Phiên bản Model**. Toàn bộ luồng nhận diện xe buýt sẽ lập tức chuyển sang model mới!
             """)
         else:
-            st.error("Chưa kết nối được Roboflow Client. Vui lòng kiểm tra biến môi trường ROBOFLOW_API_KEY trong file .env.")
+            st.warning("⚠️ **Chưa kết nối Roboflow Client:** Chưa tìm thấy biến môi trường hoặc Secret `ROBOFLOW_API_KEY`.")
+            st.markdown("##### 🔑 Kết nối Roboflow ngay trên giao diện:")
+            rf_key_in = st.text_input(
+                "Nhập Roboflow Private API Key tạm thời:",
+                type="password",
+                value=st.session_state.get("ROBOFLOW_API_KEY", ""),
+                placeholder="rf_...",
+                help="Khóa API lấy từ app.roboflow.com > Settings > Roboflow API",
+                key="rf_key_direct_input",
+            )
+            col_k1, col_k2 = st.columns([1, 2])
+            with col_k1:
+                if st.button("🔌 Lưu & Kết nối", type="primary", use_container_width=True, key="btn_save_rf_key"):
+                    if rf_key_in.strip():
+                        st.session_state["ROBOFLOW_API_KEY"] = rf_key_in.strip()
+                        os.environ["ROBOFLOW_API_KEY"] = rf_key_in.strip()
+                        st.toast("✅ Đã lưu Roboflow API Key vào phiên làm việc!")
+                        st.rerun()
+                    else:
+                        st.error("Vui lòng nhập API Key hợp lệ.")
+
+            with st.expander("📖 Hướng dẫn cấu hình trên Streamlit Cloud & Local", expanded=True):
+                st.markdown("""
+                **1. Nếu bạn đang triển khai trên Streamlit Cloud:**
+                * Mở menu quản lý ứng dụng (nút **Manage app** hoặc biểu tượng **Settings** góc dưới bên phải).
+                * Chọn tab **Secrets**.
+                * Dán cấu hình sau và nhấn **Save**:
+                ```toml
+                ROBOFLOW_API_KEY = "rf_xxxxxxxxxxxxxxxxx"
+                ROBOFLOW_WORKSPACE = "le-uc-s-workspace"
+                ROBOFLOW_PROJECT_ID = "bus-seat-and-belongings-monitori"
+                ROBOFLOW_WORKFLOW_ID = "bus-seat-and-belongings-monitori"
+                ```
+
+                **2. Nếu bạn đang chạy trên máy tính cá nhân (Local):**
+                * Tạo hoặc mở file `.env` ở thư mục gốc của dự án.
+                * Thêm dòng:
+                ```env
+                ROBOFLOW_API_KEY=rf_xxxxxxxxxxxxxxxxx
+                ```
+                * Khởi động lại ứng dụng Streamlit.
+
+                💡 *Lưu ý: Ngay cả khi chưa kết nối Roboflow Cloud, hệ thống Lost & Found Bus AI vẫn hoạt động trơn tru với mô hình YOLO nội bộ (Local Inference).*
+                """)
 
 
 # ══════════════════════════════════════════════
@@ -2496,15 +2631,20 @@ def page_settings(service: AnalysisService):
         )
 
     st.markdown("---")
-    st.markdown("##### ☁️ Kết nối Roboflow Serverless Workflow")
-    from src.roboflow.roboflow_client import RoboflowWorkflowClient
+    st.markdown("##### ☁️ Roboflow Cloud Workflow")
     try:
-        rf_client = RoboflowWorkflowClient()
-        wf_info = rf_client.get_workflow_info()
-        st.success(f"✅ Workflow đã sẵn sàng: Workspace `{wf_info['workspace']}` | Workflow ID `{wf_info['workflow_id']}`")
-        st.caption(f"Endpoint: `{wf_info['api_url']}` | inference-sdk: `{'Sẵn sàng' if wf_info['sdk_available'] else 'Không có'}`")
-    except Exception as e:
-        st.warning(f"⚠️ Chưa kết nối Roboflow Workflow: {e}")
+        from src.roboflow.roboflow_client import RoboflowWorkflowClient
+        rf_client = getattr(service, "roboflow_client", None)
+        if rf_client is None:
+            rf_client = RoboflowWorkflowClient()
+        if rf_client and rf_client.api_key:
+            wf_info = rf_client.get_workflow_info()
+            st.success(f"✅ Workflow: `{wf_info['workspace']}` / `{wf_info['workflow_id']}` (v{rf_client.model_version})")
+            st.caption(f"SDK: {'✅ Sẵn sàng' if wf_info['sdk_available'] else '⚠️ HTTP Fallback'}")
+        else:
+            st.info("☁️ Roboflow: Chưa cấu hình (Tùy chọn)")
+    except Exception:
+        st.info("☁️ Roboflow: Chưa cấu hình (Tùy chọn)")
 
 
 if __name__ == "__main__":

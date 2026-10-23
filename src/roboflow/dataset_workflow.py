@@ -33,15 +33,47 @@ class RoboflowDatasetWorkflow:
         project_id: Optional[str] = None,
         base_api_url: str = "https://api.roboflow.com",
     ):
-        self.api_key = api_key or os.getenv("ROBOFLOW_API_KEY", "")
-        self.workspace = workspace or os.getenv("ROBOFLOW_WORKSPACE", "le-uc-s-workspace")
-        self.project_id = project_id or os.getenv("ROBOFLOW_PROJECT_ID", "bus-seat-and-belongings-monitori")
+        raw_key = api_key or os.getenv("ROBOFLOW_API_KEY", "")
+        if not raw_key:
+            try:
+                import streamlit as st
+                if hasattr(st, "session_state") and st.session_state.get("ROBOFLOW_API_KEY"):
+                    raw_key = str(st.session_state.get("ROBOFLOW_API_KEY")).strip()
+                elif hasattr(st, "secrets") and "ROBOFLOW_API_KEY" in st.secrets:
+                    raw_key = str(st.secrets["ROBOFLOW_API_KEY"]).strip()
+                if raw_key:
+                    os.environ["ROBOFLOW_API_KEY"] = raw_key
+            except Exception:
+                pass
+
+        self.api_key = raw_key or ""
+
+        ws = workspace or os.getenv("ROBOFLOW_WORKSPACE", "")
+        if not ws:
+            try:
+                import streamlit as st
+                if hasattr(st, "secrets") and "ROBOFLOW_WORKSPACE" in st.secrets:
+                    ws = str(st.secrets["ROBOFLOW_WORKSPACE"]).strip()
+            except Exception:
+                pass
+        self.workspace = ws or "le-uc-s-workspace"
+
+        proj = project_id or os.getenv("ROBOFLOW_PROJECT_ID", "")
+        if not proj:
+            try:
+                import streamlit as st
+                if hasattr(st, "secrets") and "ROBOFLOW_PROJECT_ID" in st.secrets:
+                    proj = str(st.secrets["ROBOFLOW_PROJECT_ID"]).strip()
+            except Exception:
+                pass
+        self.project_id = proj or "bus-seat-and-belongings-monitori"
+
         self.base_api_url = base_api_url.rstrip("/")
         self.timeout = int(os.getenv("ROBOFLOW_TIMEOUT_SECONDS", "15"))
 
     def _require_auth(self):
         if not self.api_key:
-            raise ValueError("ROBOFLOW_API_KEY is not configured.")
+            raise ValueError("ROBOFLOW_API_KEY is not configured. Vui lòng cấu hình trong Streamlit Secrets (st.secrets) hoặc file .env.")
         if not self.workspace or not self.project_id:
             raise ValueError("ROBOFLOW_WORKSPACE or ROBOFLOW_PROJECT_ID is not configured.")
 
