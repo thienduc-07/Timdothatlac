@@ -217,6 +217,28 @@ CLASS_NAMES_VI = {
 ALERT_COOLDOWN_SECONDS = 60.0          # Tránh gửi cảnh báo trùng lặp cho cùng 1 ghế/vật trong 60s
 DEFAULT_NOTIFICATION_RETRY_COUNT = 3  # Số lần thử lại tối đa khi gửi thông báo thất bại
 
+def get_secret_or_env(key: str, default: str = "") -> str:
+    """
+    Lấy giá trị cấu hình an toàn từ biến môi trường (os.getenv)
+    hoặc Streamlit Secrets (st.secrets) nếu triển khai trên Streamlit Cloud.
+    """
+    val = os.getenv(key, "")
+    if not val:
+        try:
+            import streamlit as st
+            if hasattr(st, "secrets") and key in st.secrets:
+                val = str(st.secrets[key])
+        except Exception:
+            pass
+    return val.strip() if val else default
+
+# Cấu hình Telegram Bot
+TELEGRAM_BOT_TOKEN = get_secret_or_env("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = get_secret_or_env("TELEGRAM_CHAT_ID", "")
+TELEGRAM_ALERTS_ENABLED = get_secret_or_env("TELEGRAM_ALERTS_ENABLED", "true").lower() in ("true", "1", "yes")
+TELEGRAM_ALERT_COOLDOWN_SECONDS = float(get_secret_or_env("TELEGRAM_ALERT_COOLDOWN_SECONDS", "60.0"))
+
+
 # Mức độ ưu tiên
 class AlertPriority:
     HIGH = "HIGH"

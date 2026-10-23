@@ -15,6 +15,12 @@ if str(ROOT_DIR) not in sys.path:
 
 import os
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(ROOT_DIR / ".env")
+except Exception:
+    pass
+
 # Giới hạn số luồng CPU cho OpenMP/BLAS để tránh nghẽn thread và CPU throttling trên Streamlit Cloud
 os.environ.setdefault("OMP_NUM_THREADS", "2")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
@@ -36,9 +42,12 @@ from src.events.event_manager import EventManager
 from src.events.forgotten_item_detector import ForgottenItemDetector
 from src.seats.seat_config import SeatConfigManager
 from src.seats import SeatDetectionMethod
-from src.models import SeatConfig, SeatState
+from src.models import SeatConfig, SeatState, TrackedObject
 from src.detection.class_mapper import format_seat_label, get_user_facing_label
 from src.utils.file_utils import format_file_size, format_duration
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 from src.video.camera_service import (
     CameraSourceType,
@@ -47,6 +56,7 @@ from src.video.camera_service import (
     get_demo_ground_truth,
     ThreadedCameraReader,
 )
+from src.video.video_writer import VideoWriter
 from src.video.webrtc_processor import (
     WEBRTC_AVAILABLE,
     BusWebRtcVideoProcessor,
@@ -79,7 +89,11 @@ from config.settings import (
     COLOR_PERSON_HEX,
     COLOR_OBJECT_HEX,
     COLOR_ALERT_HEX,
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_CHAT_ID,
+    TELEGRAM_ALERTS_ENABLED,
 )
+from src.notifications.telegram_notifier import get_telegram_notifier, TelegramNotifier
 
 # ──────────────────────────────────────────────
 # Cấu hình giao diện Streamlit
@@ -408,6 +422,15 @@ def main():
         unresolved_alerts = service.get_unresolved_alert_count()
         if unresolved_alerts > 0:
             st.warning(f"🔔 **{unresolved_alerts}** cảnh báo chưa xử lý")
+
+        tg_notifier = get_telegram_notifier()
+        if tg_notifier.is_configured():
+            if tg_notifier.enabled:
+                st.caption("🟢 **Telegram Bot:** Đang hoạt động")
+            else:
+                st.caption("⏸️ **Telegram Bot:** Tạm dừng")
+        else:
+            st.caption("⚠️ **Telegram Bot:** Chưa cấu hình (.env)")
 
     # ── Routing Pages ──
     if "Tổng quan" in page:
@@ -817,8 +840,6 @@ def page_camera_monitor(service: AnalysisService):
                             class_name="person",
                             bbox=gt["person_bbox"],
                             confidence=0.92,
-                            frame_index=frame_idx,
-                            timestamp=frame_idx / fps,
                         ))
                     if gt.get("has_bag") and gt.get("bag_bbox"):
                         bx1, by1, bx2, by2 = gt["bag_bbox"]
@@ -838,8 +859,6 @@ def page_camera_monitor(service: AnalysisService):
                             class_name="backpack",
                             bbox=gt["bag_bbox"],
                             confidence=0.89,
-                            frame_index=frame_idx,
-                            timestamp=frame_idx / fps,
                             polygon=bag_poly,
                         ))
 
@@ -855,6 +874,14 @@ def page_camera_monitor(service: AnalysisService):
                         )
                         summary = event_manager.get_summary()
                         events = event_manager.events
+
+                        if service.alert_service:
+                            for evt in events:
+                                if evt.status in (EventStatus.SUSPECTED, EventStatus.REVIEW_REQUIRED):
+                                    service.alert_service.process_event_for_alert(
+                                        event=evt,
+                                        current_time_sec=frame_idx / fps if fps > 0 else 0.0,
+                                    )
 
                         evt_statuses = {evt.last_track_id: evt.status for evt in events if evt.last_track_id != -1}
                         annotated = VideoWriter.annotate_frame(
@@ -2025,23 +2052,90 @@ def page_notifications(service: AnalysisService):
     ])
 
     with tab_tele:
+        notifier = get_telegram_notifier()
+        is_cfg = notifier.is_configured()
+
+        if is_cfg:
+            st.success("🟢 **Trạng thái:** Đã cấu hình Telegram Bot từ môi trường. Sẵn sàng gửi cảnh báo khi phát hiện đồ bỏ quên.")
+        else:
+            st.warning("⚠️ **Trạng thái:** Chưa cấu hình đầy đủ. Cần bổ sung `TELEGRAM_BOT_TOKEN` và `TELEGRAM_CHAT_ID` trong file `.env`.")
+
         st.markdown("##### Cấu hình Telegram Bot:")
-        t_token = st.text_input("Telegram Bot Token:", value=os.environ.get("TELEGRAM_BOT_TOKEN", ""), type="password")
-        t_chat_id = st.text_input("Telegram Chat ID:", value=os.environ.get("TELEGRAM_CHAT_ID", ""))
+        col_tok, col_cid = st.columns(2)
+        with col_tok:
+            t_token = st.text_input(
+                "Telegram Bot Token:",
+                value=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+                type="password",
+                help="Token bí mật nhận được từ @BotFather",
+            )
+        with col_cid:
+            t_chat_id = st.text_input(
+                "Telegram Chat ID:",
+                value=os.environ.get("TELEGRAM_CHAT_ID", ""),
+                help="Numeric Chat ID của người nhận hoặc nhóm nhận thông báo",
+            )
+
+        t_enabled = st.checkbox(
+            "Bật gửi cảnh báo tự động khi phát hiện đồ bỏ quên (Active Telegram Alerts)",
+            value=st.session_state.get("tg_alerts_enabled", TELEGRAM_ALERTS_ENABLED),
+            key="cb_tg_alerts_enabled",
+        )
+        notifier.enabled = t_enabled
+        if t_token:
+            notifier.bot_token = t_token
+        if t_chat_id:
+            notifier.chat_id = t_chat_id
 
         b1, b2 = st.columns(2)
         with b1:
-            if st.button("🔍 Kiểm tra Kết nối Telegram"):
+            if st.button("🔍 Kiểm tra Kết nối Telegram (Test Connection)", use_container_width=True):
                 from src.services.notification_service import NotificationService
-                ok, msg = NotificationService.test_telegram_connection(t_token, t_chat_id)
+                with st.spinner("Đang kiểm tra kết nối với Telegram API..."):
+                    ok, msg = NotificationService.test_telegram_connection(t_token, t_chat_id)
                 if ok:
                     st.success(f"✅ {msg}")
                 else:
                     st.error(f"❌ {msg}")
         with b2:
-            if st.button("🚀 Bắn thử Cảnh báo qua Telegram"):
-                alt = service.send_test_alert(telegram_config={"enabled": True, "bot_token": t_token, "chat_id": t_chat_id})
-                st.success(f"Đã phát lệnh gửi cảnh báo {alt.alert_id}! Kiểm tra ứng dụng Telegram.")
+            if st.button("🚀 Bắn thử Cảnh báo qua Telegram (Send Test Alert)", use_container_width=True):
+                if not t_token or not t_chat_id:
+                    st.error("❌ Vui lòng điền cả Bot Token và Chat ID trước khi bắn thử cảnh báo.")
+                else:
+                    with st.spinner("Đang phát cảnh báo thử nghiệm tới Telegram..."):
+                        alt = service.send_test_alert(
+                            telegram_config={"enabled": True, "bot_token": t_token, "chat_id": t_chat_id}
+                        )
+                        logs = service.get_notification_logs(limit=3)
+                        tg_log = next((l for l in logs if l.get("channel") == "telegram" and l.get("alert_id") == alt.alert_id), None)
+                        if tg_log and tg_log.get("status") == "SUCCESS":
+                            st.success(f"✅ Đã gửi cảnh báo thử nghiệm `{alt.alert_id}` thành công! Hãy kiểm tra ứng dụng Telegram.")
+                        elif tg_log and tg_log.get("status") == "FAILED":
+                            st.error(f"❌ Gửi cảnh báo thất bại: {tg_log.get('error_message', 'Lỗi không xác định')}")
+                        else:
+                            st.success(f"✅ Đã gửi lệnh cảnh báo `{alt.alert_id}` tới Bot! Hãy kiểm tra tin nhắn Telegram.")
+
+        with st.expander("📖 Hướng dẫn chi tiết: Cách kết nối Bot & Lấy Chat ID qua Telegram", expanded=not is_cfg):
+            st.markdown("""
+            **Quy trình 5 bước để nhận cảnh báo qua Telegram:**
+            1. **Mở Bot Telegram:** Truy cập liên kết [https://t.me/DucLostFoundAIBot](https://t.me/DucLostFoundAIBot) trên điện thoại hoặc máy tính.
+            2. **Bắt đầu trò chuyện:** Nhấn nút **'Start'** (hoặc gửi tin nhắn `/start`) để cấp quyền cho bot gửi tin nhắn tới bạn.
+            3. **Lấy Numeric Chat ID an toàn:** Mở Terminal tại thư mục dự án và chạy lệnh:
+               ```bash
+               python scripts/get_telegram_chat_id.py
+               ```
+               Script sẽ tự động kết nối qua Bot API và hiển thị `TELEGRAM_CHAT_ID` của bạn mà không làm lộ token.
+            4. **Lưu cấu hình vào file `.env`:**
+               Thêm 2 dòng sau vào file `.env` ở thư mục gốc:
+               ```env
+               TELEGRAM_BOT_TOKEN=your_token_here
+               TELEGRAM_CHAT_ID=your_chat_id_here
+               TELEGRAM_ALERTS_ENABLED=true
+               ```
+            5. **Khởi động lại ứng dụng:** Nhấn `R` trên Streamlit hoặc chạy lại `streamlit run app.py` để nạp cấu hình mới.
+
+            *Lưu ý bảo mật: File `.env` đã được đưa vào `.gitignore`, tuyệt đối không commit token hoặc chat ID lên Git/GitHub!*
+            """)
 
     with tab_email:
         st.markdown("##### Cấu hình Email SMTP:")

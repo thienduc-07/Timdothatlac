@@ -28,44 +28,17 @@ class NotificationService:
     """Xử lý gửi cảnh báo đa kênh và kiểm tra kết nối dịch vụ thực tế."""
 
     # ──────────────────────────────────────────────
-    # TELEGRAM BOT ADAPTER
+    # TELEGRAM BOT ADAPTER (Delegated to TelegramNotifier)
     # ──────────────────────────────────────────────
     @staticmethod
     def test_telegram_connection(bot_token: str, chat_id: Optional[str] = None) -> Tuple[bool, str]:
         """
         Kiểm tra token bot Telegram bằng API getMe.
-        Nếu có chat_id, thử gửi một tin nhắn kiểm tra.
+        Nếu có chat_id, gửi thử một tin nhắn kiểm tra.
         """
-        if not bot_token or not bot_token.strip():
-            return False, "Chưa nhập Bot Token (Trạng thái: Chưa cấu hình)"
-
-        url = f"https://api.telegram.org/bot{bot_token.strip()}/getMe"
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "LostAndFoundAI/1.0"})
-            with urllib.request.urlopen(req, timeout=8) as response:
-                res_data = json.loads(response.read().decode("utf-8"))
-                if res_data.get("ok"):
-                    bot_name = res_data.get("result", {}).get("username", "Bot")
-                    if chat_id and chat_id.strip():
-                        # Gửi thử 1 tin nhắn test
-                        ok, _, err = NotificationService.send_telegram_message(
-                            bot_token=bot_token,
-                            chat_id=chat_id,
-                            message=f"🔔 [Lost & Found AI] Kết nối thành công tới Bot @{bot_name}!",
-                        )
-                        if ok:
-                            return True, f"Kết nối thành công! Đã gửi tin nhắn test tới Chat ID: {chat_id}"
-                        return False, f"Bot Token đúng (@{bot_name}) nhưng Chat ID lỗi: {err}"
-                    return True, f"Bot Token hợp lệ! Tên bot: @{bot_name}"
-                return False, f"Lỗi Telegram: {res_data.get('description', 'Không xác định')}"
-        except urllib.error.HTTPError as e:
-            try:
-                err_json = json.loads(e.read().decode("utf-8"))
-                return False, f"Lỗi HTTP {e.code}: {err_json.get('description', e.reason)}"
-            except Exception:
-                return False, f"Lỗi HTTP {e.code}: {e.reason}"
-        except Exception as e:
-            return False, f"Lỗi kết nối mạng: {str(e)}"
+        from src.notifications.telegram_notifier import TelegramNotifier
+        notifier = TelegramNotifier(bot_token=bot_token, chat_id=chat_id)
+        return notifier.test_connection(bot_token=bot_token, chat_id=chat_id)
 
     @staticmethod
     def send_telegram_message(
@@ -78,87 +51,14 @@ class NotificationService:
         Gửi tin nhắn Telegram kèm ảnh bằng chứng nếu có.
         Trả về: (thành_công, mã_lỗi, thông_điệp_lỗi)
         """
-        if not bot_token or not chat_id:
-            return False, 400, "Thiếu Bot Token hoặc Chat ID"
-
-        # Nếu có ảnh và file tồn tại, dùng sendPhoto
+        from src.notifications.telegram_notifier import TelegramNotifier
+        notifier = TelegramNotifier(bot_token=bot_token, chat_id=chat_id)
         if image_path and Path(image_path).exists():
-            return NotificationService._send_telegram_photo(bot_token, chat_id, message, image_path)
+            res = notifier.send_photo(photo_path=image_path, caption=message, chat_id=chat_id, bot_token=bot_token)
+        else:
+            res = notifier.send_message(text=message, chat_id=chat_id, bot_token=bot_token)
+        return res.success, res.status_code, res.message
 
-        # Ngược lại dùng sendMessage
-        url = f"https://api.telegram.org/bot{bot_token.strip()}/sendMessage"
-        payload = {
-            "chat_id": chat_id.strip(),
-            "text": message,
-            "parse_mode": "HTML",
-        }
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={
-                "Content-Type": "application/json",
-                "User-Agent": "LostAndFoundAI/1.0",
-            },
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=10) as response:
-                if response.status == 200:
-                    return True, 200, "Thành công"
-                return False, response.status, f"HTTP Status {response.status}"
-        except urllib.error.HTTPError as e:
-            try:
-                err_data = json.loads(e.read().decode("utf-8"))
-                return False, e.code, err_data.get("description", e.reason)
-            except Exception:
-                return False, e.code, e.reason
-        except Exception as e:
-            return False, 500, str(e)
-
-    @staticmethod
-    def _send_telegram_photo(bot_token: str, chat_id: str, caption: str, image_path: str) -> Tuple[bool, int, str]:
-        """Gửi ảnh bằng chứng qua Telegram Multipart API."""
-        url = f"https://api.telegram.org/bot{bot_token.strip()}/sendPhoto"
-        boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-
-        try:
-            with open(image_path, "rb") as f:
-                img_data = f.read()
-
-            parts = []
-            # Field: chat_id
-            parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n".encode("utf-8"))
-            # Field: caption
-            parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n{caption}\r\n".encode("utf-8"))
-            # Field: parse_mode
-            parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"parse_mode\"\r\n\r\nHTML\r\n".encode("utf-8"))
-            # Field: photo file
-            filename = Path(image_path).name
-            parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"{filename}\"\r\nContent-Type: image/jpeg\r\n\r\n".encode("utf-8"))
-            parts.append(img_data)
-            parts.append(f"\r\n--{boundary}--\r\n".encode("utf-8"))
-
-            body = b"".join(parts)
-            req = urllib.request.Request(
-                url,
-                data=body,
-                headers={
-                    "Content-Type": f"multipart/form-data; boundary={boundary}",
-                    "User-Agent": "LostAndFoundAI/1.0",
-                },
-            )
-            with urllib.request.urlopen(req, timeout=15) as response:
-                if response.status == 200:
-                    return True, 200, "Thành công"
-                return False, response.status, f"HTTP Status {response.status}"
-        except urllib.error.HTTPError as e:
-            try:
-                err_data = json.loads(e.read().decode("utf-8"))
-                return False, e.code, err_data.get("description", e.reason)
-            except Exception:
-                return False, e.code, e.reason
-        except Exception as e:
-            return False, 500, str(e)
 
     # ──────────────────────────────────────────────
     # EMAIL SMTP ADAPTER

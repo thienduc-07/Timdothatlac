@@ -12,6 +12,7 @@ import uuid
 from src.models import Alert, Event
 from src.database.alert_repository import AlertRepository
 from src.services.notification_service import NotificationService
+from src.notifications.telegram_notifier import get_telegram_notifier, TelegramNotifier
 from src.utils.logger import get_logger
 from config.settings import (
     ALERT_COOLDOWN_SECONDS,
@@ -19,6 +20,9 @@ from config.settings import (
     AlertStatus,
     NotificationChannel,
     CLASS_NAMES_VI,
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_CHAT_ID,
+    TELEGRAM_ALERTS_ENABLED,
 )
 from src.detection.class_mapper import get_user_facing_label, format_seat_label
 
@@ -111,6 +115,7 @@ class AlertService:
         telegram_config: Optional[Dict] = None,
         email_config: Optional[Dict] = None,
         webhook_config: Optional[Dict] = None,
+        is_test: bool = False,
     ):
         """Gửi thông báo tới các kênh được cấu hình và ghi nhận log thực tế."""
         vi_class = get_user_facing_label(event.class_name)
@@ -125,25 +130,43 @@ class AlertService:
         )
 
         # 1. Kênh Telegram
-        if telegram_config and telegram_config.get("enabled"):
-            token = telegram_config.get("bot_token")
-            chat_id = telegram_config.get("chat_id")
+        # Nếu không truyền cấu hình riêng, tự động dùng biến môi trường hệ thống
+        t_cfg = telegram_config
+        if t_cfg is None:
+            t_cfg = {
+                "enabled": TELEGRAM_ALERTS_ENABLED,
+                "bot_token": TELEGRAM_BOT_TOKEN,
+                "chat_id": TELEGRAM_CHAT_ID,
+            }
+
+        if t_cfg and t_cfg.get("enabled", True):
+            token = t_cfg.get("bot_token") or TELEGRAM_BOT_TOKEN
+            chat_id = t_cfg.get("chat_id") or TELEGRAM_CHAT_ID
             if token and chat_id:
-                ok, code, err = NotificationService.send_telegram_message(
-                    bot_token=token,
-                    chat_id=chat_id,
-                    message=f"{msg_title}\n\n{msg_body}",
-                    image_path=alert.snapshot_path,
+                notifier = TelegramNotifier(bot_token=token, chat_id=chat_id)
+                bus_name = getattr(event, "video_name", "Xe buýt Tuyến 01") or "Xe buýt Tuyến 01"
+                res = notifier.send_alert(
+                    alert=alert,
+                    event=event,
+                    bus_or_camera_id=bus_name,
+                    is_async=not is_test,
+                    force=is_test,
                 )
+                if res.success:
+                    if NotificationChannel.TELEGRAM not in alert.sent_channels:
+                        alert.sent_channels.append(NotificationChannel.TELEGRAM)
+                    if self._repo:
+                        self._repo.save_alert(alert)
+
                 if self._repo:
                     self._repo.log_notification(
                         alert_id=alert.alert_id,
                         channel=NotificationChannel.TELEGRAM,
                         recipient=chat_id,
-                        status="SUCCESS" if ok else "FAILED",
-                        status_code=code,
-                        error_message="" if ok else err,
-                        payload={"message": msg_title},
+                        status="SUCCESS" if res.success else "FAILED",
+                        status_code=res.status_code,
+                        error_message="" if res.success else res.message,
+                        payload={"message": msg_title, "object_id": alert.object_id},
                     )
 
         # 2. Kênh Email SMTP
@@ -247,5 +270,6 @@ class AlertService:
             telegram_config=telegram_config,
             email_config=email_config,
             webhook_config=webhook_config,
+            is_test=True,
         )
         return alert
