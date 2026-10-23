@@ -132,7 +132,7 @@ st.markdown(f"""
         font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }}
 
-    /* Đảm bảo giữ nguyên font icon Material Symbols cho mọi icon trong Streamlit (mũi tên expander, radio, button...) */
+    /* Đảm bảo giữ nguyên font icon Material Symbols cho mọi icon trong Streamlit */
     [data-testid*="Icon"],
     [data-testid*="icon"],
     [data-testid="stExpanderToggleIcon"],
@@ -156,14 +156,18 @@ st.markdown(f"""
         -webkit-font-smoothing: antialiased !important;
     }}
 
-    /* Dark Navy Theme Variables */
+    /* ── React Bits AI SaaS Theme Variables ── */
     :root {{
-        --bg-main: #0B132B;
-        --bg-panel: #1C2541;
-        --bg-card: #141E33;
-        --border-color: #3A506B;
+        --bg-space: #070A12;
+        --bg-surface: rgba(15, 23, 42, 0.72);
+        --bg-card: rgba(15, 23, 42, 0.65);
+        --border-subtle: rgba(255, 255, 255, 0.08);
+        --border-glow: rgba(56, 189, 248, 0.4);
         --text-primary: #F8FAFC;
         --text-secondary: #94A3B8;
+        --text-muted: #64748B;
+        --cyan-accent: #00E5FF;
+        --cyan-glow: rgba(0, 229, 255, 0.18);
         --color-seat: {COLOR_SEAT_HEX};
         --color-person: {COLOR_PERSON_HEX};
         --color-object: {COLOR_OBJECT_HEX};
@@ -184,103 +188,412 @@ st.markdown(f"""
         filter: none !important;
     }}
 
+    /* React Bits Background: Squares & Subtle Cyber Grid */
+    .stApp,
+    div[data-testid="stAppViewContainer"] {{
+        background-color: #070A12 !important;
+        background-image:
+            radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.08) 0px, transparent 45%),
+            radial-gradient(at 100% 0%, rgba(99, 102, 241, 0.06) 0px, transparent 45%),
+            radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.04) 0px, transparent 55%),
+            linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px) !important;
+        background-size: 100% 100%, 100% 100%, 100% 100%, 36px 36px, 36px 36px !important;
+        background-attachment: fixed !important;
+        color: #F8FAFC !important;
+    }}
+
     .main .block-container {{
         padding-top: 1.2rem;
         padding-bottom: 2rem;
         max-width: 1350px;
     }}
 
-    /* Panel container */
-    .metric-panel {{
-        background-color: #1C2541;
-        border: 1px solid #3A506B;
-        border-radius: 8px;
-        padding: 14px 18px;
-        color: #F8FAFC;
-        margin-bottom: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    /* ── React Bits Text Animations (ShinyText & BlurText) ── */
+    @keyframes shiny-text {{
+        0% {{ background-position: -200% 0; }}
+        100% {{ background-position: 200% 0; }}
     }}
+    .shiny-text {{
+        background: linear-gradient(120deg, rgba(255,255,255,0.7) 20%, #FFFFFF 50%, rgba(255,255,255,0.7) 80%);
+        background-size: 200% auto;
+        color: transparent !important;
+        -webkit-background-clip: text !important;
+        background-clip: text !important;
+        animation: shiny-text 7s linear infinite;
+        display: inline-block;
+    }}
+    .shiny-cyan {{
+        background: linear-gradient(120deg, #38BDF8 20%, #E0F2FE 50%, #38BDF8 80%);
+        background-size: 200% auto;
+        color: transparent !important;
+        -webkit-background-clip: text !important;
+        background-clip: text !important;
+        animation: shiny-text 6s linear infinite;
+        display: inline-block;
+    }}
+
+    @keyframes blur-in {{
+        0% {{ filter: blur(5px); opacity: 0; transform: translateY(-3px); }}
+        100% {{ filter: blur(0); opacity: 1; transform: translateY(0); }}
+    }}
+    .blur-text {{
+        animation: blur-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }}
+
+    /* ── React Bits SpotlightCard & Metric Panels ── */
+    .spotlight-card,
+    .metric-panel {{
+        position: relative;
+        background: rgba(15, 23, 42, 0.72) !important;
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 12px !important;
+        padding: 16px 20px !important;
+        color: #F8FAFC !important;
+        margin-bottom: 14px;
+        overflow: hidden;
+        box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.35);
+        transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease !important;
+    }}
+    .spotlight-card:hover,
+    .metric-panel:hover {{
+        border-color: rgba(56, 189, 248, 0.35) !important;
+        box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5), 0 0 20px -3px rgba(56, 189, 248, 0.15) !important;
+        transform: translateY(-2px);
+    }}
+    .spotlight-card::before,
+    .metric-panel::before {{
+        content: '';
+        position: absolute;
+        top: var(--spotlight-y, -250px);
+        left: var(--spotlight-x, -250px);
+        width: 260px;
+        height: 260px;
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.12) 0%, transparent 70%);
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        border-radius: 50%;
+    }}
+    .spotlight-card:hover::before,
+    .metric-panel:hover::before {{
+        opacity: 1;
+    }}
+
     .metric-panel h3 {{
         margin: 0;
-        font-size: 1.6rem;
+        font-size: 1.65rem;
         font-weight: 700;
         color: #F8FAFC;
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
     }}
     .metric-panel p {{
-        margin: 2px 0 0 0;
-        font-size: 0.85rem;
+        margin: 0 0 4px 0;
+        font-size: 0.8rem;
         color: #94A3B8;
-        font-weight: 500;
-    }}
-
-    /* Top Navigation Header */
-    .header-bar {{
-        background: #1C2541;
-        border: 1px solid #3A506B;
-        border-radius: 8px;
-        padding: 12px 20px;
-        margin-bottom: 18px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }}
-    .header-title {{
-        font-size: 1.35rem;
-        font-weight: 700;
-        color: #F8FAFC;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }}
-    .header-subtitle {{
-        font-size: 0.85rem;
-        color: #94A3B8;
-        margin-top: 2px;
-    }}
-
-    /* Status Badges */
-    .badge {{
-        display: inline-block;
-        padding: 4px 10px;
-        border-radius: 6px;
-        font-size: 0.78rem;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }}
-    .badge-live {{ background-color: #065F46; color: #34D399; border: 1px solid #059669; }}
-    .badge-processing {{ background-color: #1E3A8A; color: #60A5FA; border: 1px solid #2563EB; }}
-    .badge-demo {{ background-color: #78350F; color: #FBBF24; border: 1px solid #D97706; }}
-    .badge-alert {{ background-color: #7F1D1D; color: #F87171; border: 1px solid #DC2626; }}
 
-    /* Legend Bar */
+    /* Top Navigation Header Bar */
+    .header-bar {{
+        background: rgba(15, 23, 42, 0.75);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 14px 22px;
+        margin-bottom: 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.4);
+    }}
+    .header-title {{
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #F8FAFC;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        letter-spacing: -0.01em;
+    }}
+    .header-subtitle {{
+        font-size: 0.86rem;
+        color: #94A3B8;
+        margin-top: 3px;
+        font-weight: 400;
+    }}
+
+    /* Status Badges */
+    .badge {{
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 0.76rem;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        backdrop-filter: blur(8px);
+        transition: all 0.2s ease;
+    }}
+    .badge-live {{
+        background: rgba(16, 185, 129, 0.12);
+        color: #34D399;
+        border: 1px solid rgba(16, 185, 129, 0.35);
+        box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+    }}
+    .badge-processing {{
+        background: rgba(14, 165, 233, 0.12);
+        color: #38BDF8;
+        border: 1px solid rgba(14, 165, 233, 0.35);
+        box-shadow: 0 0 12px rgba(14, 165, 233, 0.15);
+    }}
+    .badge-demo {{
+        background: rgba(245, 158, 11, 0.12);
+        color: #FBBF24;
+        border: 1px solid rgba(245, 158, 11, 0.35);
+        box-shadow: 0 0 12px rgba(245, 158, 11, 0.15);
+    }}
+    .badge-alert {{
+        background: rgba(239, 68, 68, 0.15);
+        color: #F87171;
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+    }}
+
+    .pulse-dot {{
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background-color: currentColor;
+        box-shadow: 0 0 8px currentColor;
+        animation: pulse-dot 1.8s infinite;
+        display: inline-block;
+    }}
+    @keyframes pulse-dot {{
+        0% {{ opacity: 0.4; transform: scale(0.9); }}
+        50% {{ opacity: 1; transform: scale(1.15); }}
+        100% {{ opacity: 0.4; transform: scale(0.9); }}
+    }}
+
+    /* Legend Box */
     .legend-box {{
-        background: #141E33;
-        border: 1px solid #3A506B;
-        border-radius: 6px;
-        padding: 8px 14px;
-        margin-bottom: 12px;
+        background: rgba(15, 23, 42, 0.65);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        padding: 10px 18px;
+        margin-bottom: 16px;
         font-size: 0.82rem;
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: 20px;
         flex-wrap: wrap;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
     }}
     .legend-item {{
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
     }}
     .legend-color {{
-        width: 12px;
-        height: 12px;
-        border-radius: 3px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        box-shadow: 0 0 8px currentColor;
     }}
 
-    /* Audio Chime Script Hook */
+    /* ── Streamlit Sidebar (Glassmorphism & Nav Pills) ── */
+    section[data-testid="stSidebar"] {{
+        background-color: #0A0F1D !important;
+        background-image: linear-gradient(180deg, rgba(14, 165, 233, 0.04) 0%, transparent 60%) !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
+    }}
+    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3 {{
+        letter-spacing: -0.01em;
+    }}
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label {{
+        background: rgba(15, 23, 42, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        padding: 8px 12px;
+        margin-bottom: 5px;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        cursor: pointer;
+    }}
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {{
+        background: rgba(30, 41, 59, 0.6);
+        border-color: rgba(56, 189, 248, 0.3);
+        transform: translateX(3px);
+    }}
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"],
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {{
+        background: linear-gradient(90deg, rgba(14, 165, 233, 0.15) 0%, rgba(15, 23, 42, 0.6) 100%) !important;
+        border-color: rgba(56, 189, 248, 0.6) !important;
+        box-shadow: inset 3px 0 0 #00E5FF, 0 0 12px rgba(0, 229, 255, 0.1) !important;
+    }}
+
+    /* ── Streamlit Buttons (React Bits Magnet & Modern SaaS) ── */
+    .stButton > button {{
+        background: linear-gradient(180deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        color: #F8FAFC !important;
+        font-weight: 600 !important;
+        font-size: 0.86rem !important;
+        border-radius: 8px !important;
+        padding: 0.52rem 1.1rem !important;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    }}
+    .stButton > button:hover {{
+        border-color: rgba(56, 189, 248, 0.45) !important;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4), 0 0 16px rgba(56, 189, 248, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+        transform: translateY(-1px) !important;
+        color: #FFFFFF !important;
+    }}
+    .stButton > button:active {{
+        transform: translateY(0px) !important;
+    }}
+    .stButton > button[kind="primary"],
+    .stButton > button[data-testid="baseButton-primary"] {{
+        background: linear-gradient(180deg, #0284C7 0%, #0369A1 100%) !important;
+        border: 1px solid rgba(56, 189, 248, 0.6) !important;
+        box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+    }}
+    .stButton > button[kind="primary"]:hover,
+    .stButton > button[data-testid="baseButton-primary"]:hover {{
+        background: linear-gradient(180deg, #0EA5E9 0%, #0284C7 100%) !important;
+        box-shadow: 0 6px 20px rgba(2, 132, 199, 0.5), 0 0 16px rgba(56, 189, 248, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+    }}
+
+    /* ── Tabs (React Bits Segmented Control) ── */
+    [data-testid="stTabs"] [data-baseweb="tab-list"] {{
+        background: rgba(15, 23, 42, 0.7);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        padding: 4px;
+        gap: 6px;
+    }}
+    [data-testid="stTabs"] [data-baseweb="tab"] {{
+        border-radius: 7px !important;
+        padding: 8px 16px !important;
+        font-size: 0.86rem !important;
+        font-weight: 500 !important;
+        color: #94A3B8 !important;
+        border: none !important;
+        transition: all 0.2s ease !important;
+        background: transparent !important;
+    }}
+    [data-testid="stTabs"] [data-baseweb="tab"]:hover {{
+        color: #F8FAFC !important;
+        background: rgba(255, 255, 255, 0.04) !important;
+    }}
+    [data-testid="stTabs"] [aria-selected="true"] {{
+        background: rgba(30, 41, 59, 0.85) !important;
+        color: #00E5FF !important;
+        font-weight: 600 !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 12px rgba(0, 229, 255, 0.15) !important;
+        border: 1px solid rgba(56, 189, 248, 0.3) !important;
+    }}
+    [data-testid="stTabs"] [data-baseweb="tab-highlight"] {{
+        display: none !important;
+    }}
+
+    /* ── Inputs, Selects & Expanders ── */
+    .streamlit-expanderHeader {{
+        background: rgba(15, 23, 42, 0.6) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 8px !important;
+        transition: all 0.2s ease !important;
+    }}
+    .streamlit-expanderHeader:hover {{
+        border-color: rgba(56, 189, 248, 0.3) !important;
+    }}
+    div[data-baseweb="select"] > div {{
+        background-color: rgba(15, 23, 42, 0.8) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        border-radius: 8px !important;
+    }}
+    div[data-baseweb="select"] > div:focus-within {{
+        border-color: #00E5FF !important;
+        box-shadow: 0 0 12px rgba(0, 229, 255, 0.2) !important;
+    }}
+
+    /* ── Custom Dark Scrollbar ── */
+    ::-webkit-scrollbar {{
+        width: 7px;
+        height: 7px;
+    }}
+    ::-webkit-scrollbar-track {{
+        background: #070A12;
+    }}
+    ::-webkit-scrollbar-thumb {{
+        background: #1E293B;
+        border-radius: 4px;
+    }}
+    ::-webkit-scrollbar-thumb:hover {{
+        background: #334155;
+    }}
+
+    /* ── Accessibility: Prefers-reduced-motion ── */
+    @media (prefers-reduced-motion: reduce) {{
+        *, *::before, *::after {{
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+        }}
+    }}
+
+    /* Audio Chime Hook */
     .audio-btn {{ display: none; }}
 </style>
 """, unsafe_allow_html=True)
+
+# Client-side SpotlightCard mouse tracking script (React Bits Spotlight effect)
+st.components.v1.html("""
+<script>
+(function() {
+    function setupSpotlight() {
+        try {
+            const pDoc = window.parent.document;
+            if (!pDoc || pDoc._spotlightInitialized) return;
+            pDoc._spotlightInitialized = true;
+
+            let ticking = false;
+            pDoc.addEventListener('mousemove', function(e) {
+                if (!ticking) {
+                    window.requestAnimationFrame(function() {
+                        const cards = pDoc.querySelectorAll('.spotlight-card, .metric-panel');
+                        for (let i = 0; i < cards.length; i++) {
+                            const rect = cards[i].getBoundingClientRect();
+                            const x = e.clientX - rect.left;
+                            const y = e.clientY - rect.top;
+                            cards[i].style.setProperty('--spotlight-x', x + 'px');
+                            cards[i].style.setProperty('--spotlight-y', y + 'px');
+                        }
+                        ticking = false;
+                    });
+                    ticking = true;
+                }
+            }, { passive: true });
+        } catch(e) {}
+    }
+    setupSpotlight();
+    setTimeout(setupSpotlight, 600);
+})();
+</script>
+""", height=0, width=0)
 
 
 @st.cache_resource
@@ -414,8 +727,11 @@ def render_header(title: str, subtitle: str, mode: str = SystemMode.DEMO, alert_
     col1, col2 = st.columns([3, 1])
     with col1:
         st.markdown(f"""
-        <div style="margin-bottom: 10px;">
-            <div class="header-title">🚌 {title}</div>
+        <div class="blur-text" style="margin-bottom: 8px;">
+            <div class="header-title">
+                <span style="font-size: 1.5rem; filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.4));">🚌</span>
+                <span class="shiny-text">{title}</span>
+            </div>
             <div class="header-subtitle">{subtitle}</div>
         </div>
         """, unsafe_allow_html=True)
@@ -423,22 +739,23 @@ def render_header(title: str, subtitle: str, mode: str = SystemMode.DEMO, alert_
         now_dt = get_current_time()
         now_str = now_dt.strftime("%H:%M:%S")
         if mode == SystemMode.LIVE:
-            mode_badge = '<span class="badge badge-live">● LIVE STREAM</span>'
+            mode_badge = '<span class="badge badge-live"><span class="pulse-dot"></span> LIVE STREAM</span>'
         elif mode == SystemMode.PROCESSING:
-            mode_badge = '<span class="badge badge-processing">● PROCESSING</span>'
+            mode_badge = '<span class="badge badge-processing"><span class="pulse-dot"></span> PROCESSING</span>'
         else:
-            mode_badge = '<span class="badge badge-demo">● DEMO MODE</span>'
+            mode_badge = '<span class="badge badge-demo"><span class="pulse-dot"></span> DEMO MODE</span>'
 
         alert_badge = (
-            f'<span class="badge badge-alert" style="margin-left: 6px;">⚠️ {alert_count} CẢNH BÁO</span>'
+            f'<span class="badge badge-alert" style="margin-left: 6px;"><span class="pulse-dot"></span> {alert_count} CẢNH BÁO</span>'
             if alert_count > 0 else ""
         )
 
         st.markdown(f"""
         <div style="text-align: right; padding-top: 4px;">
-            {mode_badge}{alert_badge}
-            <div style="font-size: 0.8rem; color: #94A3B8; margin-top: 4px;">
-                ⏱️ <span id="header-live-clock" title="Múi giờ Việt Nam (GMT+7)">{now_str}</span>
+            <div>{mode_badge}{alert_badge}</div>
+            <div style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #94A3B8; margin-top: 6px; background: rgba(15, 23, 42, 0.6); padding: 3px 10px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.06);">
+                <span>⏱️</span>
+                <span id="header-live-clock" style="font-variant-numeric: tabular-nums; font-weight: 600; color: #E2E8F0;" title="Múi giờ Việt Nam (GMT+7)">{now_str}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -471,7 +788,7 @@ def render_header(title: str, subtitle: str, mode: str = SystemMode.DEMO, alert_
     })();
     </script>
     """, height=0, width=0)
-    st.markdown("<hr style='margin: 4px 0 16px 0; border-color: #3A506B;'>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 1px; background: linear-gradient(90deg, rgba(56, 189, 248, 0.4) 0%, rgba(255, 255, 255, 0.08) 50%, transparent 100%); margin: 4px 0 18px 0;'></div>", unsafe_allow_html=True)
 
 
 def play_audio_alert():
@@ -498,22 +815,22 @@ def render_legend():
     """Hiển thị bảng màu chuẩn hóa cho 3 nhóm đối tượng."""
     st.markdown(f"""
     <div class="legend-box">
-        <span style="font-weight: 600; color: #94A3B8;">CHÚ GIẢI MÀU:</span>
+        <span style="font-weight: 600; color: #94A3B8; letter-spacing: 0.5px;">CHÚ GIẢI MÀU:</span>
         <div class="legend-item">
-            <div class="legend-color" style="background: {COLOR_SEAT_HEX};"></div>
-            <span><b>GHẾ (Seats):</b> S01, S02... (Cyan / Blue)</span>
+            <div class="legend-color" style="background: {COLOR_SEAT_HEX}; box-shadow: 0 0 8px {COLOR_SEAT_HEX};"></div>
+            <span><b style="color: #F8FAFC;">GHẾ (Seats):</b> S01, S02... (Cyan / Blue)</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: {COLOR_PERSON_HEX};"></div>
-            <span><b>NGƯỜI (Persons):</b> P01, P12... (Green)</span>
+            <div class="legend-color" style="background: {COLOR_PERSON_HEX}; box-shadow: 0 0 8px {COLOR_PERSON_HEX};"></div>
+            <span><b style="color: #F8FAFC;">NGƯỜI (Persons):</b> P01, P12... (Green)</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: {COLOR_OBJECT_HEX};"></div>
-            <span><b>ĐỒ VẬT (Objects):</b> O01, O31... (Amber)</span>
+            <div class="legend-color" style="background: {COLOR_OBJECT_HEX}; box-shadow: 0 0 8px {COLOR_OBJECT_HEX};"></div>
+            <span><b style="color: #F8FAFC;">ĐỒ VẬT (Objects):</b> O01, O31... (Amber)</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: {COLOR_ALERT_HEX};"></div>
-            <span><b>CẢNH BÁO BỎ QUÊN:</b> ⚠ Nghi ngờ (Red)</span>
+            <div class="legend-color" style="background: {COLOR_ALERT_HEX}; box-shadow: 0 0 8px {COLOR_ALERT_HEX};"></div>
+            <span><b style="color: #F8FAFC;">CẢNH BÁO BỎ QUÊN:</b> ⚠ Nghi ngờ (Red)</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -668,49 +985,49 @@ def page_dashboard(service: AnalysisService):
     seg_badge = '<span class="badge" style="background: #0284C7; color: #E0F2FE; border: 1px solid #38BDF8;">TASK: SEGMENTATION (Polygon Masks)</span>' if is_seg else '<span class="badge" style="background: #334155; color: #94A3B8;">TASK: DETECTION (BBox)</span>'
 
     st.markdown(f"""
-    <div style="background: #141E33; border: 1px solid #3A506B; border-radius: 8px; padding: 12px 18px; margin-bottom: 16px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+    <div class="spotlight-card" style="margin-bottom: 18px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
-                <span style="font-size: 0.85rem; color: #94A3B8; text-transform: uppercase; font-weight: 600;">Cơ chế nhận diện ghế hiện tại:</span>
+                <span style="font-size: 0.8rem; color: #94A3B8; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Cơ chế nhận diện ghế hiện tại:</span>
                 <span style="margin-left: 8px;">{method_badge}</span>
-                <div style="font-size: 0.85rem; color: #CBD5E1; margin-top: 4px;">{method_desc}</div>
+                <div style="font-size: 0.85rem; color: #CBD5E1; margin-top: 6px;">{method_desc}</div>
             </div>
-            <div style="text-align: right; font-size: 0.8rem; color: #94A3B8;">
+            <div style="text-align: right; font-size: 0.82rem; color: #94A3B8; background: rgba(10, 15, 28, 0.5); padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05);">
                 <div>🧠 Model chính: <b style="color: #F8FAFC;">{model_name}</b> {seg_badge}</div>
-                <div>Lớp nhận diện: <span style="color: #60A5FA;">{classes_str if classes_str else 'seat, person, item'}</span></div>
+                <div style="margin-top: 2px;">Lớp nhận diện: <span style="color: #38BDF8; font-weight: 500;">{classes_str if classes_str else 'seat, person, item'}</span></div>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # 4 Metric Panels
+    # 4 Metric Panels (React Bits SpotlightCard Effect)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(f"""
         <div class="metric-panel">
             <p>🪑 GHẾ ĐÃ ĐỊNH DANH</p>
-            <h3>{seat_count} <span style="font-size: 0.85rem; color: #94A3B8;">(👤 {occ_count} | 🟢 {vac_count} | ⚪ {amb_count})</span></h3>
+            <h3>{seat_count} <span style="font-size: 0.85rem; font-weight: 500; color: #94A3B8;">(👤 {occ_count} | 🟢 {vac_count} | ⚪ {amb_count})</span></h3>
         </div>
         """, unsafe_allow_html=True)
     with c2:
         st.markdown(f"""
         <div class="metric-panel">
             <p>⚠️ CẢNH BÁO CHỜ XỬ LÝ</p>
-            <h3 style="color: {'#EF4444' if alert_count > 0 else '#10B981'};">{alert_count}</h3>
+            <h3 style="color: {'#F87171' if alert_count > 0 else '#34D399'}; text-shadow: 0 0 16px {'rgba(239, 68, 68, 0.3)' if alert_count > 0 else 'rgba(16, 185, 129, 0.3)'};">{alert_count}</h3>
         </div>
         """, unsafe_allow_html=True)
     with c3:
         st.markdown(f"""
         <div class="metric-panel">
             <p>👁️ SỰ KIỆN GHI NHẬN</p>
-            <h3>{stats.get('total_events', 0)}</h3>
+            <h3 style="color: #38BDF8; text-shadow: 0 0 16px rgba(56, 189, 248, 0.25);">{stats.get('total_events', 0)}</h3>
         </div>
         """, unsafe_allow_html=True)
     with c4:
         st.markdown(f"""
         <div class="metric-panel">
             <p>🎬 PHIÊN PHÂN TÍCH</p>
-            <h3>{stats.get('total_analyses', 0)}</h3>
+            <h3 style="color: #A78BFA; text-shadow: 0 0 16px rgba(167, 139, 250, 0.25);">{stats.get('total_analyses', 0)}</h3>
         </div>
         """, unsafe_allow_html=True)
 
@@ -745,12 +1062,16 @@ def page_dashboard(service: AnalysisService):
             for alt in recent_alerts:
                 p_color = "#EF4444" if alt["priority"] == "HIGH" else "#F59E0B"
                 st.markdown(f"""
-                <div style="background: #141E33; border-left: 4px solid {p_color}; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px;">
-                    <div style="display: flex; justify-content: space-between;">
-                        <span style="font-weight: 700; color: #F8FAFC;">{alt['alert_id']} • Ghế {alt['seat_id']} ({alt['object_id']})</span>
-                        <span style="font-size: 0.8rem; color: #94A3B8;">{format_timestamp_display(alt.get('created_at', ''))}</span>
+                <div class="spotlight-card" style="border-left: 4px solid {p_color} !important; padding: 12px 16px !important; margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 700; color: #F8FAFC; font-size: 0.95rem;">
+                            🔔 {alt['alert_id']} • Ghế <b style="color: #38BDF8;">{alt['seat_id']}</b> <span style="font-size: 0.82rem; color: #94A3B8;">({alt['object_id']})</span>
+                        </span>
+                        <span style="font-size: 0.78rem; color: #94A3B8; background: rgba(15, 23, 42, 0.6); padding: 2px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); font-variant-numeric: tabular-nums;">
+                            {format_timestamp_display(alt.get('created_at', ''))}
+                        </span>
                     </div>
-                    <div style="font-size: 0.85rem; color: #CBD5E1; margin-top: 4px;">{alt['reason']}</div>
+                    <div style="font-size: 0.86rem; color: #CBD5E1; margin-top: 6px; line-height: 1.4;">{alt['reason']}</div>
                 </div>
                 """, unsafe_allow_html=True)
         else:
@@ -764,17 +1085,17 @@ def page_dashboard(service: AnalysisService):
                 st_info = statuses.get(s.seat_id)
                 st_state = st_info.state if st_info else SeatState.UNKNOWN
                 if st_state == SeatState.OCCUPIED:
-                    s_badge = '<span class="badge" style="background: #1E3A8A; color: #60A5FA;">CÓ NGƯỜI</span>'
+                    s_badge = '<span class="badge" style="background: rgba(30, 58, 138, 0.25); color: #60A5FA; border: 1px solid rgba(96, 165, 250, 0.4);"><span class="pulse-dot"></span> CÓ NGƯỜI</span>'
                 elif st_state == SeatState.VACANT:
-                    s_badge = '<span class="badge" style="background: #065F46; color: #34D399;">TRỐNG</span>'
+                    s_badge = '<span class="badge" style="background: rgba(6, 95, 70, 0.25); color: #34D399; border: 1px solid rgba(52, 211, 153, 0.4);"><span class="pulse-dot"></span> TRỐNG</span>'
                 elif st_state == SeatState.AMBIGUOUS:
-                    s_badge = '<span class="badge" style="background: #78350F; color: #FBBF24;">TRANH CHẤP / CHƯA RÕ</span>'
+                    s_badge = '<span class="badge" style="background: rgba(120, 53, 15, 0.25); color: #FBBF24; border: 1px solid rgba(251, 191, 36, 0.4);"><span class="pulse-dot"></span> TRANH CHẤP</span>'
                 else:
-                    s_badge = '<span class="badge" style="background: #374151; color: #9CA3AF;">CHƯA RÕ</span>'
+                    s_badge = '<span class="badge" style="background: rgba(55, 65, 81, 0.25); color: #9CA3AF; border: 1px solid rgba(156, 163, 175, 0.4);">CHƯA RÕ</span>'
 
                 st.markdown(f"""
-                <div style="display: flex; justify-content: space-between; align-items: center; background: #141E33; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; border: 1px solid #3A506B;">
-                    <span><b>{s.seat_id}</b> {f'({s.description})' if s.description else ''}</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.6); padding: 9px 14px; border-radius: 8px; margin-bottom: 7px; border: 1px solid rgba(255, 255, 255, 0.06); transition: border-color 0.2s ease;">
+                    <span><b style="color: #F8FAFC;">{s.seat_id}</b> <span style="font-size: 0.84rem; color: #94A3B8;">{f'({s.description})' if s.description else ''}</span></span>
                     {s_badge}
                 </div>
                 """, unsafe_allow_html=True)
@@ -1434,19 +1755,24 @@ def page_alert_center(service: AnalysisService):
                     res_type = alt.get("resolution_type") or status_raw
                     resolved_info = f"<div style='font-size: 0.8rem; color: #6EE7B7; margin-top: 4px;'>✅ Đã xử lý [{res_type}]: {format_timestamp_display(alt.get('resolved_at', ''))}</div>"
 
+                p_border = "#EF4444" if alt["priority"] == "HIGH" else "#F59E0B"
                 st.markdown(f"""
-                <div style="background: #1C2541; border: 1px solid #3A506B; border-radius: 8px; padding: 14px 18px; margin-bottom: 12px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 1.1rem; font-weight: 700; color: #F8FAFC;">
-                            {alt['alert_id']} — Ghế {alt['seat_id']} ({alt['object_id']})
+                <div class="spotlight-card" style="border-left: 4px solid {p_border} !important; margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <span style="font-size: 1.15rem; font-weight: 700; color: #F8FAFC; letter-spacing: -0.01em;">
+                            🔔 <span class="shiny-text">{alt['alert_id']}</span> — Ghế <b style="color: #38BDF8;">{alt['seat_id']}</b> <span style="font-size: 0.9rem; color: #94A3B8;">({alt['object_id']})</span>
                         </span>
-                        <span>
-                            <span class="badge" style="background: #1E293B; color: #E2E8F0;">{p_badge}</span>
-                            <span class="badge" style="background: #0F172A; color: {status_color}; margin-left: 6px; font-weight: 600;">{status_raw}</span>
-                        </span>
+                        <div style="display: flex; gap: 6px; align-items: center;">
+                            <span class="badge" style="background: rgba(30, 41, 59, 0.8); color: #E2E8F0; border: 1px solid rgba(255,255,255,0.1);">{p_badge}</span>
+                            <span class="badge" style="background: rgba(15, 23, 42, 0.9); color: {status_color}; border: 1px solid {status_color}55; font-weight: 600;"><span class="pulse-dot"></span> {status_raw}</span>
+                        </div>
                     </div>
-                    <p style="color: #CBD5E1; margin: 8px 0 6px 0; font-size: 0.9rem;"><b>Lý do:</b> {alt['reason']}</p>
-                    <div style="font-size: 0.8rem; color: #94A3B8;">⏱️ Phát hiện lúc: {format_timestamp_display(alt.get('created_at', ''))}</div>
+                    <div style="color: #CBD5E1; margin: 10px 0 8px 0; font-size: 0.92rem; line-height: 1.45;">
+                        <b style="color: #94A3B8;">Lý do phát hiện:</b> {alt['reason']}
+                    </div>
+                    <div style="display: flex; gap: 16px; font-size: 0.8rem; color: #94A3B8; flex-wrap: wrap;">
+                        <span>⏱️ Phát hiện lúc: <b style="color: #E2E8F0; font-variant-numeric: tabular-nums;">{format_timestamp_display(alt.get('created_at', ''))}</b></span>
+                    </div>
                     {resolved_info}
                 </div>
                 """, unsafe_allow_html=True)
@@ -1540,7 +1866,7 @@ def page_seats(service: AnalysisService):
                 "• <b>Minh bạch kỹ thuật:</b> Hệ thống tuyệt đối không tự ý sinh sơ đồ hình học rồi mạo nhận là AI."
             )
             st.markdown(f"""
-            <div style="background: #1C2541; border-left: 4px solid #F59E0B; padding: 14px 16px; border-radius: 6px; margin-bottom: 14px;">
+            <div class="spotlight-card" style="border-left: 4px solid #F59E0B !important; margin-bottom: 14px;">
                 <div style="font-weight: 700; color: #FBBF24; font-size: 0.95rem;">
                     ⚠️ CUSTOM SEAT MODEL NOT CONFIGURED (Chế độ: {mode.upper()})
                 </div>
@@ -1756,13 +2082,13 @@ def page_seats(service: AnalysisService):
             status_text = f"CUSTOM SEAT MODEL NOT CONFIGURED ({mode.upper()})"
 
         st.markdown(f"""
-        <div style="background: #141E33; border: 1px solid #3A506B; padding: 16px; border-radius: 8px; margin-bottom: 12px;">
-            <h4 style="color: #F8FAFC; margin-top: 0;">📊 Trạng thái Nhận diện Ghế Chuyên biệt từ Camera</h4>
+        <div class="spotlight-card" style="margin-bottom: 16px;">
+            <h4 style="color: #F8FAFC; margin-top: 0; font-size: 1.1rem; letter-spacing: -0.01em;">📊 Trạng thái Nhận diện Ghế Chuyên biệt từ Camera</h4>
             <div style="margin-bottom: 10px;">
                 <span style="color: #94A3B8;">Trạng thái Tổng thể:</span> 
-                <span class="badge" style="background: {status_color}22; color: {status_color}; border: 1px solid {status_color}; font-weight: bold;">{status_text}</span>
+                <span class="badge" style="background: {status_color}22; color: {status_color}; border: 1px solid {status_color}; font-weight: bold;"><span class="pulse-dot"></span> {status_text}</span>
             </div>
-            <ul style="color: #CBD5E1; line-height: 1.6;">
+            <ul style="color: #CBD5E1; line-height: 1.6; font-size: 0.88rem;">
                 <li><b>Chế độ Inference hiện hành:</b> <code>{mode.upper()}</code></li>
                 <li><b>Roboflow Workflow Seat Model:</b> <span style="color: {'#10B981' if roboflow_ready else '#F59E0B'}; font-weight: bold;">{'ĐÃ KẾT NỐI (empty_seat, human_occupied, object_occupied)' if roboflow_ready else 'CHƯA CẤU HÌNH'}</span></li>
                 <li><b>Local Custom Weights:</b> <span style="color: {'#10B981' if custom_ready else '#EF4444'}; font-weight: bold;">{'SẴN SÀNG (' + weights_path + ')' if custom_ready else 'CHƯA CÓ TRỌNG SỐ TẠI ' + weights_path}</span></li>
@@ -1770,8 +2096,8 @@ def page_seats(service: AnalysisService):
                 <li><b>Lớp ghế đang hỗ trợ:</b> <code>{diag.get('supported_classes', [])}</code></li>
                 <li><b>Phương thức hiện hành:</b> <code>{service.seat_manager.active_detection_method.value}</code></li>
             </ul>
-            <div style="background: #0F172A; padding: 12px; border-radius: 6px; border-left: 4px solid #3B82F6; margin-top: 10px;">
-                <p style="margin: 0; color: #94A3B8; font-size: 0.9rem;">
+            <div style="background: rgba(10, 15, 28, 0.6); padding: 12px 16px; border-radius: 8px; border-left: 3px solid #38BDF8; margin-top: 12px;">
+                <p style="margin: 0; color: #94A3B8; font-size: 0.88rem; line-height: 1.5;">
                     💡 <b>Giải pháp nhận diện ghế AI:</b><br>
                     1. <b>Khuyên dùng:</b> Vào <b>Cài đặt & Bảo mật</b>, chọn chế độ <b>Roboflow</b> hoặc <b>Hybrid</b>. Hệ thống sẽ sử dụng mô hình Roboflow chuyên biệt để nhận diện ghế từ camera.<br>
                     2. <b>Hoặc:</b> Nạp file weights YOLO26 chuyên biệt vào đường dẫn <code>models/best.pt</code>.
@@ -2012,14 +2338,14 @@ def page_model_management(service: AnalysisService):
 
     if active_m:
         st.markdown(f"""
-        <div style="background: #1C2541; border-left: 4px solid #10B981; padding: 14px 18px; border-radius: 8px; margin-bottom: 16px;">
+        <div class="spotlight-card" style="border-left: 4px solid #10B981 !important; margin-bottom: 18px;">
             <div style="font-size: 1.15rem; font-weight: 700; color: #F8FAFC;">
-                ⭐ MODEL ĐANG HOẠT ĐỘNG: {active_m['model_id']} ({active_m['version']})
+                ⭐ <span class="shiny-text">MODEL ĐANG HOẠT ĐỘNG:</span> {active_m['model_id']} <span style="color: #38BDF8;">({active_m['version']})</span>
             </div>
-            <div style="color: #94A3B8; font-size: 0.85rem; margin-top: 4px;">
-                Tập dữ liệu: {active_m['dataset_version']} | mAP50: <b>{active_m.get('metrics', {}).get('map50', 'N/A')}</b> |
-                Precision: <b>{active_m.get('metrics', {}).get('precision', 'N/A')}</b> |
-                Recall: <b>{active_m.get('metrics', {}).get('recall', 'N/A')}</b>
+            <div style="color: #94A3B8; font-size: 0.85rem; margin-top: 6px;">
+                Tập dữ liệu: {active_m['dataset_version']} | mAP50: <b style="color: #38BDF8;">{active_m.get('metrics', {}).get('map50', 'N/A')}</b> |
+                Precision: <b style="color: #34D399;">{active_m.get('metrics', {}).get('precision', 'N/A')}</b> |
+                Recall: <b style="color: #FBBF24;">{active_m.get('metrics', {}).get('recall', 'N/A')}</b>
             </div>
             <div style="color: #CBD5E1; font-size: 0.85rem; margin-top: 4px;">{active_m.get('notes', '')}</div>
         </div>
@@ -2054,16 +2380,16 @@ def page_model_management(service: AnalysisService):
                 is_active = (m["status"] == "active")
                 s_color = "#10B981" if is_active else "#64748B"
                 st.markdown(f"""
-                <div style="background: #141E33; border: 1px solid #3A506B; border-radius: 6px; padding: 12px 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                <div class="spotlight-card" style="padding: 12px 18px !important; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
                     <div>
                         <span style="font-weight: 700; color: #F8FAFC;">{m['model_id']}</span>
                         <span style="color: #94A3B8; font-size: 0.85rem; margin-left: 8px;">({m['dataset_version']})</span>
-                        <div style="font-size: 0.8rem; color: #94A3B8; margin-top: 2px;">
+                        <div style="font-size: 0.8rem; color: #94A3B8; margin-top: 3px;">
                             mAP50: {m.get('metrics', {}).get('map50', 'N/A')} • Precision: {m.get('metrics', {}).get('precision', 'N/A')} • Recall: {m.get('metrics', {}).get('recall', 'N/A')}
                         </div>
                     </div>
                     <div>
-                        <span class="badge" style="background: {s_color}22; color: {s_color}; border: 1px solid {s_color};">{m['status'].upper()}</span>
+                        <span class="badge" style="background: {s_color}22; color: {s_color}; border: 1px solid {s_color};"><span class="pulse-dot"></span> {m['status'].upper()}</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -2089,9 +2415,9 @@ def page_model_management(service: AnalysisService):
         dev_type = hw.get("device", "cpu")
         icon = "⚡" if dev_type in ("cuda", "mps") else "⚠️"
         st.markdown(f"""
-        <div style="background: #141E33; border: 1px solid #3A506B; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px;">
+        <div class="spotlight-card" style="padding: 12px 16px !important; margin-bottom: 14px;">
             <span style="font-weight: 600; color: #F8FAFC;">{icon} Thiết bị tính toán khả dụng: {hw.get('device_name')} ({dev_type.upper()})</span>
-            <div style="color: #94A3B8; font-size: 0.85rem; margin-top: 2px;">{hw.get('description')}</div>
+            <div style="color: #94A3B8; font-size: 0.85rem; margin-top: 3px;">{hw.get('description')}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -2306,15 +2632,15 @@ def page_model_management(service: AnalysisService):
             active_ver = rf_client.model_version
 
             st.markdown(f"""
-            <div style="background: #141E33; border: 1px solid #3A506B; padding: 14px 18px; border-radius: 8px; margin-bottom: 14px;">
-                <div style="font-size: 1.1rem; font-weight: 700; color: #F8FAFC;">
-                    🚌 Dự án: {proj_name} (Workspace: <code>{wf_info['workspace']}</code>)
+            <div class="spotlight-card" style="margin-bottom: 16px;">
+                <div style="font-size: 1.15rem; font-weight: 700; color: #F8FAFC;">
+                    🚌 <span class="shiny-text">Dự án:</span> {proj_name} (Workspace: <code>{wf_info['workspace']}</code>)
                 </div>
-                <div style="color: #94A3B8; font-size: 0.85rem; margin-top: 4px;">
-                    Tác vụ model: <b>{proj_type.upper()}</b> | Phiên bản active hiện tại: <b>Version {active_ver}</b> | Workflow: <code>{wf_info['workflow_id']}</code>
+                <div style="color: #94A3B8; font-size: 0.85rem; margin-top: 5px;">
+                    Tác vụ model: <b style="color: #38BDF8;">{proj_type.upper()}</b> | Phiên bản active: <b style="color: #34D399;">Version {active_ver}</b> | Workflow: <code>{wf_info['workflow_id']}</code>
                 </div>
                 <div style="color: #CBD5E1; font-size: 0.85rem; margin-top: 6px;">
-                    <b>API Key:</b> <code>{wf_info['masked_api_key']}</code> (Bảo mật, không lộ khóa) | <b>Inference SDK:</b> {'✅ Sẵn sàng' if wf_info['sdk_available'] else '⚠️ Fallback HTTP'}
+                    <b>API Key:</b> <code>{wf_info['masked_api_key']}</code> (Bảo mật) | <b>Inference SDK:</b> {'✅ Sẵn sàng' if wf_info['sdk_available'] else '⚠️ Fallback HTTP'}
                 </div>
                 <div style="color: #38BDF8; font-size: 0.85rem; margin-top: 4px;">
                     🎯 <b>Model ID đích (Inference Target):</b> <code>{wf_info.get('target_model_id', f"{wf_info['project_id']}/{active_ver}")}</code> | <b>Trạng thái:</b> <code>{wf_info.get('last_inference_info', {}).get('status', 'READY')}</code>

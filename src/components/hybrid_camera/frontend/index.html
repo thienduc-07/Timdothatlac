@@ -7,10 +7,12 @@
   <!-- ONNX Runtime Web (WebGPU & WASM SIMD with multithreading) -->
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.all.min.js"></script>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
     :root {
-      --bg-color: #0F172A;
-      --card-bg: #1E293B;
-      --card-border: #334155;
+      --bg-color: #070A12;
+      --card-bg: rgba(15, 23, 42, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
       --text-main: #F8FAFC;
       --text-muted: #94A3B8;
       --cyan: #00E5FF;
@@ -24,25 +26,49 @@
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
     body {
       background-color: var(--bg-color);
+      background-image:
+        radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.08) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(99, 102, 241, 0.06) 0px, transparent 50%),
+        linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px;
       color: var(--text-main);
       padding: 8px;
       overflow-x: hidden;
       min-height: 620px;
     }
 
+    /* ── React Bits GlassCard Container ── */
     .container {
       max-width: 960px;
       margin: 0 auto;
       background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
       border: 1px solid var(--card-border);
-      border-radius: 12px;
-      padding: 16px;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.6), 0 0 24px -5px rgba(0, 229, 255, 0.05);
+    }
+
+    /* ── React Bits Shimmer Animation ── */
+    @keyframes shiny-text {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .shiny-title {
+      background: linear-gradient(120deg, rgba(255,255,255,0.75) 20%, #FFFFFF 50%, rgba(255,255,255,0.75) 80%);
+      background-size: 200% auto;
+      color: transparent !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      animation: shiny-text 6s linear infinite;
+      display: inline-block;
     }
 
     /* Controls Bar - Exactly ONE button for camera control */
@@ -52,46 +78,52 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      margin-bottom: 14px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--card-border);
+      margin-bottom: 16px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
     }
 
+    /* ── React Bits Button (Glow & Magnet Style) ── */
     .primary-btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
       padding: 11px 26px;
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 700;
       border-radius: 8px;
-      border: none;
+      border: 1px solid transparent;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
       color: #fff;
+      letter-spacing: 0.3px;
     }
 
     .btn-start {
-      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+      background: linear-gradient(180deg, #10B981 0%, #059669 100%);
+      border-color: rgba(52, 211, 153, 0.4);
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
     }
     .btn-start:hover {
-      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      background: linear-gradient(180deg, #34D399 0%, #059669 100%);
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35);
       transform: translateY(-1px);
     }
 
     .btn-stop {
-      background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
-      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+      background: linear-gradient(180deg, #EF4444 0%, #DC2626 100%);
+      border-color: rgba(248, 113, 113, 0.4);
+      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
     }
     .btn-stop:hover {
-      background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
+      background: linear-gradient(180deg, #F87171 0%, #DC2626 100%);
+      box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35);
       transform: translateY(-1px);
     }
 
     .btn-disabled {
-      opacity: 0.6;
+      opacity: 0.5;
       cursor: not-allowed;
       pointer-events: none;
     }
@@ -106,66 +138,99 @@
     }
 
     select {
-      background: #0F172A;
+      background: rgba(15, 23, 42, 0.85);
       color: var(--text-main);
-      border: 1px solid var(--card-border);
-      border-radius: 6px;
-      padding: 7px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      padding: 8px 14px;
       font-size: 13px;
       outline: none;
       cursor: pointer;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    select:focus {
+      border-color: #00E5FF;
+      box-shadow: 0 0 12px rgba(0, 229, 255, 0.25);
     }
 
-    /* Status Badge */
+    /* ── React Bits Status Badge with Breathing Aura ── */
     .backend-badge {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 7px;
       padding: 6px 14px;
       border-radius: 20px;
       font-size: 12px;
       font-weight: 600;
-      letter-spacing: 0.3px;
+      letter-spacing: 0.4px;
+      backdrop-filter: blur(8px);
+      transition: all 0.2s ease;
     }
     .badge-client {
-      background: rgba(16, 185, 129, 0.15);
+      background: rgba(16, 185, 129, 0.12);
       border: 1px solid rgba(16, 185, 129, 0.4);
       color: #34D399;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.18);
     }
     .badge-idle {
-      background: rgba(148, 163, 184, 0.15);
-      border: 1px solid rgba(148, 163, 184, 0.3);
+      background: rgba(148, 163, 184, 0.12);
+      border: 1px solid rgba(148, 163, 184, 0.25);
       color: #94A3B8;
     }
 
     .pulse-dot {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       background-color: currentColor;
       box-shadow: 0 0 8px currentColor;
-      animation: pulse 1.5s infinite;
+      animation: pulse-dot 1.8s infinite;
+      display: inline-block;
     }
-
-    @keyframes pulse {
+    @keyframes pulse-dot {
       0% { opacity: 0.4; transform: scale(0.9); }
-      50% { opacity: 1; transform: scale(1.1); }
+      50% { opacity: 1; transform: scale(1.15); }
       100% { opacity: 0.4; transform: scale(0.9); }
     }
 
-    /* Viewport following Gesture-Synth architecture */
+    /* ── Cyber HUD Viewport Frame ── */
     .viewport {
       position: relative;
       width: 100%;
       aspect-ratio: 4 / 3;
       max-height: 540px;
-      background: #050B14;
-      border-radius: 8px;
+      background: #040812;
+      border-radius: 10px;
       overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
-      border: 1px solid #1E293B;
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.7);
+    }
+
+    /* Cyber HUD Corner Brackets */
+    .viewport::before,
+    .viewport::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      pointer-events: none;
+      z-index: 6;
+      transition: border-color 0.3s ease;
+    }
+    .viewport::before {
+      top: 10px;
+      left: 10px;
+      border-top: 2px solid rgba(0, 229, 255, 0.7);
+      border-left: 2px solid rgba(0, 229, 255, 0.7);
+    }
+    .viewport::after {
+      bottom: 10px;
+      right: 10px;
+      border-bottom: 2px solid rgba(0, 229, 255, 0.7);
+      border-right: 2px solid rgba(0, 229, 255, 0.7);
     }
 
     /* Hidden video element feeding frames to overlay canvas */
@@ -191,92 +256,133 @@
       gap: 12px;
       color: var(--text-muted);
       text-align: center;
-      padding: 20px;
-      background: #050B14;
+      padding: 24px;
+      background: #040812;
+      background-image:
+        radial-gradient(circle at center, rgba(14, 165, 233, 0.06) 0%, transparent 60%),
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 28px 28px, 28px 28px;
       z-index: 10;
     }
 
     .loading-bar-container {
-      width: 240px;
-      height: 6px;
-      background: #334155;
+      width: 250px;
+      height: 5px;
+      background: rgba(30, 41, 59, 0.8);
       border-radius: 3px;
       overflow: hidden;
-      margin-top: 8px;
+      margin-top: 10px;
       display: none;
+      box-shadow: 0 0 10px rgba(0, 229, 255, 0.2);
     }
 
     .loading-bar {
       width: 0%;
       height: 100%;
-      background: var(--cyan);
+      background: linear-gradient(90deg, #0284C7, #00E5FF);
       transition: width 0.3s ease;
     }
 
-    /* Alert Banner */
+    /* Alert Banner (Glassmorphism Slide) */
     .alert-banner {
-      margin-top: 12px;
-      padding: 10px 14px;
-      border-radius: 8px;
+      margin-top: 14px;
+      padding: 12px 16px;
+      border-radius: 10px;
       font-size: 13px;
       display: none;
       align-items: center;
       justify-content: space-between;
-      animation: slideDown 0.3s ease;
+      animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      backdrop-filter: blur(12px);
     }
     .alert-banner.critical {
-      background: rgba(239, 68, 68, 0.2);
+      background: rgba(239, 68, 68, 0.18);
       border: 1px solid rgba(239, 68, 68, 0.5);
-      color: #FCA5A5;
+      color: #FECACA;
       display: flex;
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.25);
     }
     .alert-banner.error {
       background: rgba(239, 68, 68, 0.15);
       border: 1px solid rgba(239, 68, 68, 0.4);
-      color: #FCA5A5;
+      color: #FECACA;
       display: block;
     }
 
     @keyframes slideDown {
-      from { opacity: 0; transform: translateY(-6px); }
+      from { opacity: 0; transform: translateY(-8px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Telemetry HUD */
+    /* ── React Bits Telemetry HUD Grid ── */
     .telemetry-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
       gap: 10px;
-      margin-top: 14px;
-      padding-top: 14px;
-      border-top: 1px solid var(--card-border);
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.07);
     }
 
     .telemetry-card {
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid var(--card-border);
-      border-radius: 8px;
-      padding: 8px 12px;
+      position: relative;
+      background: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 10px;
+      padding: 10px 14px;
       text-align: center;
+      overflow: hidden;
+      transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
+    }
+    .telemetry-card:hover {
+      border-color: rgba(56, 189, 248, 0.35);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 14px rgba(56, 189, 248, 0.12);
+      transform: translateY(-1px);
     }
 
     .telemetry-val {
-      font-size: 18px;
+      font-size: 19px;
       font-weight: 700;
       color: var(--text-main);
       font-variant-numeric: tabular-nums;
+      letter-spacing: -0.01em;
     }
-    .telemetry-val.green { color: var(--green); }
-    .telemetry-val.cyan { color: var(--cyan); }
-    .telemetry-val.amber { color: var(--amber); }
-    .telemetry-val.red { color: var(--red); }
+    .telemetry-val.green {
+      color: var(--green);
+      text-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+    }
+    .telemetry-val.cyan {
+      color: var(--cyan);
+      text-shadow: 0 0 12px rgba(0, 229, 255, 0.25);
+    }
+    .telemetry-val.amber {
+      color: var(--amber);
+      text-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+    }
+    .telemetry-val.red {
+      color: var(--red);
+      text-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+    }
 
     .telemetry-lbl {
       font-size: 11px;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      margin-top: 2px;
+      font-weight: 600;
+      margin-top: 3px;
+    }
+
+    /* Accessibility */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
     }
   </style>
 </head>
@@ -306,11 +412,13 @@
       <video id="webcam" playsinline autoplay muted></video>
       <canvas id="displayCanvas"></canvas>
       <div id="placeholder" class="placeholder-overlay">
-        <div style="font-size: 44px;">🚌</div>
-        <div style="font-size: 16px; font-weight: 600; color: #F8FAFC;">Camera Giám Sát Xe Buýt (Browser-Native)</div>
-        <div style="font-size: 13px; max-width: 420px; line-height: 1.5;">
-          Nhấn nút <strong>📷 BẬT CAMERA</strong> để mở webcam trực tiếp từ trình duyệt của bạn.<br>
-          AI suy luận cục bộ bằng WebGPU/WASM với <strong>Mặt nạ Polygon bám sát viền đồ vật</strong>.
+        <div style="font-size: 48px; filter: drop-shadow(0 0 16px rgba(0, 229, 255, 0.4));">🚌</div>
+        <div style="font-size: 18px; font-weight: 700; color: #F8FAFC; letter-spacing: -0.01em;">
+          <span class="shiny-title">Camera Giám Sát Xe Buýt (Browser-Native)</span>
+        </div>
+        <div style="font-size: 13px; max-width: 440px; line-height: 1.6; color: #94A3B8;">
+          Nhấn nút <strong style="color: #34D399;">📷 BẬT CAMERA</strong> để mở webcam trực tiếp từ trình duyệt của bạn.<br>
+          AI suy luận cục bộ bằng WebGPU/WASM với <strong style="color: #38BDF8;">Mặt nạ Polygon bám sát viền đồ vật</strong>.
         </div>
         <div id="loadingProgress" class="loading-bar-container">
           <div id="progressBar" class="loading-bar"></div>
