@@ -418,34 +418,114 @@ st.markdown(f"""
         box-shadow: 0 0 8px currentColor;
     }}
 
-    /* ── Streamlit Sidebar (Glassmorphism & Nav Pills) ── */
+    /* ── Streamlit Sidebar (Linear / Vercel Mission Control) ── */
     section[data-testid="stSidebar"] {{
-        background-color: #0A0F1D !important;
-        background-image: linear-gradient(180deg, rgba(14, 165, 233, 0.04) 0%, transparent 60%) !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
+        background-color: #070A12 !important;
+        background-image:
+            radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.08) 0%, transparent 60%),
+            linear-gradient(180deg, rgba(15, 23, 42, 0.7) 0%, #070A12 100%) !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+        box-shadow: 4px 0 28px rgba(0, 0, 0, 0.6) !important;
+        transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), width 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }}
-    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3 {{
-        letter-spacing: -0.01em;
+
+    /* Staggered Entrance Animation for Navigation Items */
+    @keyframes nav-item-reveal {{
+        0% {{
+            opacity: 0;
+            transform: translateY(8px);
+        }}
+        100% {{
+            opacity: 1;
+            transform: translateY(0);
+        }}
     }}
+
     section[data-testid="stSidebar"] div[role="radiogroup"] > label {{
-        background: rgba(15, 23, 42, 0.4);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 8px;
-        padding: 8px 12px;
-        margin-bottom: 5px;
-        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-        cursor: pointer;
+        position: relative;
+        background: rgba(15, 23, 42, 0.45) !important;
+        border: 1px solid rgba(255, 255, 255, 0.06) !important;
+        border-radius: 8px !important;
+        padding: 9px 13px !important;
+        margin-bottom: 5px !important;
+        transition: background 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                    border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                    box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        cursor: pointer !important;
+        animation: nav-item-reveal 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        opacity: 0;
     }}
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {{
-        background: rgba(30, 41, 59, 0.6);
-        border-color: rgba(56, 189, 248, 0.3);
-        transform: translateX(3px);
+
+    /* Sequential Stagger: ~60ms step across 9 destinations */
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(1) {{ animation-delay: 0.04s; }}
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(2) {{ animation-delay: 0.10s; }}
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(3) {{ animation-delay: 0.16s; }}
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(4) {{ animation-delay: 0.22s; }}
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(5) {{ animation-delay: 0.28s; }}
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(6) {{ animation-delay: 0.34s; }}
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(7) {{ animation-delay: 0.40s; }}
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(8) {{ animation-delay: 0.46s; }}
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(9) {{ animation-delay: 0.52s; }}
+
+    /* Hover state: tactile slide & graphite glow */
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:not(:has(input:checked)):hover {{
+        background: rgba(30, 41, 59, 0.6) !important;
+        border-color: rgba(56, 189, 248, 0.3) !important;
+        transform: translateX(4px) !important;
     }}
+
+    /* Keyboard focus state (WCAG accessible) */
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:focus-within,
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:focus-visible {{
+        outline: 2px solid #00E5FF !important;
+        outline-offset: 2px !important;
+    }}
+
+    /* Active destination: Linear-style restrained cyan accent & ambient glow */
     section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"],
     section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {{
-        background: linear-gradient(90deg, rgba(14, 165, 233, 0.15) 0%, rgba(15, 23, 42, 0.6) 100%) !important;
-        border-color: rgba(56, 189, 248, 0.6) !important;
-        box-shadow: inset 3px 0 0 #00E5FF, 0 0 12px rgba(0, 229, 255, 0.1) !important;
+        background: linear-gradient(90deg, rgba(14, 165, 233, 0.16) 0%, rgba(15, 23, 42, 0.75) 100%) !important;
+        border-color: rgba(56, 189, 248, 0.55) !important;
+        border-left: 3px solid #00E5FF !important;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), 0 0 16px rgba(0, 229, 255, 0.1) !important;
+    }}
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) p,
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] p {{
+        color: #38BDF8 !important;
+        font-weight: 600 !important;
+    }}
+
+    /* Touch device optimization */
+    @media (hover: none) {{
+        section[data-testid="stSidebar"] div[role="radiogroup"] > label:not(:has(input:checked)):hover {{
+            transform: none !important;
+        }}
+    }}
+
+    /* Sidebar collapse/expand buttons */
+    button[data-testid="stSidebarCollapseButton"],
+    button[data-testid="collapsedControl"] {{
+        background: rgba(15, 23, 42, 0.85) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 8px !important;
+        color: #94A3B8 !important;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }}
+    button[data-testid="stSidebarCollapseButton"]:hover,
+    button[data-testid="collapsedControl"]:hover {{
+        background: rgba(30, 41, 59, 0.95) !important;
+        border-color: rgba(56, 189, 248, 0.4) !important;
+        color: #00E5FF !important;
+        box-shadow: 0 0 12px rgba(0, 229, 255, 0.2) !important;
+    }}
+
+    /* Backdrop overlay for mobile drawer */
+    div[data-testid="stSidebarBackdrop"] {{
+        background: rgba(7, 10, 18, 0.75) !important;
+        backdrop-filter: blur(8px) !important;
+        -webkit-backdrop-filter: blur(8px) !important;
+        transition: opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }}
 
     /* ── Streamlit Buttons (React Bits Magnet & Modern SaaS) ── */
@@ -566,7 +646,7 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# Client-side SpotlightCard mouse tracking script (React Bits Spotlight effect)
+# Client-side Spotlight & Navigation interactions script
 st.components.v1.html("""
 <script>
 (function() {
@@ -595,8 +675,45 @@ st.components.v1.html("""
             }, { passive: true });
         } catch(e) {}
     }
+
+    function setupNavKeyboardAndBackdrop() {
+        try {
+            const pDoc = window.parent.document;
+            if (!pDoc || pDoc._navInteractionsInitialized) return;
+            pDoc._navInteractionsInitialized = true;
+
+            // 1. Phím Escape để đóng Navigation Drawer
+            pDoc.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' || e.key === 'Esc') {
+                    const sidebar = pDoc.querySelector('section[data-testid="stSidebar"]');
+                    if (sidebar) {
+                        const isExpanded = sidebar.getAttribute('aria-expanded') !== 'false' && sidebar.clientWidth > 50;
+                        if (isExpanded) {
+                            const closeBtn = pDoc.querySelector('button[data-testid="stSidebarCollapseButton"]')
+                                || pDoc.querySelector('button[aria-label="Close sidebar"]')
+                                || sidebar.querySelector('button');
+                            if (closeBtn) closeBtn.click();
+                        }
+                    }
+                }
+            });
+
+            // 2. Nhấp vào Backdrop mờ (mobile/tablet) để thu gọn menu
+            pDoc.addEventListener('click', function(e) {
+                const backdrop = e.target && e.target.closest && e.target.closest('div[data-testid="stSidebarBackdrop"]');
+                if (backdrop) {
+                    const closeBtn = pDoc.querySelector('button[data-testid="stSidebarCollapseButton"]')
+                        || pDoc.querySelector('button[aria-label="Close sidebar"]');
+                    if (closeBtn) closeBtn.click();
+                }
+            }, { passive: true });
+        } catch(e) {}
+    }
+
     setupSpotlight();
+    setupNavKeyboardAndBackdrop();
     setTimeout(setupSpotlight, 600);
+    setTimeout(setupNavKeyboardAndBackdrop, 600);
 })();
 </script>
 """, height=0, width=0)
@@ -856,9 +973,23 @@ def main():
 
     # ── Sidebar Navigation ──
     with st.sidebar:
-        st.markdown("### 🚌 LOST & FOUND AI")
-        st.caption("Giám sát xe buýt • Nhận biết che khuất • Báo cáo tức thì")
-        st.markdown("---")
+        st.markdown("""
+        <div style="padding: 4px 0 14px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07); margin-bottom: 14px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, rgba(14, 165, 233, 0.25) 0%, rgba(99, 102, 241, 0.25) 100%); border: 1px solid rgba(56, 189, 248, 0.4); display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 0 12px rgba(14, 165, 233, 0.25);">
+                    🚌
+                </div>
+                <div>
+                    <div style="font-size: 0.95rem; font-weight: 700; color: #F8FAFC; letter-spacing: -0.02em; line-height: 1.2;">
+                        LOST & FOUND AI
+                    </div>
+                    <div style="font-size: 0.72rem; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600;">
+                        Bus Vision Platform
+                    </div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
         page_list = [
             "🏠 Tổng quan",
@@ -888,23 +1019,15 @@ def main():
             label_visibility="collapsed",
         )
 
-        st.markdown("---")
+        st.markdown("<div style='height: 1px; background: rgba(255, 255, 255, 0.07); margin: 16px 0 12px 0;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #64748B; margin-bottom: 8px;'>HỆ THỐNG & TRẠNG THÁI</div>", unsafe_allow_html=True)
+
         # System Health & Status Indicators
         model_info = service.get_model_info()
-        if model_info.get("loaded"):
-            st.success(f"🤖 Model: `{model_info['model_name']}`")
-        else:
-            st.error("❌ Model AI chưa tải")
-
+        model_name = model_info.get("model_name", "YOLO26")
+        is_model_loaded = model_info.get("loaded", False)
         seat_count = len(service.get_seats())
-        if seat_count > 0:
-            st.info(f"🪑 Sơ đồ xe: **{seat_count} ghế**")
-        else:
-            st.warning("⚠️ Chưa cấu hình ghế")
-
         unresolved_alerts = service.get_unresolved_alert_count()
-        if unresolved_alerts > 0:
-            st.warning(f"🔔 **{unresolved_alerts}** cảnh báo chưa xử lý")
 
         tg_notifier = get_telegram_notifier()
         is_tg_cfg = False
@@ -914,13 +1037,31 @@ def main():
             except Exception:
                 is_tg_cfg = False
 
-        if is_tg_cfg:
-            if getattr(tg_notifier, "enabled", True):
-                st.caption("🟢 **Telegram Bot:** Đang hoạt động")
-            else:
-                st.caption("⏸️ **Telegram Bot:** Tạm dừng")
-        else:
-            st.caption("⚠️ **Telegram Bot:** Chưa cấu hình (.env)")
+        model_badge = f"<span style='color: #34D399;'>●</span> {model_name}" if is_model_loaded else "<span style='color: #EF4444;'>●</span> Chưa tải"
+        seat_badge = f"<span style='color: #38BDF8;'>●</span> {seat_count} ghế" if seat_count > 0 else "<span style='color: #F59E0B;'>●</span> Chưa tạo"
+        alert_badge = f"<span style='color: #EF4444;'>●</span> {unresolved_alerts} mới" if unresolved_alerts > 0 else "<span style='color: #34D399;'>●</span> 0 sự cố"
+        tg_badge = "<span style='color: #34D399;'>●</span> Sẵn sàng" if is_tg_cfg else "<span style='color: #64748B;'>●</span> Chưa nối"
+
+        st.markdown(f"""
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.75rem; color: #94A3B8;">
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                <div style="color: #64748B; font-size: 0.68rem;">MODEL AI</div>
+                <div style="font-weight: 600; color: #E2E8F0; margin-top: 2px;">{model_badge}</div>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                <div style="color: #64748B; font-size: 0.68rem;">SƠ ĐỒ GHẾ</div>
+                <div style="font-weight: 600; color: #E2E8F0; margin-top: 2px;">{seat_badge}</div>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                <div style="color: #64748B; font-size: 0.68rem;">CẢNH BÁO</div>
+                <div style="font-weight: 600; color: #E2E8F0; margin-top: 2px;">{alert_badge}</div>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                <div style="color: #64748B; font-size: 0.68rem;">TELEGRAM</div>
+                <div style="font-weight: 600; color: #E2E8F0; margin-top: 2px;">{tg_badge}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # ── Routing Pages ──
     if "Tổng quan" in page:

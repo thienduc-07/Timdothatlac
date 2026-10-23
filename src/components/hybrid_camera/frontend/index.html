@@ -29,18 +29,22 @@
       font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
-    body {
+    html, body {
       background-color: var(--bg-color);
+      color: var(--text-main);
+      padding: 8px;
+      margin: 0;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+
+    body {
       background-image:
         radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.08) 0px, transparent 50%),
         radial-gradient(at 100% 100%, rgba(99, 102, 241, 0.06) 0px, transparent 50%),
         linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
         linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
       background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px;
-      color: var(--text-main);
-      padding: 8px;
-      overflow-x: hidden;
-      min-height: 620px;
     }
 
     /* ── React Bits GlassCard Container ── */
@@ -671,15 +675,26 @@
       }
     }
 
+    let lastSentHeight = 0;
+
     function updateFrameHeight() {
-      const bodyH = document.body ? document.body.scrollHeight : 0;
-      const docH = document.documentElement ? document.documentElement.scrollHeight : 0;
-      const height = Math.max(bodyH, docH, 680) + 15;
-      window.parent.postMessage({
-        isStreamlitMessage: true,
-        type: "streamlit:setFrameHeight",
-        height: height
-      }, "*");
+      const container = document.querySelector(".container");
+      if (!container) return;
+      // Lấy chiều cao thực tế của khối nội dung UI (.container) + đệm padding
+      const rect = container.getBoundingClientRect();
+      const contentHeight = Math.ceil(rect.height) + 20;
+      const targetHeight = Math.max(contentHeight, 640);
+
+      // CHẶN TRIỆT ĐỂ VÒNG LẶP CUỘN VÔ TẬN:
+      // Chỉ gửi thông báo tới Streamlit khi chiều cao thực tế thay đổi > 4px
+      if (Math.abs(targetHeight - lastSentHeight) > 4) {
+        lastSentHeight = targetHeight;
+        window.parent.postMessage({
+          isStreamlitMessage: true,
+          type: "streamlit:setFrameHeight",
+          height: targetHeight
+        }, "*");
+      }
     }
 
     window.addEventListener("message", (event) => {
@@ -705,20 +720,22 @@
       apiVersion: 1
     }, "*");
 
-    // Đảm bảo iframe luôn có chiều cao hiển thị ngay khi trang tải xong
+    // Đảm bảo iframe luôn có chiều cao ổn định ngay khi trang tải xong
     window.addEventListener("DOMContentLoaded", () => {
       updateFrameHeight();
       setTimeout(updateFrameHeight, 150);
-      setTimeout(updateFrameHeight, 500);
     });
     window.addEventListener("load", () => {
       updateFrameHeight();
-      setTimeout(updateFrameHeight, 200);
     });
-    if (window.ResizeObserver && document.body) {
+    if (window.ResizeObserver) {
       try {
-        const resizeObserver = new ResizeObserver(() => updateFrameHeight());
-        resizeObserver.observe(document.body);
+        const container = document.querySelector(".container");
+        if (container) {
+          // Quan sát khối container thay vì document.body để tránh vòng lặp phản hồi kích thước iframe
+          const resizeObserver = new ResizeObserver(() => updateFrameHeight());
+          resizeObserver.observe(container);
+        }
       } catch (e) {
         console.debug("ResizeObserver not supported:", e);
       }
