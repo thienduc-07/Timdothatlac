@@ -1757,12 +1757,26 @@ def page_model_management(service: AnalysisService):
             batch = st.selectbox("Batch size:", [4, 8, 16, 32], index=1)
 
         if ms and hasattr(ms, "generate_training_command"):
-            cmd = ms.generate_training_command(dataset_yaml, epochs=epochs, batch_size=batch, model=base_m, task=task_val)
+            cmd = ms.generate_training_command(
+                dataset_yaml_path=dataset_yaml,
+                epochs=epochs,
+                batch_size=batch,
+                base_model=base_m,
+                task=task_val,
+            )
         else:
-            cmd = ModelService(getattr(service, "_model_repo", None)).generate_training_command(dataset_yaml, epochs=epochs, batch_size=batch, model=base_m, task=task_val)
+            cmd = ModelService(
+                getattr(service, "_model_repo", None)
+            ).generate_training_command(
+                dataset_yaml_path=dataset_yaml,
+                base_model=base_m,
+                epochs=epochs,
+                batch_size=batch,
+                task=task_val,
+            )
+
         st.caption("Lệnh Ultralytics CLI thực tế được sinh:")
         st.code(cmd, language="bash")
-
         if st.button("🚀 Bắt đầu Huấn luyện Thật trong Tiến trình Nền (Background Process)", type="primary", use_container_width=True):
             if hasattr(service, "validate_training_dataset"):
                 ok_val, val_msg, _ = service.validate_training_dataset(dataset_yaml)

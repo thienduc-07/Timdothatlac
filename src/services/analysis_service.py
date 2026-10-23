@@ -710,11 +710,10 @@ class AnalysisService:
         if self._model_service:
             return self._model_service.generate_training_command(
                 dataset_yaml_path=dataset_yaml_path,
+                base_model=model,
                 epochs=epochs,
                 batch_size=batch_size,
                 imgsz=imgsz,
-                # pyrefly: ignore[unexpected-keyword]
-                model=model,
                 task=task,
             )
         return ""
