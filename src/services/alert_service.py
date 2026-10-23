@@ -23,6 +23,7 @@ from config.settings import (
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHAT_ID,
     TELEGRAM_ALERTS_ENABLED,
+    get_current_time,
 )
 from src.detection.class_mapper import get_user_facing_label, format_seat_label
 
@@ -69,7 +70,7 @@ class AlertService:
 
         # Xác định mức độ ưu tiên
         priority = AlertPriority.HIGH if event.status == "suspected" else AlertPriority.MEDIUM
-        now_iso = datetime.now().isoformat()
+        now_iso = get_current_time().isoformat()
         vi_class = get_user_facing_label(event.class_name)
         seat_desc = format_seat_label(event.seat_id) if event.seat_id else "khu vực xe buýt"
 
@@ -126,7 +127,7 @@ class AlertService:
             f"<b>Vị trí:</b> {format_seat_label(alert.seat_id)}\n"
             f"<b>Mức độ:</b> {alert.priority}\n"
             f"<b>Lý do:</b> {alert.reason}\n"
-            f"<b>Thời điểm:</b> {datetime.now().strftime('%H:%M:%S %d/%m/%Y')}"
+            f"<b>Thời điểm:</b> {get_current_time().strftime('%H:%M:%S %d/%m/%Y')}"
         )
 
         # 1. Kênh Telegram
@@ -242,7 +243,7 @@ class AlertService:
         seat_id: str = "S01",
     ) -> Alert:
         """Gửi một cảnh báo thử nghiệm thực tế ra các kênh."""
-        now_iso = datetime.now().isoformat()
+        now_iso = get_current_time().isoformat()
         alert = Alert(
             alert_id=f"TEST_{uuid.uuid4().hex[:6].upper()}",
             event_id="EVT_TEST",

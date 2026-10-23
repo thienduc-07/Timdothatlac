@@ -18,7 +18,7 @@ import numpy as np
 from src.models import Event, TrackObservation, TrackedObject
 from src.utils.logger import get_logger
 from src.utils.text_renderer import draw_text_unicode
-from config.settings import EventStatus, SNAPSHOTS_DIR, CLASS_NAMES_VI
+from config.settings import EventStatus, SNAPSHOTS_DIR, CLASS_NAMES_VI, get_current_time
 
 logger = get_logger(__name__)
 
@@ -87,7 +87,7 @@ class EventManager:
         Tạo mới một sự kiện với ID ổn định.
         """
         event_id = f"EVT_{str(uuid.uuid4())[:8].upper()}"
-        now_iso = datetime.now().isoformat()
+        now_iso = get_current_time().isoformat()
 
         event = Event(
             event_id=event_id,
@@ -169,7 +169,7 @@ class EventManager:
         if old_status == new_status:
             return True
 
-        now_iso = datetime.now().isoformat()
+        now_iso = get_current_time().isoformat()
 
         # Xử lý các logic đặc biệt theo trạng thái đích
         if new_status == EventStatus.SUSPECTED:

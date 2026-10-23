@@ -24,6 +24,8 @@ from config.settings import (
     TELEGRAM_CHAT_ID,
     TELEGRAM_ALERTS_ENABLED,
     TELEGRAM_ALERT_COOLDOWN_SECONDS,
+    get_current_time,
+    APP_TIMEZONE,
 )
 from src.detection.class_mapper import format_seat_label, get_user_facing_label
 from src.models import Alert, Event
@@ -428,13 +430,15 @@ class TelegramNotifier:
         # Thời điểm
         ts_str = alert.created_at or (event.timestamp if event else "")
         if not ts_str:
-            ts_display = datetime.now().strftime("%H:%M:%S %d/%m/%Y")
+            ts_display = get_current_time().strftime("%H:%M:%S %d/%m/%Y")
         else:
             try:
-                dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                dt = datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
+                if dt.tzinfo is not None:
+                    dt = dt.astimezone(APP_TIMEZONE)
                 ts_display = dt.strftime("%H:%M:%S %d/%m/%Y")
             except Exception:
-                ts_display = ts_str
+                ts_display = str(ts_str)
         ts_safe = html.escape(ts_display)
 
         # Trạng thái logic
@@ -501,7 +505,7 @@ class TelegramNotifier:
                 error_type="NOT_CONFIGURED",
             )
 
-        now_sec = datetime.now().timestamp()
+        now_sec = get_current_time().timestamp()
 
         # Kiểm tra Deduplication & Cooldown
         if not force:

@@ -10,6 +10,7 @@ import sqlite3
 import uuid
 
 from src.utils.logger import get_logger
+from config.settings import get_current_time
 
 logger = get_logger(__name__)
 
@@ -32,7 +33,7 @@ class DatasetRepository:
     ) -> str:
         """Thêm một ảnh mới vào dataset."""
         img_id = image_id or f"IMG_{uuid.uuid4().hex[:8].upper()}"
-        now_iso = datetime.now().isoformat()
+        now_iso = get_current_time().isoformat()
         try:
             cursor = self._conn.cursor()
             cursor.execute(
@@ -112,7 +113,7 @@ class DatasetRepository:
             cursor = self._conn.cursor()
             # Xóa các nhãn cũ của ảnh này
             cursor.execute("DELETE FROM annotations WHERE image_id = ?", (image_id,))
-            now_iso = datetime.now().isoformat()
+            now_iso = get_current_time().isoformat()
 
             for ann in annotations:
                 ann_id = ann.get("annotation_id") or f"ANN_{uuid.uuid4().hex[:8].upper()}"

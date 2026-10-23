@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 import sqlite3
 
 from src.utils.logger import get_logger
+from config.settings import get_current_time
 
 logger = get_logger(__name__)
 
@@ -88,7 +89,7 @@ class ModelRepository:
         """Đăng ký một phiên bản model mới."""
         try:
             cursor = self._conn.cursor()
-            now_iso = datetime.now().isoformat()
+            now_iso = get_current_time().isoformat()
             cursor.execute(
                 """
                 INSERT INTO model_versions (
@@ -131,7 +132,7 @@ class ModelRepository:
         """Lưu hoặc cập nhật giá trị cấu hình theo key."""
         try:
             cursor = self._conn.cursor()
-            now_iso = datetime.now().isoformat()
+            now_iso = get_current_time().isoformat()
             cursor.execute(
                 "INSERT OR REPLACE INTO system_config (key, value, updated_at) VALUES (?, ?, ?)",
                 (key, value, now_iso),

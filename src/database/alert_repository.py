@@ -11,6 +11,7 @@ import sqlite3
 
 from src.models import Alert
 from src.utils.logger import get_logger
+from config.settings import get_current_time
 
 logger = get_logger(__name__)
 
@@ -42,7 +43,7 @@ class AlertRepository:
                     alert.status,
                     alert.reason,
                     alert.snapshot_path,
-                    alert.created_at or datetime.now().isoformat(),
+                    alert.created_at or get_current_time().isoformat(),
                     json.dumps(alert.sent_channels),
                 ),
             )
@@ -137,7 +138,7 @@ class AlertRepository:
         """Ghi nhận nhật ký một lần gửi thông báo ra hệ thống bên ngoài."""
         try:
             cursor = self._conn.cursor()
-            now_iso = datetime.now().isoformat()
+            now_iso = get_current_time().isoformat()
             cursor.execute(
                 """
                 INSERT INTO notification_logs (

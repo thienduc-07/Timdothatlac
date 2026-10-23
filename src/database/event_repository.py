@@ -9,6 +9,7 @@ from datetime import datetime
 
 from src.models import Event, AnalysisResult
 from src.utils.logger import get_logger
+from config.settings import get_current_time
 
 logger = get_logger(__name__)
 
@@ -41,7 +42,7 @@ class EventRepository:
                 (
                     analysis_id,
                     result.video_name,
-                    datetime.now().isoformat(),
+                    get_current_time().isoformat(),
                     result.total_frames_processed,
                     result.total_objects_detected,
                     result.total_events_created,

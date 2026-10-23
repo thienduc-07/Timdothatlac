@@ -14,6 +14,15 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 import os
+import time
+
+# Thiết lập múi giờ Việt Nam (Asia/Ho_Chi_Minh - GMT+7) cho toàn bộ ứng dụng
+os.environ["TZ"] = "Asia/Ho_Chi_Minh"
+if hasattr(time, "tzset"):
+    try:
+        time.tzset()
+    except Exception:
+        pass
 
 try:
     from dotenv import load_dotenv
@@ -29,8 +38,8 @@ os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "2")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "2")
 
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple, Union
 import json
-import time
 import cv2
 import numpy as np
 import pandas as pd
@@ -92,6 +101,8 @@ from config.settings import (
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHAT_ID,
     TELEGRAM_ALERTS_ENABLED,
+    get_current_time,
+    APP_TIMEZONE,
 )
 from src.notifications.telegram_notifier import get_telegram_notifier, TelegramNotifier
 
@@ -310,8 +321,21 @@ def safe_process_webcam_frame(service: AnalysisService, **kwargs):
     return service.process_webcam_frame(**kwargs)
 
 
+def format_timestamp_display(ts_str: Optional[str]) -> str:
+    """Chuyển đổi chuỗi ISO timestamp sang hiển thị ngày giờ chuẩn Việt Nam (YYYY-MM-DD HH:MM:SS)."""
+    if not ts_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(APP_TIMEZONE)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return str(ts_str)[:19].replace("T", " ")
+
+
 def render_header(title: str, subtitle: str, mode: str = SystemMode.DEMO, alert_count: int = 0):
-    """Render thanh header chuẩn hóa trên đầu mỗi trang."""
+    """Render thanh header chuẩn hóa trên đầu mỗi trang với đồng hồ múi giờ Việt Nam (GMT+7)."""
     col1, col2 = st.columns([3, 1])
     with col1:
         st.markdown(f"""
@@ -321,7 +345,8 @@ def render_header(title: str, subtitle: str, mode: str = SystemMode.DEMO, alert_
         </div>
         """, unsafe_allow_html=True)
     with col2:
-        now_str = datetime.now().strftime("%H:%M:%S")
+        now_dt = get_current_time()
+        now_str = now_dt.strftime("%H:%M:%S")
         if mode == SystemMode.LIVE:
             mode_badge = '<span class="badge badge-live">● LIVE STREAM</span>'
         elif mode == SystemMode.PROCESSING:
@@ -337,9 +362,40 @@ def render_header(title: str, subtitle: str, mode: str = SystemMode.DEMO, alert_
         st.markdown(f"""
         <div style="text-align: right; padding-top: 4px;">
             {mode_badge}{alert_badge}
-            <div style="font-size: 0.8rem; color: #94A3B8; margin-top: 4px;">⏱️ {now_str}</div>
+            <div style="font-size: 0.8rem; color: #94A3B8; margin-top: 4px;">
+                ⏱️ <span id="header-live-clock" title="Múi giờ Việt Nam (GMT+7)">{now_str}</span>
+            </div>
         </div>
         """, unsafe_allow_html=True)
+
+    # Đồng bộ đồng hồ số nhảy giây trực tiếp (real-time ticking clock) theo múi giờ Việt Nam
+    st.components.v1.html("""
+    <script>
+    (function() {
+        function updateLiveClock() {
+            try {
+                const parentDoc = window.parent.document;
+                const clockEl = parentDoc.getElementById("header-live-clock");
+                if (clockEl) {
+                    const now = new Date();
+                    const timeStr = now.toLocaleTimeString('vi-VN', {
+                        timeZone: 'Asia/Ho_Chi_Minh',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: false
+                    });
+                    clockEl.textContent = timeStr;
+                }
+            } catch(e) {}
+        }
+        updateLiveClock();
+        if (!window._headerClockInterval) {
+            window._headerClockInterval = setInterval(updateLiveClock, 1000);
+        }
+    })();
+    </script>
+    """, height=0, width=0)
     st.markdown("<hr style='margin: 4px 0 16px 0; border-color: #3A506B;'>", unsafe_allow_html=True)
 
 
@@ -619,7 +675,7 @@ def page_dashboard(service: AnalysisService):
                 <div style="background: #141E33; border-left: 4px solid {p_color}; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px;">
                     <div style="display: flex; justify-content: space-between;">
                         <span style="font-weight: 700; color: #F8FAFC;">{alt['alert_id']} • Ghế {alt['seat_id']} ({alt['object_id']})</span>
-                        <span style="font-size: 0.8rem; color: #94A3B8;">{alt['created_at'][:19].replace('T', ' ')}</span>
+                        <span style="font-size: 0.8rem; color: #94A3B8;">{format_timestamp_display(alt.get('created_at', ''))}</span>
                     </div>
                     <div style="font-size: 0.85rem; color: #CBD5E1; margin-top: 4px;">{alt['reason']}</div>
                 </div>
@@ -1174,7 +1230,7 @@ def page_alert_center(service: AnalysisService):
                         </span>
                     </div>
                     <p style="color: #CBD5E1; margin: 8px 0 6px 0; font-size: 0.9rem;"><b>Lý do:</b> {alt['reason']}</p>
-                    <div style="font-size: 0.8rem; color: #94A3B8;">⏱️ Phát hiện lúc: {alt['created_at'][:19].replace('T', ' ')}</div>
+                    <div style="font-size: 0.8rem; color: #94A3B8;">⏱️ Phát hiện lúc: {format_timestamp_display(alt.get('created_at', ''))}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -2157,7 +2213,7 @@ def page_notifications(service: AnalysisService):
         w_url = st.text_input("Webhook URL (Slack, Discord, Server):", value=os.environ.get("WEBHOOK_URL", ""))
         if st.button("🔍 Kiểm tra Webhook"):
             from src.services.notification_service import NotificationService
-            ok, code, msg = NotificationService.send_webhook(w_url, {"event": "test_connection", "time": datetime.now().isoformat()})
+            ok, code, msg = NotificationService.send_webhook(w_url, {"event": "test_connection", "time": get_current_time().isoformat()})
             if ok:
                 st.success(f"✅ {msg} (Mã HTTP: {code})")
             else:

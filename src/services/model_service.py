@@ -19,7 +19,7 @@ import uuid
 
 from src.database.model_repository import ModelRepository
 from src.utils.logger import get_logger
-from config.settings import MODELS_DIR, YOLO_MODEL_NAME, DATA_DIR
+from config.settings import MODELS_DIR, YOLO_MODEL_NAME, DATA_DIR, get_current_time
 
 logger = get_logger(__name__)
 
@@ -256,7 +256,7 @@ class ModelService:
 
         try:
             log_f = open(log_file_path, "w", encoding="utf-8")
-            log_f.write(f"=== TRAINING JOB {job_id} STARTED AT {datetime.now().isoformat()} ===\n")
+            log_f.write(f"=== TRAINING JOB {job_id} STARTED AT {get_current_time().isoformat()} ===\n")
             log_f.write(f"Command: {' '.join(cmd)}\n")
             log_f.write(f"Device: {device} ({hw['device_name']})\n")
             log_f.write(f"Dataset stats: {stats}\n\n")
@@ -276,7 +276,7 @@ class ModelService:
                 "process": proc,
                 "pid": proc.pid,
                 "status": "RUNNING",
-                "start_time": datetime.now().isoformat(),
+                "start_time": get_current_time().isoformat(),
                 "log_file": str(log_file_path),
                 "exp_dir": str(exp_dir),
                 "dataset_yaml": str(dataset_yaml_path),

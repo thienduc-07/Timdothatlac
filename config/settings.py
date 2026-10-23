@@ -5,6 +5,8 @@ Mọi giá trị cấu hình nên được import từ file này thay vì hard-c
 """
 
 import os
+import time
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 # Load environment variables from .env if present (optional)
@@ -14,6 +16,29 @@ try:
 except Exception:
     # dotenv not installed or .env missing – ignore
     pass
+
+# ──────────────────────────────────────────────
+# Múi giờ hệ thống (Timezone Settings)
+# Mặc định: Giờ Việt Nam (Asia/Ho_Chi_Minh - GMT+7)
+# ──────────────────────────────────────────────
+DEFAULT_TIMEZONE_NAME = os.environ.get("APP_TIMEZONE", "Asia/Ho_Chi_Minh")
+os.environ["TZ"] = DEFAULT_TIMEZONE_NAME
+if hasattr(time, "tzset"):
+    try:
+        time.tzset()
+    except Exception:
+        pass
+
+try:
+    from zoneinfo import ZoneInfo
+    APP_TIMEZONE = ZoneInfo(DEFAULT_TIMEZONE_NAME)
+except Exception:
+    APP_TIMEZONE = timezone(timedelta(hours=7))
+
+
+def get_current_time() -> datetime:
+    """Trả về datetime hiện tại chuẩn theo múi giờ hệ thống (mặc định GMT+7 Việt Nam)."""
+    return datetime.now(APP_TIMEZONE)
 
 # ──────────────────────────────────────────────
 # Đường dẫn gốc của dự án
