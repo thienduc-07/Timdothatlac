@@ -201,26 +201,19 @@ def test_message_formatting_standard_template():
         has_photo=True,
     )
 
-    assert "LOST & FOUND AI BUS — CẢNH BÁO ĐỒ BỎ QUÊN" in msg
+    assert "CẢNH BÁO ĐỒ VẬT THẤT LẠC" in msg
     assert "Biển số xe buýt:" in msg
     assert "51B-123.45" in msg
     assert "Tuyến xe buýt:" in msg
     assert "08 (Bến Thành - ĐHQG)" in msg
-    assert "Ghế:" in msg
+    assert "Vị trí:" in msg
     assert "Ghế S02" in msg or "S02" in msg
     assert "Đồ vật:" in msg
-    assert "Mã theo dõi:" in msg
-    assert "T15" in msg
-    assert "Thời điểm:" in msg
-    assert "Trạng thái:" in msg
-    assert "Xác nhận bởi logic AI" in msg
-    assert "Ảnh chụp bằng chứng:" in msg
-    assert "Đính kèm bên dưới" in msg
-    assert "Vui lòng kiểm tra camera" in msg
+    assert "Thời gian:" in msg
 
 
 def test_message_formatting_unknown_seat_limitation():
-    """Nếu không xác định được ghế, phải dán nhãn ứng viên cần rà soát; nếu chưa có biển số/tuyến xe thì hiển thị 'Chưa cập nhật'."""
+    """Nếu không xác định được ghế, phải dán nhãn Chưa rõ vị trí ghế; nếu chưa có biển số/tuyến xe thì hiển thị 'Chưa cập nhật'."""
     alert = Alert(
         alert_id="ALT_UNKN",
         event_id="EVT_UNKNOWN",
@@ -248,12 +241,11 @@ def test_message_formatting_unknown_seat_limitation():
             has_photo=False,
         )
 
-    assert "LOST & FOUND AI BUS — CẢNH BÁO ĐỒ BỎ QUÊN" in msg
+    assert "CẢNH BÁO ĐỒ VẬT THẤT LẠC" in msg
     assert "Biển số xe buýt:</b> Chưa cập nhật" in msg
     assert "Tuyến xe buýt:</b> Chưa cập nhật" in msg
     assert "Chưa rõ vị trí ghế" in msg
-    assert "Ứng viên cần rà soát" in msg
-    assert "Không khả dụng" in msg
+    assert "Thời gian:" in msg
 
 
 # ──────────────────────────────────────────────

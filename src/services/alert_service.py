@@ -204,32 +204,60 @@ class AlertService:
         )
 
         # 1. Kênh Telegram
-        # Nếu không truyền cấu hình riêng, tự động dùng biến môi trường hệ thống
+        notifier = get_telegram_notifier()
         t_cfg = telegram_config
-        if t_cfg is None:
-            t_cfg = {
-                "enabled": TELEGRAM_ALERTS_ENABLED,
-                "bot_token": TELEGRAM_BOT_TOKEN,
-                "chat_id": TELEGRAM_CHAT_ID,
-                "bus_license_plate": BUS_LICENSE_PLATE,
-                "bus_route": BUS_ROUTE,
-            }
 
-        if t_cfg and t_cfg.get("enabled", True):
-            token = (t_cfg.get("bot_token") or TELEGRAM_BOT_TOKEN or "").strip()
-            chat_id = (t_cfg.get("chat_id") or TELEGRAM_CHAT_ID or "").strip()
-            cfg_plate = (t_cfg.get("bus_license_plate") if "bus_license_plate" in t_cfg else os.environ.get("BUS_LICENSE_PLATE", BUS_LICENSE_PLATE) or "").strip()
-            cfg_route = (t_cfg.get("bus_route") if "bus_route" in t_cfg else os.environ.get("BUS_ROUTE", BUS_ROUTE) or "").strip()
+        token = (
+            (t_cfg.get("bot_token") if t_cfg and t_cfg.get("bot_token") else None)
+            or os.environ.get("TELEGRAM_BOT_TOKEN")
+            or getattr(notifier, "bot_token", "")
+            or TELEGRAM_BOT_TOKEN
+            or ""
+        ).strip()
+        chat_id = (
+            (t_cfg.get("chat_id") if t_cfg and t_cfg.get("chat_id") else None)
+            or os.environ.get("TELEGRAM_CHAT_ID")
+            or getattr(notifier, "chat_id", "")
+            or TELEGRAM_CHAT_ID
+            or ""
+        ).strip()
 
-            notifier = get_telegram_notifier()
-            if token and notifier.bot_token != token:
-                notifier.bot_token = token
-            if chat_id and notifier.chat_id != chat_id:
-                notifier.chat_id = chat_id
-            if cfg_plate:
-                notifier.bus_license_plate = cfg_plate
-            if cfg_route:
-                notifier.bus_route = cfg_route
+        is_enabled = (
+            t_cfg.get("enabled")
+            if (t_cfg and "enabled" in t_cfg)
+            else (
+                os.environ.get("TELEGRAM_ALERTS_ENABLED", "").lower() in ("true", "1", "yes")
+                if os.environ.get("TELEGRAM_ALERTS_ENABLED")
+                else TELEGRAM_ALERTS_ENABLED
+            )
+        )
+
+        cfg_plate = (
+            (t_cfg.get("bus_license_plate") if t_cfg and t_cfg.get("bus_license_plate") else None)
+            or os.environ.get("BUS_LICENSE_PLATE")
+            or getattr(notifier, "bus_license_plate", "")
+            or BUS_LICENSE_PLATE
+            or ""
+        ).strip()
+
+        cfg_route = (
+            (t_cfg.get("bus_route") if t_cfg and t_cfg.get("bus_route") else None)
+            or os.environ.get("BUS_ROUTE")
+            or getattr(notifier, "bus_route", "")
+            or BUS_ROUTE
+            or ""
+        ).strip()
+
+        if token and notifier.bot_token != token:
+            notifier.bot_token = token
+        if chat_id and notifier.chat_id != chat_id:
+            notifier.chat_id = chat_id
+        if cfg_plate:
+            notifier.bus_license_plate = cfg_plate
+        if cfg_route:
+            notifier.bus_route = cfg_route
+
+        if is_enabled:
 
             if not notifier.is_configured():
                 logger.warning("Telegram chưa được cấu hình đầy đủ Bot Token hoặc Chat ID")

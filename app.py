@@ -443,8 +443,33 @@ st.markdown(f"""
         }}
     }}
 
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label {{
-        position: relative;
+    /* ── Hide native radio circle indicator across all Streamlit / BaseWeb DOM variations ── */
+    section[data-testid="stSidebar"] [data-testid="stRadio"] label > div:first-child,
+    section[data-testid="stSidebar"] [data-testid="stRadio"] div[data-baseweb="radio"] > div:first-child,
+    section[data-testid="stSidebar"] [data-testid="stRadio"] input[type="radio"],
+    section[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child,
+    section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"],
+    section[data-testid="stSidebar"] div[data-baseweb="radio"] > label > div:first-child {{
+        display: none !important;
+    }}
+
+    /* Reset BaseWeb radio item container */
+    section[data-testid="stSidebar"] [data-testid="stRadio"] div[data-baseweb="radio"],
+    section[data-testid="stSidebar"] div[role="radiogroup"] div[data-baseweb="radio"] {{
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }}
+
+    /* Navigation Item: Premium Pill Card */
+    section[data-testid="stSidebar"] [data-testid="stRadio"] label,
+    section[data-testid="stSidebar"] div[role="radiogroup"] label {{
+        display: flex !important;
+        align-items: center !important;
+        position: relative !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
         background: rgba(15, 23, 42, 0.45) !important;
         border: 1px solid rgba(255, 255, 255, 0.06) !important;
         border-radius: 8px !important;
@@ -459,48 +484,75 @@ st.markdown(f"""
         opacity: 0;
     }}
 
-    /* Sequential Stagger: ~60ms step across 9 destinations */
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(1) {{ animation-delay: 0.04s; }}
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(2) {{ animation-delay: 0.10s; }}
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(3) {{ animation-delay: 0.16s; }}
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(4) {{ animation-delay: 0.22s; }}
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(5) {{ animation-delay: 0.28s; }}
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(6) {{ animation-delay: 0.34s; }}
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(7) {{ animation-delay: 0.40s; }}
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(8) {{ animation-delay: 0.46s; }}
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:nth-child(9) {{ animation-delay: 0.52s; }}
+    /* Sequential Stagger: ~60ms step across navigation items */
+    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(1) label,
+    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(1) {{ animation-delay: 0.04s; }}
+    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(2) label,
+    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(2) {{ animation-delay: 0.10s; }}
+    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(3) label,
+    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(3) {{ animation-delay: 0.16s; }}
+    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(4) label,
+    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(4) {{ animation-delay: 0.22s; }}
+    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(5) label,
+    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(5) {{ animation-delay: 0.28s; }}
+    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(6) label,
+    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(6) {{ animation-delay: 0.34s; }}
+    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(7) label,
+    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(7) {{ animation-delay: 0.40s; }}
+    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(8) label,
+    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(8) {{ animation-delay: 0.46s; }}
+    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(9) label,
+    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(9) {{ animation-delay: 0.52s; }}
 
-    /* Hover state: tactile slide & graphite glow */
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:not(:has(input:checked)):hover {{
+    /* Hover state: tactile slide & cyan border */
+    section[data-testid="stSidebar"] [data-testid="stRadio"] label:not(:has(input:checked)):hover,
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:not(:has(input:checked)):hover {{
         background: rgba(30, 41, 59, 0.6) !important;
         border-color: rgba(56, 189, 248, 0.3) !important;
         transform: translateX(4px) !important;
     }}
 
     /* Keyboard focus state (WCAG accessible) */
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:focus-within,
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:focus-visible {{
+    section[data-testid="stSidebar"] [data-testid="stRadio"] label:focus-within,
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:focus-within {{
         outline: 2px solid #00E5FF !important;
         outline-offset: 2px !important;
     }}
 
     /* Active destination: Linear-style restrained cyan accent & ambient glow */
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"],
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {{
+    section[data-testid="stSidebar"] [data-testid="stRadio"] label[data-checked="true"],
+    section[data-testid="stSidebar"] [data-testid="stRadio"] label[aria-checked="true"],
+    section[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked),
+    section[data-testid="stSidebar"] [data-testid="stRadio"] div[data-checked="true"] label,
+    section[data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"],
+    section[data-testid="stSidebar"] div[role="radiogroup"] label[aria-checked="true"],
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked),
+    section[data-testid="stSidebar"] div[role="radiogroup"] div[data-checked="true"] label {{
         background: linear-gradient(90deg, rgba(14, 165, 233, 0.16) 0%, rgba(15, 23, 42, 0.75) 100%) !important;
         border-color: rgba(56, 189, 248, 0.55) !important;
         border-left: 3px solid #00E5FF !important;
         box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), 0 0 16px rgba(0, 229, 255, 0.1) !important;
     }}
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) p,
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] p {{
+
+    section[data-testid="stSidebar"] [data-testid="stRadio"] label p,
+    section[data-testid="stSidebar"] div[role="radiogroup"] label p {{
+        margin: 0 !important;
+        font-size: 0.92rem !important;
+        color: #E2E8F0 !important;
+        letter-spacing: 0.2px !important;
+    }}
+    section[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) p,
+    section[data-testid="stSidebar"] [data-testid="stRadio"] div[data-checked="true"] label p,
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p,
+    section[data-testid="stSidebar"] div[role="radiogroup"] div[data-checked="true"] p {{
         color: #38BDF8 !important;
         font-weight: 600 !important;
     }}
 
     /* Touch device optimization */
     @media (hover: none) {{
-        section[data-testid="stSidebar"] div[role="radiogroup"] > label:not(:has(input:checked)):hover {{
+        section[data-testid="stSidebar"] [data-testid="stRadio"] label:not(:has(input:checked)):hover,
+        section[data-testid="stSidebar"] div[role="radiogroup"] label:not(:has(input:checked)):hover {{
             transform: none !important;
         }}
     }}

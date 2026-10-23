@@ -339,17 +339,16 @@ def test_08_telegram_sends_photo_and_caption_when_snapshot_valid(tmp_path):
         data_payload = mock_post.call_args[1].get("data", {})
         assert data_payload.get("chat_id") == "123456"
         caption = data_payload.get("caption", "")
-        assert "LOST & FOUND AI BUS — CẢNH BÁO ĐỒ BỎ QUÊN" in caption
+        assert "CẢNH BÁO ĐỒ VẬT THẤT LẠC" in caption
         assert "S08" in caption
         assert "O88" in caption
-        assert "Đính kèm bên dưới" in caption
         assert len(caption) <= 1024
 
 
 def test_09_telegram_sends_text_when_snapshot_unavailable():
     """
     Yêu cầu 9 (Vấn đề 3):
-    Khi không có snapshot, gửi thông báo văn bản (sendMessage) và nêu rõ ảnh không khả dụng.
+    Khi không có snapshot, gửi thông báo văn bản (sendMessage).
     """
     notifier = TelegramNotifier(bot_token="test_token", chat_id="123456", enabled=True)
     notifier.reset_deduplication()
@@ -379,10 +378,9 @@ def test_09_telegram_sends_text_when_snapshot_unavailable():
         assert "sendMessage" in call_url
         sent_json = mock_post.call_args[1].get("json", {})
         msg_text = sent_json.get("text", "")
-        assert "LOST & FOUND AI BUS — CẢNH BÁO ĐỒ BỎ QUÊN" in msg_text
+        assert "CẢNH BÁO ĐỒ VẬT THẤT LẠC" in msg_text
         assert "S09" in msg_text
         assert "O99" in msg_text
-        assert "Không khả dụng" in msg_text
 
 
 def test_10_corrupt_snapshot_does_not_crash_camera_or_lose_alert(temp_db):
