@@ -67,8 +67,8 @@ class TelegramNotifier:
         enabled: Optional[bool] = None,
         cooldown_seconds: Optional[float] = None,
     ):
-        self._bot_token = (bot_token or TELEGRAM_BOT_TOKEN or "").strip()
-        self._chat_id = (chat_id or TELEGRAM_CHAT_ID or "").strip()
+        self._bot_token = (bot_token if bot_token is not None else (TELEGRAM_BOT_TOKEN or "")).strip()
+        self._chat_id = (chat_id if chat_id is not None else (TELEGRAM_CHAT_ID or "")).strip()
         self._enabled = enabled if enabled is not None else TELEGRAM_ALERTS_ENABLED
         self._cooldown_seconds = (
             cooldown_seconds if cooldown_seconds is not None else TELEGRAM_ALERT_COOLDOWN_SECONDS
@@ -144,8 +144,8 @@ class TelegramNotifier:
         Kiểm tra thông tin token và kết nối mạng bằng API getMe của Telegram.
         Nếu có chat_id, gửi 1 tin nhắn kiểm tra.
         """
-        token = (bot_token or self._bot_token or "").strip()
-        target_chat = (chat_id or self._chat_id or "").strip()
+        token = (bot_token if bot_token is not None else self._bot_token).strip()
+        target_chat = (chat_id if chat_id is not None else self._chat_id).strip()
 
         if not token:
             return False, "Chưa cấu hình Telegram Bot Token (vui lòng kiểm tra file .env)"
@@ -196,8 +196,8 @@ class TelegramNotifier:
         timeout: Tuple[float, float] = (5.0, 10.0),
     ) -> TelegramResponse:
         """Gửi tin nhắn văn bản (HTML) qua Telegram API."""
-        token = (bot_token or self._bot_token or "").strip()
-        target_chat = (chat_id or self._chat_id or "").strip()
+        token = (bot_token if bot_token is not None else self._bot_token).strip()
+        target_chat = (chat_id if chat_id is not None else self._chat_id).strip()
 
         if not token:
             return TelegramResponse(
@@ -296,8 +296,8 @@ class TelegramNotifier:
         timeout: Tuple[float, float] = (8.0, 20.0),
     ) -> TelegramResponse:
         """Gửi ảnh chụp bằng chứng kèm chú thích qua Telegram sendPhoto API."""
-        token = (bot_token or self._bot_token or "").strip()
-        target_chat = (chat_id or self._chat_id or "").strip()
+        token = (bot_token if bot_token is not None else self._bot_token).strip()
+        target_chat = (chat_id if chat_id is not None else self._chat_id).strip()
 
         if not token or not target_chat:
             return TelegramResponse(

@@ -111,9 +111,38 @@ st.set_page_config(
 st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
 
-    html, body, [class*="css"], .stMarkdown, .stText, h1, h2, h3, h4, h5, h6, p, div, span, label, button {{
-        font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+    html, body, .stApp {{
+        font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }}
+
+    .stMarkdown, .stText, h1, h2, h3, h4, h5, h6, p, label, button, input, select, textarea {{
+        font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }}
+
+    /* Đảm bảo giữ nguyên font icon Material Symbols cho mọi icon trong Streamlit (mũi tên expander, radio, button...) */
+    [data-testid*="Icon"],
+    [data-testid*="icon"],
+    [data-testid="stExpanderToggleIcon"],
+    [data-testid="stIconMaterial"],
+    [class*="material-symbols"],
+    [class*="material-icons"],
+    .material-symbols-rounded,
+    .material-symbols-outlined,
+    .material-icons {{
+        font-family: 'Material Symbols Rounded', 'Material Symbols Outlined', 'Material Icons' !important;
+        font-weight: normal !important;
+        font-style: normal !important;
+        line-height: 1 !important;
+        letter-spacing: normal !important;
+        text-transform: none !important;
+        display: inline-block !important;
+        white-space: nowrap !important;
+        word-wrap: normal !important;
+        direction: ltr !important;
+        -webkit-font-feature-settings: 'liga' !important;
+        -webkit-font-smoothing: antialiased !important;
     }}
 
     /* Dark Navy Theme Variables */
@@ -968,14 +997,6 @@ def page_camera_monitor(service: AnalysisService):
             if is_running:
                 if suspected_cnt > 0:
                     st.error(f"⚠️ **CẢNH BÁO BỎ QUÊN:** Phát hiện {suspected_cnt} đồ vật cá nhân bị bỏ lại trên ghế trống! Hãy kiểm tra khoang hành khách.")
-
-            with st.expander("ℹ️ Hướng dẫn cấp quyền Webcam & Khắc phục sự cố khi truy cập từ thiết bị khác", expanded=False):
-                st.markdown("""
-                - **Cấp quyền truy cập:** Khi nhấn `📷 BẬT CAMERA`, trình duyệt sẽ hiển thị thông báo xin cấp quyền Camera. Hãy bấm **'Allow' (Cho phép)**.
-                - **Nếu bị chặn quyền (NotAllowedError):** Bấm biểu tượng ổ khóa hoặc camera trên thanh địa chỉ URL của trình duyệt > Chuyển Camera sang **'Cho phép' (Allow)** > Tải lại trang (F5).
-                - **Trên điện thoại (Safari iOS / Chrome Android):** Trình duyệt yêu cầu kết nối bảo mật HTTPS để mở camera (Streamlit Cloud có chứng chỉ HTTPS bảo mật sẵn sàng).
-                - **Độc lập 24/7:** Hệ thống chạy trực tiếp trên thiết bị của bạn, hoàn toàn không phụ thuộc vào máy tính hay terminal của người phát triển.
-                """)
 
             # Tùy chọn dự phòng: WebRTC Streamer cho các thiết bị cũ không hỗ trợ WebAssembly/WebGPU
             with st.expander("🛠️ Dự phòng máy chủ: Server WebRTC Streamer (Dành cho trình duyệt cũ)", expanded=False):
@@ -2114,28 +2135,6 @@ def page_notifications(service: AnalysisService):
                             st.error(f"❌ Gửi cảnh báo thất bại: {tg_log.get('error_message', 'Lỗi không xác định')}")
                         else:
                             st.success(f"✅ Đã gửi lệnh cảnh báo `{alt.alert_id}` tới Bot! Hãy kiểm tra tin nhắn Telegram.")
-
-        with st.expander("📖 Hướng dẫn chi tiết: Cách kết nối Bot & Lấy Chat ID qua Telegram", expanded=not is_cfg):
-            st.markdown("""
-            **Quy trình 5 bước để nhận cảnh báo qua Telegram:**
-            1. **Mở Bot Telegram:** Truy cập liên kết [https://t.me/DucLostFoundAIBot](https://t.me/DucLostFoundAIBot) trên điện thoại hoặc máy tính.
-            2. **Bắt đầu trò chuyện:** Nhấn nút **'Start'** (hoặc gửi tin nhắn `/start`) để cấp quyền cho bot gửi tin nhắn tới bạn.
-            3. **Lấy Numeric Chat ID an toàn:** Mở Terminal tại thư mục dự án và chạy lệnh:
-               ```bash
-               python scripts/get_telegram_chat_id.py
-               ```
-               Script sẽ tự động kết nối qua Bot API và hiển thị `TELEGRAM_CHAT_ID` của bạn mà không làm lộ token.
-            4. **Lưu cấu hình vào file `.env`:**
-               Thêm 2 dòng sau vào file `.env` ở thư mục gốc:
-               ```env
-               TELEGRAM_BOT_TOKEN=your_token_here
-               TELEGRAM_CHAT_ID=your_chat_id_here
-               TELEGRAM_ALERTS_ENABLED=true
-               ```
-            5. **Khởi động lại ứng dụng:** Nhấn `R` trên Streamlit hoặc chạy lại `streamlit run app.py` để nạp cấu hình mới.
-
-            *Lưu ý bảo mật: File `.env` đã được đưa vào `.gitignore`, tuyệt đối không commit token hoặc chat ID lên Git/GitHub!*
-            """)
 
     with tab_email:
         st.markdown("##### Cấu hình Email SMTP:")
