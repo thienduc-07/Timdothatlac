@@ -48,6 +48,7 @@ class AlertService:
         telegram_config: Optional[Dict] = None,
         email_config: Optional[Dict] = None,
         webhook_config: Optional[Dict] = None,
+        is_test: bool = False,
     ) -> Optional[Alert]:
         """
         Đánh giá sự kiện theo quy tắc:
@@ -58,6 +59,26 @@ class AlertService:
         """
         if event.status not in ("suspected", "review_required"):
             return None
+
+        # Kiểm tra xem đã có Alert đang hoạt động (PENDING) hoặc đã xử lý cho đối tượng/ghế này chưa
+        obj_id = f"O{event.last_track_id if event.last_track_id != -1 else event.track_id}"
+        if self._repo and hasattr(self._repo, "has_active_or_handled_alert"):
+            try:
+                chk = self._repo.has_active_or_handled_alert(
+                    event_id=event.event_id or "",
+                    seat_id=event.seat_id or "",
+                    object_id=obj_id,
+                )
+                if isinstance(chk, tuple) and len(chk) == 2:
+                    has_existing, existing_status = chk
+                    if has_existing:
+                        logger.info(
+                            f"Bỏ qua tạo Alert cho event {event.event_id} ({event.seat_id}, {obj_id}): "
+                            f"Đã tồn tại Alert với trạng thái '{existing_status}'"
+                        )
+                        return None
+            except Exception as e:
+                logger.debug(f"Không thể kiểm tra alert trùng lặp: {e}")
 
         # Key định danh duy nhất cho ghế và loại vật thể
         cooldown_key = f"{event.seat_id}_{event.class_name}_{event.last_track_id}"
@@ -84,7 +105,7 @@ class AlertService:
             alert_id=alert_id,
             event_id=event.event_id or f"EVT_{event.track_id}",
             seat_id=event.seat_id or "Chưa rõ",
-            object_id=f"O{event.last_track_id if event.last_track_id != -1 else event.track_id}",
+            object_id=obj_id,
             person_id="",
             priority=priority,
             status=AlertStatus.PENDING,
@@ -94,20 +115,52 @@ class AlertService:
             sent_channels=[NotificationChannel.IN_APP],
         )
 
-        # Lưu Alert vào DB
+        # Lưu Alert vào DB trước khi dispatch để đảm bảo không bị mất cảnh báo
         if self._repo:
             self._repo.save_alert(alert)
 
-        # Điều phối gửi thông báo đa kênh
-        self._dispatch_notifications(
-            alert=alert,
-            event=event,
-            telegram_config=telegram_config,
-            email_config=email_config,
-            webhook_config=webhook_config,
-        )
+        # Điều phối gửi thông báo đa kênh an toàn (lỗi gửi thông báo không làm mất Alert)
+        try:
+            self._dispatch_notifications(
+                alert=alert,
+                event=event,
+                telegram_config=telegram_config,
+                email_config=email_config,
+                webhook_config=webhook_config,
+                is_test=is_test,
+            )
+        except Exception as exc:
+            logger.error(f"Lỗi khi điều phối gửi thông báo cho Alert {alert.alert_id}: {exc}")
 
         return alert
+
+    def update_alert_status(
+        self,
+        alert_id: str,
+        new_status: str,
+        resolution_type: Optional[str] = None,
+    ) -> bool:
+        """Cập nhật trạng thái một alert trong database."""
+        if self._repo:
+            return self._repo.update_alert_status(alert_id, new_status, resolution_type=resolution_type)
+        return False
+
+    def delete_alert_permanently(self, alert_id: str) -> bool:
+        """Xóa vĩnh viễn alert khỏi database (yêu cầu người dùng xác nhận)."""
+        if self._repo:
+            return self._repo.delete_alert_permanently(alert_id)
+        return False
+
+    def get_recent_alerts(
+        self,
+        limit: int = 50,
+        status: Optional[str] = None,
+        active_only: bool = False,
+    ) -> List[Dict]:
+        """Lấy danh sách cảnh báo từ repository."""
+        if self._repo:
+            return self._repo.get_recent_alerts(limit=limit, status=status, active_only=active_only)
+        return []
 
     def _dispatch_notifications(
         self,

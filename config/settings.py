@@ -272,8 +272,11 @@ class AlertPriority:
 
 class AlertStatus:
     PENDING = "PENDING"
+    ACTIVE = "PENDING"
     CONFIRMED = "CONFIRMED"
     DISMISSED = "DISMISSED"
+    ITEM_RETRIEVED = "ITEM_RETRIEVED"
+    FALSE_POSITIVE = "FALSE_POSITIVE"
     RESOLVED = "RESOLVED"
 
 # Kênh thông báo

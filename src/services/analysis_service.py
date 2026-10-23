@@ -568,17 +568,38 @@ class AnalysisService:
 
     # ──────────────────────────────────────────────
     # Alert & Notification Delegators
-    # ──────────────────────────────────────────────
-    def get_recent_alerts(self, limit: int = 50, status: Optional[str] = None) -> List[Dict]:
+    def get_recent_alerts(
+        self,
+        limit: int = 50,
+        status: Optional[str] = None,
+        active_only: bool = False,
+    ) -> List[Dict]:
         """Lấy danh sách các Alert gần nhất."""
         if self._alert_repo:
-            return self._alert_repo.get_recent_alerts(limit=limit, status=status)
+            return self._alert_repo.get_recent_alerts(limit=limit, status=status, active_only=active_only)
         return []
 
-    def update_alert_status(self, alert_id: str, new_status: str) -> bool:
-        """Cập nhật trạng thái alert (PENDING, CONFIRMED, DISMISSED, RESOLVED)."""
+    def update_alert_status(
+        self,
+        alert_id: str,
+        new_status: str,
+        resolution_type: Optional[str] = None,
+        resolved_at: Optional[str] = None,
+    ) -> bool:
+        """Cập nhật trạng thái alert (PENDING, CONFIRMED, DISMISSED, ITEM_RETRIEVED, FALSE_POSITIVE)."""
         if self._alert_repo:
-            return self._alert_repo.update_alert_status(alert_id, new_status)
+            return self._alert_repo.update_alert_status(
+                alert_id,
+                new_status,
+                resolution_type=resolution_type,
+                resolved_at=resolved_at,
+            )
+        return False
+
+    def delete_alert_permanently(self, alert_id: str) -> bool:
+        """Xóa vĩnh viễn Alert khỏi database."""
+        if self._alert_repo:
+            return self._alert_repo.delete_alert_permanently(alert_id)
         return False
 
     def get_unresolved_alert_count(self) -> int:
@@ -646,7 +667,16 @@ class AnalysisService:
         Cầu nối sự kiện: Tiếp nhận danh sách đồ vật nghi bị bỏ quên từ Browser-Native Camera (WASM/WebGPU),
         đồng bộ hóa sang mô hình Event của backend, ghi nhận Database và kích hoạt Alert Service gửi Telegram.
         """
-        if not suspected_items or not self._alert_service:
+        if not suspected_items:
+            return []
+
+        # Tự động khởi tạo nếu chưa sẵn sàng
+        if not self._alert_service or not self._repo:
+            logger.info("[Browser Camera] Khởi tạo các repository và dịch vụ phân tích...")
+            self.initialize()
+
+        if not self._alert_service:
+            logger.error("[Browser Camera] Lỗi: Không thể khởi tạo AlertService để tiếp nhận sự kiện")
             return []
 
         import base64
@@ -656,21 +686,50 @@ class AnalysisService:
         from src.detection.class_mapper import get_user_facing_label
         from src.models import Event
 
-        saved_snapshot_path = None
-        if snapshot_base64 and isinstance(snapshot_base64, str):
+        logger.info(
+            f"[Browser Camera] Nhận được {len(suspected_items)} đồ vật nghi bị bỏ quên từ camera '{camera_name}'"
+        )
+
+        def _safe_decode_and_save_snapshot(b64_str: Optional[str], track_ident: Any) -> Optional[str]:
+            """Giải mã an toàn snapshot base64 và lưu vào thư mục SNAPSHOTS_DIR."""
+            if not b64_str or not isinstance(b64_str, str):
+                return None
             try:
-                clean_b64 = snapshot_base64
+                clean_b64 = b64_str
                 if "," in clean_b64:
                     clean_b64 = clean_b64.split(",", 1)[1]
-                img_data = base64.b64decode(clean_b64)
-                if img_data:
-                    ts_now = int(time.time() * 1000)
-                    snap_file = SNAPSHOTS_DIR / f"browser_cam_{ts_now}.jpg"
-                    with open(snap_file, "wb") as f:
-                        f.write(img_data)
-                    saved_snapshot_path = str(snap_file)
+                clean_b64 = clean_b64.strip()
+                if not clean_b64:
+                    return None
+                # Giới hạn kích thước tối đa 10MB
+                if len(clean_b64) > 14 * 1024 * 1024:
+                    logger.warning(f"[Browser Camera] Snapshot vượt quá giới hạn 10MB cho track {track_ident}")
+                    return None
+                img_bytes = base64.b64decode(clean_b64, validate=True)
+                if len(img_bytes) < 16:
+                    logger.warning(f"[Browser Camera] Snapshot quá nhỏ ({len(img_bytes)} bytes) cho track {track_ident}")
+                    return None
+                # Kiểm tra magic bytes
+                is_jpeg = img_bytes.startswith(b"\xff\xd8\xff")
+                is_png = img_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+                is_webp = img_bytes.startswith(b"RIFF") and b"WEBP" in img_bytes[:16]
+                if not (is_jpeg or is_png or is_webp):
+                    logger.warning(f"[Browser Camera] Định dạng ảnh không hợp lệ (không phải JPEG/PNG/WebP) cho track {track_ident}")
+                    return None
+
+                ext = ".jpg" if is_jpeg else (".png" if is_png else ".webp")
+                ts_now = int(time.time() * 1000)
+                SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+                snap_file = SNAPSHOTS_DIR / f"browser_cam_{ts_now}_{track_ident}{ext}"
+                with open(snap_file, "wb") as f:
+                    f.write(img_bytes)
+                return str(snap_file)
             except Exception as e:
-                logger.warning(f"Không thể lưu snapshot từ browser camera: {e}")
+                logger.warning(f"[Browser Camera] Lỗi giải mã snapshot cho track {track_ident}: {e}")
+                return None
+
+        # Giải mã ảnh chụp khung hình chung nếu có
+        global_saved_snapshot = _safe_decode_and_save_snapshot(snapshot_base64, "global")
 
         alerts = []
         now_ts = time.time()
@@ -682,6 +741,7 @@ class AnalysisService:
             class_name = item.get("class_name") or "item"
             confidence = float(item.get("confidence", 0.8))
             status_str = str(item.get("status") or "SUSPECTED").upper()
+            vacant_dur = float(item.get("vacant_duration", 5.0))
 
             seat_suffix = seat_id if seat_id and seat_id.lower() not in ("chưa rõ", "none", "unknown_seat") else "NOSEAT"
             evt_id = f"EVT_BROWSER_{track_id}_{seat_suffix}"
@@ -695,6 +755,20 @@ class AnalysisService:
             vi_name = get_user_facing_label(class_name)
             reason = f"Phát hiện vật thể {vi_name} bị bỏ lại trên ghế trống {seat_display}"
 
+            # Ưu tiên lấy snapshot gắn trực tiếp với chính item đó
+            item_b64 = item.get("snapshot_base64")
+            item_snapshot_path = None
+            if item_b64:
+                item_snapshot_path = _safe_decode_and_save_snapshot(item_b64, track_id)
+
+            chosen_snapshot = item_snapshot_path or global_saved_snapshot or ""
+
+            logger.info(
+                f"[Browser Camera] Xử lý item: track_id={track_id}, seat={seat_display}, "
+                f"class={class_name}, conf={confidence:.2f}, vacant_duration={vacant_dur:.1f}s, "
+                f"has_snapshot={bool(chosen_snapshot)}"
+            )
+
             evt = Event(
                 event_id=evt_id,
                 track_id=numeric_track_id,
@@ -704,9 +778,9 @@ class AnalysisService:
                 status=EventStatus.SUSPECTED if status_str == "SUSPECTED" else EventStatus.REVIEW_REQUIRED,
                 confidence=confidence,
                 notes=reason,
-                snapshot_path=saved_snapshot_path or "",
+                snapshot_path=chosen_snapshot,
                 timestamp=now_iso,
-                vacant_duration=float(item.get("vacant_duration", 5.0)),
+                vacant_duration=vacant_dur,
                 video_name=camera_name,
             )
             setattr(evt, "reason", reason)
@@ -714,15 +788,23 @@ class AnalysisService:
             if self._repo:
                 try:
                     self._repo.save_event(evt, analysis_id="browser_live_camera")
+                    logger.info(f"[Browser Camera] Đã lưu Event {evt_id} vào database")
                 except Exception as ex:
-                    logger.debug(f"Lưu event vào database: {ex}")
+                    logger.warning(f"[Browser Camera] Lỗi khi lưu Event {evt_id}: {ex}")
 
             alert = self._alert_service.process_event_for_alert(
                 event=evt,
                 current_time_sec=now_ts,
             )
             if alert:
+                logger.info(
+                    f"[Browser Camera] Đã tạo thành công Alert {alert.alert_id} cho Event {evt_id} (Priority: {alert.priority})"
+                )
                 alerts.append(alert)
+            else:
+                logger.info(
+                    f"[Browser Camera] Không tạo Alert mới cho item {track_id} (Đã có cảnh báo tồn tại hoặc trong cooldown)"
+                )
 
         return alerts
 

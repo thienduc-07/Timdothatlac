@@ -1308,29 +1308,66 @@ def page_alert_center(service: AnalysisService):
             st.success("Đã phát chuông audio!")
 
     # Bộ lọc trạng thái Alert
+    filter_options = [
+        "🔴 Cảnh báo đang hoạt động (Active)",
+        "✅ Đã xác nhận đúng (CONFIRMED)",
+        "🎒 Đồ vật đã được lấy (ITEM_RETRIEVED)",
+        "❌ Tin giả / Báo sai (FALSE_POSITIVE)",
+        "⏹️ Đã loại bỏ (DISMISSED)",
+        "📜 Toàn bộ lịch sử cảnh báo (Tất cả)",
+    ]
+
     filter_status = st.selectbox(
         "Lọc theo trạng thái:",
-        ["Tất cả", "PENDING (Chờ xử lý)", "CONFIRMED (Đã xác nhận)", "REVIEW_REQUIRED (Cần duyệt)", "DISMISSED (Đã loại bỏ)"],
+        filter_options,
+        index=0,
     )
 
     status_query = None
-    if "PENDING" in filter_status:
+    active_only = False
+    if "Active" in filter_status:
+        active_only = True
         status_query = "PENDING"
     elif "CONFIRMED" in filter_status:
         status_query = "CONFIRMED"
-    elif "REVIEW_REQUIRED" in filter_status:
-        status_query = "REVIEW_REQUIRED"
+    elif "ITEM_RETRIEVED" in filter_status:
+        status_query = "ITEM_RETRIEVED"
+    elif "FALSE_POSITIVE" in filter_status:
+        status_query = "FALSE_POSITIVE"
     elif "DISMISSED" in filter_status:
         status_query = "DISMISSED"
+    else:
+        status_query = None
 
-    alerts = service.get_recent_alerts(limit=50, status=status_query)
+    alerts = service.get_recent_alerts(limit=50, status=status_query, active_only=active_only)
 
     if not alerts:
-        st.info("Hiện không có cảnh báo nào phù hợp với bộ lọc.")
+        if active_only:
+            st.success("🎉 Hiện không có cảnh báo nào đang chờ xử lý. Tất cả vị trí ghế đều bình thường!")
+        else:
+            st.info("Hiện không có cảnh báo nào phù hợp với bộ lọc đã chọn.")
     else:
         for alt in alerts:
             with st.container():
                 p_badge = "🔴 KHẨN CẤP" if alt["priority"] == "HIGH" else "🟡 TRUNG BÌNH"
+                status_raw = str(alt.get("status", "PENDING")).upper()
+
+                if status_raw in ("PENDING", "ACTIVE"):
+                    status_color = "#EF4444"
+                elif status_raw == "CONFIRMED":
+                    status_color = "#10B981"
+                elif status_raw == "ITEM_RETRIEVED":
+                    status_color = "#3B82F6"
+                elif status_raw == "FALSE_POSITIVE":
+                    status_color = "#F59E0B"
+                else:
+                    status_color = "#94A3B8"
+
+                resolved_info = ""
+                if alt.get("resolved_at"):
+                    res_type = alt.get("resolution_type") or status_raw
+                    resolved_info = f"<div style='font-size: 0.8rem; color: #6EE7B7; margin-top: 4px;'>✅ Đã xử lý [{res_type}]: {format_timestamp_display(alt.get('resolved_at', ''))}</div>"
+
                 st.markdown(f"""
                 <div style="background: #1C2541; border: 1px solid #3A506B; border-radius: 8px; padding: 14px 18px; margin-bottom: 12px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -1339,23 +1376,62 @@ def page_alert_center(service: AnalysisService):
                         </span>
                         <span>
                             <span class="badge" style="background: #1E293B; color: #E2E8F0;">{p_badge}</span>
-                            <span class="badge" style="background: #0F172A; color: #94A3B8; margin-left: 6px;">{alt['status']}</span>
+                            <span class="badge" style="background: #0F172A; color: {status_color}; margin-left: 6px; font-weight: 600;">{status_raw}</span>
                         </span>
                     </div>
                     <p style="color: #CBD5E1; margin: 8px 0 6px 0; font-size: 0.9rem;"><b>Lý do:</b> {alt['reason']}</p>
                     <div style="font-size: 0.8rem; color: #94A3B8;">⏱️ Phát hiện lúc: {format_timestamp_display(alt.get('created_at', ''))}</div>
+                    {resolved_info}
                 </div>
                 """, unsafe_allow_html=True)
 
-                act1, act2, act3 = st.columns([1, 1, 3])
-                with act1:
-                    if alt["status"] != "CONFIRMED" and st.button("✅ Xác nhận đúng", key=f"conf_{alt['alert_id']}"):
-                        service.update_alert_status(alt["alert_id"], "CONFIRMED")
-                        st.rerun()
-                with act2:
-                    if alt["status"] != "DISMISSED" and st.button("❌ Loại bỏ (Báo sai)", key=f"dism_{alt['alert_id']}"):
-                        service.update_alert_status(alt["alert_id"], "DISMISSED")
-                        st.rerun()
+                col_snap, col_acts = st.columns([1, 2])
+                with col_snap:
+                    snap_p = alt.get("snapshot_path")
+                    if snap_p and os.path.exists(snap_p) and os.path.isfile(snap_p):
+                        try:
+                            st.image(snap_p, caption=f"Bằng chứng {alt['alert_id']}", use_container_width=True)
+                        except Exception:
+                            st.caption("📷 Lỗi nạp ảnh snapshot")
+                    else:
+                        st.caption("📷 Ảnh bằng chứng: Không khả dụng (Đã gửi Telegram hoặc chưa chụp)")
+
+                with col_acts:
+                    if status_raw in ("PENDING", "ACTIVE"):
+                        st.markdown("**Xử lý cảnh báo:**")
+                        b1, b2 = st.columns(2)
+                        with b1:
+                            if st.button("✅ Xác nhận đúng", key=f"conf_{alt['alert_id']}", use_container_width=True):
+                                service.update_alert_status(alt["alert_id"], "CONFIRMED", resolution_type="CONFIRMED")
+                                st.toast(f"✅ Đã xác nhận cảnh báo {alt['alert_id']}")
+                                st.rerun()
+                            if st.button("🎒 Đã lấy đồ", key=f"ret_{alt['alert_id']}", use_container_width=True):
+                                service.update_alert_status(alt["alert_id"], "ITEM_RETRIEVED", resolution_type="ITEM_RETRIEVED")
+                                st.toast(f"🎒 Đã đánh dấu đồ vật đã được lấy {alt['alert_id']}")
+                                st.rerun()
+                        with b2:
+                            if st.button("❌ Báo sai (Tin giả)", key=f"fp_{alt['alert_id']}", use_container_width=True):
+                                service.update_alert_status(alt["alert_id"], "FALSE_POSITIVE", resolution_type="FALSE_POSITIVE")
+                                st.toast(f"❌ Đã đánh dấu báo sai {alt['alert_id']}")
+                                st.rerun()
+                            if st.button("⏹️ Loại bỏ (Dismiss)", key=f"dism_{alt['alert_id']}", use_container_width=True):
+                                service.update_alert_status(alt["alert_id"], "DISMISSED", resolution_type="DISMISSED")
+                                st.toast(f"⏹️ Đã loại bỏ cảnh báo {alt['alert_id']}")
+                                st.rerun()
+                    else:
+                        st.markdown("**Tác vụ lịch sử:**")
+                        if st.button("🔄 Kích hoạt lại (Reopen)", key=f"reopen_{alt['alert_id']}"):
+                            service.update_alert_status(alt["alert_id"], "PENDING", resolution_type="")
+                            st.toast(f"🔄 Đã kích hoạt lại cảnh báo {alt['alert_id']}")
+                            st.rerun()
+
+                    with st.expander("🗑️ Xóa vĩnh viễn khỏi Database", expanded=False):
+                        st.caption("Chức năng này xóa vật lý bản ghi cảnh báo. Chỉ dùng khi dọn dẹp dữ liệu rác.")
+                        confirm_del = st.checkbox("Xác nhận xóa vĩnh viễn (Không thể hoàn tác)", key=f"chk_del_{alt['alert_id']}")
+                        if st.button("Xác nhận xóa vĩnh viễn", key=f"del_btn_{alt['alert_id']}", disabled=not confirm_del):
+                            service.delete_alert_permanently(alt["alert_id"])
+                            st.toast(f"🗑️ Đã xóa vĩnh viễn cảnh báo {alt['alert_id']}")
+                            st.rerun()
 
 
 # ══════════════════════════════════════════════

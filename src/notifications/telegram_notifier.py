@@ -429,13 +429,28 @@ class TelegramNotifier:
             logger.warning(f"Ảnh bằng chứng '{photo_path}' không tồn tại. Fallback sang gửi tin nhắn text.")
             return self.send_message(text=caption, chat_id=target_chat, bot_token=token, parse_mode=parse_mode)
 
+        # Kiểm tra kích thước file (tối đa 10MB theo giới hạn Telegram sendPhoto)
+        try:
+            file_size = p.stat().st_size
+            if file_size > 10 * 1024 * 1024:
+                logger.warning(f"Ảnh '{photo_path}' quá lớn ({file_size} bytes > 10MB). Fallback sang gửi tin nhắn text.")
+                return self.send_message(text=caption, chat_id=target_chat, bot_token=token, parse_mode=parse_mode)
+            if file_size < 16:
+                logger.warning(f"Ảnh '{photo_path}' không hợp lệ ({file_size} bytes). Fallback sang gửi tin nhắn text.")
+                return self.send_message(text=caption, chat_id=target_chat, bot_token=token, parse_mode=parse_mode)
+        except Exception as e:
+            logger.warning(f"Không thể đọc thông tin file ảnh: {e}. Fallback sang text.")
+            return self.send_message(text=caption, chat_id=target_chat, bot_token=token, parse_mode=parse_mode)
+
         url = f"https://api.telegram.org/bot{token}/sendPhoto"
         try:
             with open(p, "rb") as img_file:
+                # Đảm bảo caption không vượt quá 1024 ký tự theo chuẩn Telegram API
+                clean_caption = caption[:1020] if len(caption) > 1020 else caption
                 files = {"photo": (p.name, img_file, "image/jpeg")}
                 data = {
                     "chat_id": target_chat,
-                    "caption": caption[:1024],  # Giới hạn caption của Telegram sendPhoto là 1024 ký tự
+                    "caption": clean_caption,
                     "parse_mode": parse_mode,
                 }
                 resp = requests.post(
@@ -499,6 +514,7 @@ class TelegramNotifier:
         alert: Alert,
         event: Optional[Event] = None,
         bus_or_camera_id: str = "Tuyến xe buýt Demo 01",
+        has_photo: bool = True,
     ) -> str:
         """
         Định dạng bản tin cảnh báo đồ bỏ quên theo mẫu chuẩn:
@@ -509,6 +525,7 @@ class TelegramNotifier:
         🆔 Mã theo dõi: [stable track ID]
         🕒 Thời điểm: [timestamp]
         📋 Trạng thái: [confirmed by application logic / needs review]
+        📷 Ảnh chụp bằng chứng: [Đính kèm / Không khả dụng]
         """
         area_safe = html.escape(bus_or_camera_id or "Khu vực khoang khách xe buýt")
 
@@ -567,6 +584,11 @@ class TelegramNotifier:
             status_desc = "Nghi ngờ bỏ quên (Đang theo dõi vị trí)"
         status_safe = html.escape(status_desc)
 
+        if has_photo:
+            photo_status_line = "📷 <b>Ảnh chụp bằng chứng:</b> <i>Đính kèm bên dưới</i>"
+        else:
+            photo_status_line = "📷 <b>Ảnh chụp bằng chứng:</b> <i>Không khả dụng (Không có snapshot)</i>"
+
         message = (
             f"🚨 <b>LOST & FOUND AI BUS — CẢNH BÁO ĐỒ BỎ QUÊN</b>\n\n"
             f"🚌 <b>Khu vực:</b> {area_safe}\n"
@@ -574,7 +596,8 @@ class TelegramNotifier:
             f"📦 <b>Đồ vật:</b> {item_display}\n"
             f"🆔 <b>Mã theo dõi:</b> <code>{track_safe}</code>\n"
             f"🕒 <b>Thời điểm:</b> {ts_safe}\n"
-            f"📋 <b>Trạng thái:</b> {status_safe}\n\n"
+            f"📋 <b>Trạng thái:</b> {status_safe}\n"
+            f"{photo_status_line}\n\n"
             f"<i>Vui lòng kiểm tra camera hoặc khoang hành khách để xác nhận đồ vật.</i>"
         )
         return message
@@ -652,30 +675,48 @@ class TelegramNotifier:
                 # Đánh dấu thời điểm tiếp nhận để ngăn gửi trùng lặp đồng thời
                 self._last_alert_timestamps[cooldown_key] = now_sec
 
-        # Chuẩn bị nội dung
-        msg_text = self.format_forgotten_item_message(
-            alert=alert,
-            event=event,
-            bus_or_camera_id=bus_or_camera_id,
-        )
-
         def _do_send() -> TelegramResponse:
-            photo_path = alert.snapshot_path or (event.snapshot_path if event else "")
+            raw_photo_path = alert.snapshot_path or (event.snapshot_path if event else "")
+            has_valid_photo = False
+            if raw_photo_path:
+                try:
+                    p = Path(raw_photo_path)
+                    has_valid_photo = p.exists() and p.is_file() and (16 <= p.stat().st_size <= 10 * 1024 * 1024)
+                except Exception:
+                    has_valid_photo = False
+
+            caption_with_photo = self.format_forgotten_item_message(
+                alert=alert,
+                event=event,
+                bus_or_camera_id=bus_or_camera_id,
+                has_photo=True,
+            )
+            caption_no_photo = self.format_forgotten_item_message(
+                alert=alert,
+                event=event,
+                bus_or_camera_id=bus_or_camera_id,
+                has_photo=False,
+            )
+
             max_retries = 2
-            retry_delay = 1.5
+            retry_delay = getattr(self, "_retry_delay", 0.2)
             res: Optional[TelegramResponse] = None
 
             for attempt in range(max_retries + 1):
-                if photo_path and Path(photo_path).exists():
-                    res = self.send_photo(photo_path=photo_path, caption=msg_text)
+                if has_valid_photo:
+                    res = self.send_photo(photo_path=raw_photo_path, caption=caption_with_photo)
+                    # Nếu gửi ảnh thất bại do Telegram API từ chối ảnh (400), tự động fallback sang text
+                    if not res.success and res.status_code in (400, 422):
+                        logger.warning(f"Gửi ảnh thất bại ({res.message}). Fallback sang gửi tin nhắn văn bản.")
+                        res = self.send_message(text=caption_no_photo)
                 else:
-                    res = self.send_message(text=msg_text)
+                    res = self.send_message(text=caption_no_photo)
 
                 if res.success:
                     break
 
-                # Dừng thử lại nếu gặp lỗi từ phía client không thể khắc phục (400, 401, 403, 404)
-                if res.status_code in (400, 401, 403, 404) and res.error_type not in ("TIMEOUT", "NETWORK_ERROR"):
+                # Dừng thử lại nếu gặp lỗi client vĩnh viễn (401 Unauthorized, 403 Forbidden, 404 Not Found)
+                if res.status_code in (401, 403, 404) and res.error_type not in ("TIMEOUT", "NETWORK_ERROR"):
                     logger.warning(
                         f"Gửi cảnh báo Telegram gặp lỗi client ({res.status_code}): {res.message}. Không thử lại."
                     )

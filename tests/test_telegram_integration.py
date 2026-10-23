@@ -595,6 +595,7 @@ def test_16_telegram_send_failure_preserves_created_alert_event():
             event=evt,
             current_time_sec=2000.0,
             telegram_config={"enabled": True, "bot_token": "valid_token", "chat_id": "-1004483384365"},
+            is_test=True,
         )
 
         # 1. Alert vẫn được tạo thành công

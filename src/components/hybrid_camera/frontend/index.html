@@ -1760,6 +1760,8 @@
         it.confirmed = true;
         it.lifecycle = "CONFIRMED";
         it.isRenderable = true;
+        it.className = det.className || it.className || "item";
+        it.confidence = det.score;
 
         // Spatial EMA smoothing để chống rung lắc khi đứng yên
         it.bbox[0] = Math.round(it.bbox[0] * 0.25 + det.bbox[0] * 0.75);
@@ -1819,6 +1821,8 @@
           bestCandidate.confirmed = true;
           bestCandidate.lifecycle = "CONFIRMED";
           bestCandidate.isRenderable = true;
+          bestCandidate.className = det.className || bestCandidate.className || "item";
+          bestCandidate.confidence = det.score;
           bestCandidate.bbox = [...det.bbox];
           if (det.polygon && det.polygon.length >= 3) {
             bestCandidate.polygon = det.polygon;
@@ -1837,6 +1841,8 @@
           trackedItems.set(itId, {
             id: itId,
             displayId: `ITEM_${String(itId).padStart(3, "0")}`,
+            className: det.className || "item",
+            confidence: det.score,
             bbox: [...det.bbox],
             polygon: det.polygon,
             score: det.score,
@@ -1852,6 +1858,7 @@
             status: "NORMAL",
             associatedSeat: "UNKNOWN_SEAT",
             recheckStartTime: null,
+            snapshotBase64: null,
             isRenderable: isHighConf
           });
         }
@@ -2009,8 +2016,13 @@
             // Ghế trống mà đồ vật vẫn còn!
             const vacantDuration = (now - it.stationarySince) / 1000.0;
             if (vacantDuration >= 3.5) {
-              if (it.status !== "SUSPECTED") {
+              if (it.confirmed && it.status !== "SUSPECTED") {
                 it.status = "SUSPECTED";
+                try {
+                  if (canvasEl && canvasEl.width > 0 && canvasEl.height > 0) {
+                    it.snapshotBase64 = canvasEl.toDataURL("image/jpeg", 0.65);
+                  }
+                } catch (e) {}
                 audioSynth.playAlertChime();
               }
             } else {
@@ -2034,8 +2046,13 @@
             // Người đã rời xa đồ vật
             const vacantDuration = (now - it.stationarySince) / 1000.0;
             if (vacantDuration >= 3.5) {
-              if (it.status !== "SUSPECTED") {
+              if (it.confirmed && it.status !== "SUSPECTED") {
                 it.status = "SUSPECTED";
+                try {
+                  if (canvasEl && canvasEl.width > 0 && canvasEl.height > 0) {
+                    it.snapshotBase64 = canvasEl.toDataURL("image/jpeg", 0.65);
+                  }
+                } catch (e) {}
                 audioSynth.playAlertChime();
               }
             } else {
@@ -2098,23 +2115,29 @@
         let suspectList = [];
         let snapshotData = null;
         if (currentSuspectCount > 0) {
-          suspectList = suspectItems.map(s => ({
-            track_id: s.id,
-            display_id: s.displayId,
-            class_name: s.className || "item",
-            seat_id: (s.associatedSeat && s.associatedSeat !== "UNKNOWN_SEAT") ? s.associatedSeat : "",
-            status: s.status || "SUSPECTED",
-            confidence: s.confidence || 0.8,
-            vacant_duration: (now - s.stationarySince) / 1000.0
-          }));
-
-          if (isNewSuspect && canvasEl && canvasEl.width > 0 && canvasEl.height > 0) {
+          if (canvasEl && canvasEl.width > 0 && canvasEl.height > 0) {
             try {
               snapshotData = canvasEl.toDataURL("image/jpeg", 0.65);
             } catch (err) {
               // canvas may be tainted or unavailable
             }
           }
+
+          suspectList = suspectItems.map(s => {
+            if (!s.snapshotBase64 && snapshotData) {
+              s.snapshotBase64 = snapshotData;
+            }
+            return {
+              track_id: s.id,
+              display_id: s.displayId,
+              class_name: s.className || "item",
+              seat_id: (s.associatedSeat && s.associatedSeat !== "UNKNOWN_SEAT") ? s.associatedSeat : "",
+              status: s.status || "SUSPECTED",
+              confidence: s.confidence || s.score || 0.8,
+              vacant_duration: (now - s.stationarySince) / 1000.0,
+              snapshot_base64: s.snapshotBase64 || snapshotData
+            };
+          });
         }
 
         notifyStreamlit({

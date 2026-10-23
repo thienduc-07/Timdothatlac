@@ -91,7 +91,9 @@ CREATE TABLE IF NOT EXISTS alerts (
     reason TEXT DEFAULT '',
     snapshot_path TEXT DEFAULT '',
     created_at TEXT NOT NULL,
-    sent_channels TEXT DEFAULT '[]'
+    sent_channels TEXT DEFAULT '[]',
+    resolved_at TEXT DEFAULT '',
+    resolution_type TEXT DEFAULT ''
 );
 """
 
@@ -220,8 +222,9 @@ class Database:
         cursor.execute(CREATE_SYSTEM_CONFIG_TABLE)
         self._connection.commit()
 
-        # Thực hiện migration kiểm tra các cột mới cho bảng events
+        # Thực hiện migration kiểm tra các cột mới cho bảng events và alerts
         self._migrate_events_table(cursor)
+        self._migrate_alerts_table(cursor)
         self._init_default_data(cursor)
         self._connection.commit()
         logger.debug("Schema database đã được khởi tạo và kiểm tra migration")
@@ -281,6 +284,24 @@ class Database:
                     logger.info(f"Migration: Đã thêm cột '{col_name}' vào bảng events")
                 except sqlite3.Error as e:
                     logger.warning(f"Không thể thêm cột {col_name}: {e}")
+
+    def _migrate_alerts_table(self, cursor: sqlite3.Cursor):
+        """Kiểm tra và thêm các cột mới vào bảng alerts nếu đang dùng database cũ."""
+        cursor.execute("PRAGMA table_info(alerts)")
+        existing_cols = {row["name"] for row in cursor.fetchall()}
+
+        new_columns = [
+            ("resolved_at", "TEXT DEFAULT ''"),
+            ("resolution_type", "TEXT DEFAULT ''"),
+        ]
+
+        for col_name, col_def in new_columns:
+            if col_name not in existing_cols:
+                try:
+                    cursor.execute(f"ALTER TABLE alerts ADD COLUMN {col_name} {col_def}")
+                    logger.info(f"Migration: Đã thêm cột '{col_name}' vào bảng alerts")
+                except sqlite3.Error as e:
+                    logger.warning(f"Không thể thêm cột {col_name} vào bảng alerts: {e}")
 
 
     def get_connection(self) -> Optional[sqlite3.Connection]:

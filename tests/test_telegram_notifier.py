@@ -352,6 +352,7 @@ def test_suspected_event_triggers_telegram_alert(mock_post):
         event=evt_suspected,
         current_time_sec=10.0,
         telegram_config=t_config,
+        is_test=True,
     )
 
     assert alert is not None

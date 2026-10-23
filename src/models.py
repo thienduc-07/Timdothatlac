@@ -17,8 +17,11 @@ class AlertPriority:
 
 class AlertStatus:
     PENDING = "PENDING"
+    ACTIVE = "PENDING"
     CONFIRMED = "CONFIRMED"
     DISMISSED = "DISMISSED"
+    ITEM_RETRIEVED = "ITEM_RETRIEVED"
+    FALSE_POSITIVE = "FALSE_POSITIVE"
     RESOLVED = "RESOLVED"
 
 
@@ -128,6 +131,8 @@ class Alert:
     snapshot_path: str = ""            # Đường dẫn ảnh bằng chứng
     created_at: str = ""               # ISO timestamp
     sent_channels: List[str] = field(default_factory=list) # Danh sách kênh đã gửi thành công
+    resolved_at: str = ""              # ISO timestamp khi được xử lý
+    resolution_type: str = ""          # CONFIRMED, DISMISSED, ITEM_RETRIEVED, FALSE_POSITIVE
 
 
 @dataclass
