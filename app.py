@@ -205,10 +205,22 @@ st.markdown(f"""
         color: #F8FAFC !important;
     }}
 
+    @keyframes page-enter {{
+        0% {{
+            opacity: 0;
+            transform: translateY(4px);
+        }}
+        100% {{
+            opacity: 1;
+            transform: translateY(0);
+        }}
+    }}
+
     .main .block-container {{
         padding-top: 1.2rem;
         padding-bottom: 2rem;
         max-width: 1350px;
+        animation: page-enter 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }}
 
     /* ── React Bits Text Animations (ShinyText & BlurText) ── */
@@ -431,16 +443,15 @@ st.markdown(f"""
         transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), width 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }}
 
-    /* Staggered Entrance Animation for Navigation Items */
-    @keyframes nav-item-reveal {{
-        0% {{
-            opacity: 0;
-            transform: translateY(8px);
-        }}
-        100% {{
-            opacity: 1;
-            transform: translateY(0);
-        }}
+    /* ── Hide st.radio widget label so "Hệ thống" / radio header never renders as a menu item ── */
+    section[data-testid="stSidebar"] [data-testid="stWidgetLabel"],
+    section[data-testid="stSidebar"] [data-testid="stRadio"] > [data-testid="stWidgetLabel"],
+    section[data-testid="stSidebar"] [data-testid="stRadio"] > label {{
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }}
 
     /* ── Hide native radio circle indicator across all Streamlit / BaseWeb DOM variations ── */
@@ -462,9 +473,10 @@ st.markdown(f"""
         box-sizing: border-box !important;
     }}
 
-    /* Navigation Item: Premium Pill Card */
-    section[data-testid="stSidebar"] [data-testid="stRadio"] label,
-    section[data-testid="stSidebar"] div[role="radiogroup"] label {{
+    /* Navigation Item: Premium Pill Card (Restored from commit 3d144bc/0dae436: smooth, no flickering delays) */
+    section[data-testid="stSidebar"] div[role="radiogroup"] label,
+    section[data-testid="stSidebar"] [data-testid="stRadioGroup"] label,
+    section[data-testid="stSidebar"] div[data-baseweb="radio"] label {{
         display: flex !important;
         align-items: center !important;
         position: relative !important;
@@ -480,79 +492,55 @@ st.markdown(f"""
                     transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
                     box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
         cursor: pointer !important;
-        animation: nav-item-reveal 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        opacity: 0;
     }}
 
-    /* Sequential Stagger: ~60ms step across navigation items */
-    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(1) label,
-    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(1) {{ animation-delay: 0.04s; }}
-    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(2) label,
-    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(2) {{ animation-delay: 0.10s; }}
-    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(3) label,
-    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(3) {{ animation-delay: 0.16s; }}
-    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(4) label,
-    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(4) {{ animation-delay: 0.22s; }}
-    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(5) label,
-    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(5) {{ animation-delay: 0.28s; }}
-    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(6) label,
-    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(6) {{ animation-delay: 0.34s; }}
-    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(7) label,
-    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(7) {{ animation-delay: 0.40s; }}
-    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(8) label,
-    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(8) {{ animation-delay: 0.46s; }}
-    section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > *:nth-child(9) label,
-    section[data-testid="stSidebar"] div[role="radiogroup"] > *:nth-child(9) {{ animation-delay: 0.52s; }}
-
     /* Hover state: tactile slide & cyan border */
-    section[data-testid="stSidebar"] [data-testid="stRadio"] label:not(:has(input:checked)):hover,
-    section[data-testid="stSidebar"] div[role="radiogroup"] label:not(:has(input:checked)):hover {{
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:not(:has(input:checked)):hover,
+    section[data-testid="stSidebar"] div[data-baseweb="radio"] label:not(:has(input:checked)):hover {{
         background: rgba(30, 41, 59, 0.6) !important;
         border-color: rgba(56, 189, 248, 0.3) !important;
         transform: translateX(4px) !important;
     }}
 
     /* Keyboard focus state (WCAG accessible) */
-    section[data-testid="stSidebar"] [data-testid="stRadio"] label:focus-within,
-    section[data-testid="stSidebar"] div[role="radiogroup"] label:focus-within {{
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:focus-within,
+    section[data-testid="stSidebar"] div[data-baseweb="radio"] label:focus-within {{
         outline: 2px solid #00E5FF !important;
         outline-offset: 2px !important;
     }}
 
     /* Active destination: Linear-style restrained cyan accent & ambient glow */
-    section[data-testid="stSidebar"] [data-testid="stRadio"] label[data-checked="true"],
-    section[data-testid="stSidebar"] [data-testid="stRadio"] label[aria-checked="true"],
-    section[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked),
-    section[data-testid="stSidebar"] [data-testid="stRadio"] div[data-checked="true"] label,
     section[data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"],
     section[data-testid="stSidebar"] div[role="radiogroup"] label[aria-checked="true"],
     section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked),
-    section[data-testid="stSidebar"] div[role="radiogroup"] div[data-checked="true"] label {{
+    section[data-testid="stSidebar"] div[role="radiogroup"] div[data-checked="true"] label,
+    section[data-testid="stSidebar"] div[data-baseweb="radio"] label:has(input:checked),
+    section[data-testid="stSidebar"] div[data-baseweb="radio"][data-checked="true"] label {{
         background: linear-gradient(90deg, rgba(14, 165, 233, 0.16) 0%, rgba(15, 23, 42, 0.75) 100%) !important;
         border-color: rgba(56, 189, 248, 0.55) !important;
         border-left: 3px solid #00E5FF !important;
         box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), 0 0 16px rgba(0, 229, 255, 0.1) !important;
     }}
 
-    section[data-testid="stSidebar"] [data-testid="stRadio"] label p,
-    section[data-testid="stSidebar"] div[role="radiogroup"] label p {{
+    section[data-testid="stSidebar"] div[role="radiogroup"] label p,
+    section[data-testid="stSidebar"] div[data-baseweb="radio"] label p {{
         margin: 0 !important;
         font-size: 0.92rem !important;
         color: #E2E8F0 !important;
         letter-spacing: 0.2px !important;
     }}
-    section[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) p,
-    section[data-testid="stSidebar"] [data-testid="stRadio"] div[data-checked="true"] label p,
     section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p,
-    section[data-testid="stSidebar"] div[role="radiogroup"] div[data-checked="true"] p {{
+    section[data-testid="stSidebar"] div[role="radiogroup"] div[data-checked="true"] p,
+    section[data-testid="stSidebar"] div[data-baseweb="radio"] label:has(input:checked) p,
+    section[data-testid="stSidebar"] div[data-baseweb="radio"][data-checked="true"] p {{
         color: #38BDF8 !important;
         font-weight: 600 !important;
     }}
 
     /* Touch device optimization */
     @media (hover: none) {{
-        section[data-testid="stSidebar"] [data-testid="stRadio"] label:not(:has(input:checked)):hover,
-        section[data-testid="stSidebar"] div[role="radiogroup"] label:not(:has(input:checked)):hover {{
+        section[data-testid="stSidebar"] div[role="radiogroup"] label:not(:has(input:checked)):hover,
+        section[data-testid="stSidebar"] div[data-baseweb="radio"] label:not(:has(input:checked)):hover {{
             transform: none !important;
         }}
     }}
@@ -1067,7 +1055,7 @@ def main():
                     break
 
         page = st.radio(
-            "CHỨC NĂNG HỆ THỐNG",
+            "",
             page_list,
             index=selected_index,
             label_visibility="collapsed",
@@ -1134,7 +1122,7 @@ def main():
         page_notifications(service)
     elif "Lịch sử" in page:
         page_history(service)
-    elif "Cài đặt" in page:
+    elif "Cài đặt" in page or "Hệ thống" in page:
         page_settings(service)
 
 
