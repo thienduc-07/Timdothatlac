@@ -376,7 +376,14 @@
       margin-top: 3px;
     }
 
-    /* Accessibility */
+    /* Accessibility & Touch Optimization */
+    @media (hover: none) {
+      .primary-btn:hover,
+      .telemetry-card:hover {
+        transform: none !important;
+      }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         animation-duration: 0.01ms !important;

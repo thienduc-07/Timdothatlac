@@ -267,8 +267,8 @@ st.markdown(f"""
     .metric-panel::before {{
         content: '';
         position: absolute;
-        top: var(--spotlight-y, -250px);
-        left: var(--spotlight-x, -250px);
+        top: var(--spotlight-y, 50%);
+        left: var(--spotlight-x, 50%);
         width: 260px;
         height: 260px;
         background: radial-gradient(circle, rgba(56, 189, 248, 0.12) 0%, transparent 70%);
@@ -281,6 +281,12 @@ st.markdown(f"""
     .spotlight-card:hover::before,
     .metric-panel:hover::before {{
         opacity: 1;
+    }}
+    @media (hover: none) {{
+        .spotlight-card::before,
+        .metric-panel::before {{
+            display: none !important;
+        }}
     }}
 
     .metric-panel h3 {{
