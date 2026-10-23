@@ -143,6 +143,16 @@ class TelegramNotifier:
     def get_last_delivery_status(self) -> Dict[str, Any]:
         """Trả về thông tin trạng thái phân phối gần nhất phục vụ UI Diagnostics."""
         with self._lock:
+            if not hasattr(self, "_last_delivery_status"):
+                self._last_delivery_status = {
+                    "has_attempt": False,
+                    "success": False,
+                    "status_code": 0,
+                    "message": "",
+                    "timestamp": "",
+                    "chat_id": getattr(self, "_chat_id", ""),
+                    "alert_id": "",
+                }
             return dict(self._last_delivery_status)
 
     def reset_deduplication(self):
@@ -736,6 +746,21 @@ def get_telegram_notifier() -> TelegramNotifier:
         if _global_telegram_notifier is None:
             _global_telegram_notifier = TelegramNotifier()
         else:
+            # Tự động đồng bộ/nâng cấp nếu instance trong memory thuộc phiên bản cũ (Streamlit Cloud hot-reload)
+            if not hasattr(_global_telegram_notifier, "get_last_delivery_status"):
+                _global_telegram_notifier.get_last_delivery_status = (
+                    TelegramNotifier.get_last_delivery_status.__get__(_global_telegram_notifier, TelegramNotifier)
+                )
+            if not hasattr(_global_telegram_notifier, "_last_delivery_status"):
+                _global_telegram_notifier._last_delivery_status = {
+                    "has_attempt": False,
+                    "success": False,
+                    "status_code": 0,
+                    "message": "",
+                    "timestamp": "",
+                    "chat_id": getattr(_global_telegram_notifier, "_chat_id", ""),
+                    "alert_id": "",
+                }
             # Luôn cập nhật lại token & chat_id nếu môi trường thay đổi
             if not _global_telegram_notifier.bot_token and TELEGRAM_BOT_TOKEN:
                 _global_telegram_notifier.bot_token = TELEGRAM_BOT_TOKEN

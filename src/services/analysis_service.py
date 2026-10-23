@@ -612,7 +612,21 @@ class AnalysisService:
 
     def get_telegram_delivery_status(self) -> Dict[str, Any]:
         """Lấy trạng thái kết quả phân phối thông báo Telegram gần nhất."""
-        return get_telegram_notifier().get_last_delivery_status()
+        try:
+            notifier = get_telegram_notifier()
+            if hasattr(notifier, "get_last_delivery_status"):
+                return notifier.get_last_delivery_status()
+        except Exception as e:
+            logger.warning(f"Lỗi khi lấy trạng thái phân phối Telegram: {e}")
+        return {
+            "has_attempt": False,
+            "success": False,
+            "status_code": 0,
+            "message": "",
+            "timestamp": "",
+            "chat_id": getattr(notifier, "chat_id", "") if "notifier" in locals() and notifier else "",
+            "alert_id": "",
+        }
 
     def test_telegram_connection(
         self,

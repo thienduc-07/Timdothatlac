@@ -381,3 +381,237 @@ def test_10_camera_processing_continues_on_telegram_failure(mock_post):
         assert len(alerts) == 1
     except Exception as e:
         pytest.fail(f"Camera event processing bị crash do lỗi mạng Telegram: {e}")
+
+
+# ─────────────────────────────────────────────────────────────
+# 11. Telegram Diagnostics UI & Fallback Tests
+# ─────────────────────────────────────────────────────────────
+def test_11_diagnostics_when_notifier_has_delivery_status():
+    """Yêu cầu 5.1: Diagnostics hoạt động chính xác khi notifier có trạng thái gửi thành công hoặc thất bại."""
+    from app import render_telegram_diagnostics
+    notifier = get_telegram_notifier()
+    notifier.bot_token = "123456:TEST_TOKEN"
+    notifier.chat_id = "-1004483384365"
+
+    with notifier._lock:
+        notifier._last_delivery_status = {
+            "has_attempt": True,
+            "success": True,
+            "status_code": 200,
+            "message": "Thành công",
+            "timestamp": "2026-10-23T20:30:00",
+            "chat_id": "-1004483384365",
+            "alert_id": "ALT_TEST_DIAG",
+        }
+
+    mock_col = MagicMock()
+    mock_col.__enter__ = MagicMock(return_value=mock_col)
+    mock_col.__exit__ = MagicMock(return_value=None)
+
+    with patch("streamlit.columns", return_value=[mock_col, mock_col]), \
+         patch("streamlit.markdown") as mock_md, \
+         patch("streamlit.success") as mock_success, \
+         patch("streamlit.error") as mock_error, \
+         patch("streamlit.info") as mock_info, \
+         patch("streamlit.button", return_value=False):
+
+        render_telegram_diagnostics(None, context_key="test_success")
+        assert mock_success.called
+
+
+def test_12_diagnostics_when_notifier_has_no_delivery_attempt_yet():
+    """Yêu cầu 5.2: Diagnostics hoạt động an toàn khi notifier chưa có trạng thái gửi nào trong phiên."""
+    from app import render_telegram_diagnostics
+    notifier = get_telegram_notifier()
+    with notifier._lock:
+        notifier._last_delivery_status = {
+            "has_attempt": False,
+            "success": False,
+            "status_code": 0,
+            "message": "",
+            "timestamp": "",
+            "chat_id": "-1004483384365",
+            "alert_id": "",
+        }
+
+    mock_col = MagicMock()
+    mock_col.__enter__ = MagicMock(return_value=mock_col)
+    mock_col.__exit__ = MagicMock(return_value=None)
+
+    with patch("streamlit.columns", return_value=[mock_col, mock_col]), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.success"), \
+         patch("streamlit.error"), \
+         patch("streamlit.info") as mock_info, \
+         patch("streamlit.button", return_value=False):
+
+        render_telegram_diagnostics(None, context_key="test_no_attempt")
+        assert mock_info.called
+        info_text = mock_info.call_args[0][0]
+        assert "Chưa có thông báo nào được gửi" in info_text
+
+
+def test_13_diagnostics_resilient_to_legacy_notifier_without_get_last_delivery_status():
+    """Yêu cầu 5.1/5.2: Diagnostics không crash khi notifier là object cũ thiếu get_last_delivery_status (Streamlit Cloud hot-reload)."""
+    from app import render_telegram_diagnostics
+
+    class LegacyNotifierMock:
+        def __init__(self):
+            self.chat_id = "-1004483384365"
+            self.bot_token = "123456:LEGACY_TOKEN"
+        def is_configured(self):
+            return True
+        def get_masked_token(self):
+            return "1234••••••••OKEN"
+        # Cố tình KHÔNG có method get_last_delivery_status!
+
+    legacy_obj = LegacyNotifierMock()
+    assert not hasattr(legacy_obj, "get_last_delivery_status")
+
+    mock_col = MagicMock()
+    mock_col.__enter__ = MagicMock(return_value=mock_col)
+    mock_col.__exit__ = MagicMock(return_value=None)
+
+    with patch("app.get_telegram_notifier", return_value=legacy_obj), \
+         patch("streamlit.columns", return_value=[mock_col, mock_col]), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.success"), \
+         patch("streamlit.error"), \
+         patch("streamlit.info") as mock_info, \
+         patch("streamlit.button", return_value=False):
+
+        # Tuyệt đối không ném AttributeError: 'LegacyNotifierMock' object has no attribute 'get_last_delivery_status'
+        render_telegram_diagnostics(None, context_key="test_legacy_reload")
+        assert mock_info.called
+
+
+def test_14_telegram_not_configured_safety():
+    """Yêu cầu 5.3: Telegram chưa được cấu hình hiển thị cảnh báo an toàn và không crash."""
+    from app import render_telegram_diagnostics
+    from src.services.notification_service import NotificationService
+
+    notifier = TelegramNotifier(bot_token="", chat_id="")
+    assert notifier.is_configured() is False
+
+    # Kiểm tra NotificationService adapter
+    status = NotificationService.get_last_delivery_status()
+    assert isinstance(status, dict)
+    assert "has_attempt" in status
+
+    mock_col = MagicMock()
+    mock_col.__enter__ = MagicMock(return_value=mock_col)
+    mock_col.__exit__ = MagicMock(return_value=None)
+
+    with patch("app.get_telegram_notifier", return_value=notifier), \
+         patch("streamlit.columns", return_value=[mock_col, mock_col]), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.success"), \
+         patch("streamlit.warning") as mock_warning, \
+         patch("streamlit.info"), \
+         patch("streamlit.button", return_value=False):
+
+        render_telegram_diagnostics(None, context_key="test_unconfigured")
+        assert mock_warning.called
+        warn_msg = mock_warning.call_args[0][0]
+        assert "Chưa cấu hình đầy đủ" in warn_msg
+
+
+def test_15_browser_camera_events_routed_to_alert_service_and_db():
+    """Yêu cầu 5.4: Toàn bộ đường đi từ browser camera -> Event -> DB -> AlertService -> Alert DB."""
+    mock_repo = MagicMock()
+    alert_service = AlertService(alert_repo=mock_repo)
+    analysis_service = AnalysisService()
+    analysis_service._alert_service = alert_service
+    analysis_service._repo = mock_repo
+
+    suspected_items = [
+        {
+            "track_id": "T88",
+            "display_id": "T88",
+            "class_name": "handbag",
+            "seat_id": "S05",
+            "status": "SUSPECTED",
+            "confidence": 0.92,
+            "vacant_duration": 8.0,
+        }
+    ]
+
+    with patch("requests.post") as mock_post:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"ok": True}
+        mock_post.return_value = mock_resp
+
+        alerts = analysis_service.process_browser_camera_events(
+            suspected_items=suspected_items,
+            snapshot_base64=None,
+            camera_name="Live Camera (Browser Test)",
+        )
+
+        assert len(alerts) == 1
+        created_alert = alerts[0]
+        assert created_alert.seat_id == "S05"
+        assert "88" in created_alert.object_id
+        assert created_alert.priority == "HIGH"
+
+        # Đảm bảo Event được lưu vào EventRepository
+        assert mock_repo.save_event.called
+        saved_event = mock_repo.save_event.call_args[0][0]
+        assert saved_event.class_name == "handbag"
+        assert saved_event.status == "suspected"
+
+        # Đảm bảo Alert được lưu vào AlertRepository
+        assert mock_repo.save_alert.called
+
+
+def test_16_telegram_send_failure_preserves_created_alert_event():
+    """Yêu cầu 5.5: Lỗi gửi Telegram (500 hoặc mất mạng) không làm mất sự kiện Alert đã tạo trong hệ thống."""
+    mock_repo = MagicMock()
+    alert_service = AlertService(alert_repo=mock_repo)
+
+    notifier = get_telegram_notifier()
+    notifier.reset_deduplication()
+    notifier.bot_token = "valid_token"
+    notifier.chat_id = "-1004483384365"
+
+    evt = Event(
+        event_id="EVT_FAIL_PRESERVE",
+        class_name="umbrella",
+        seat_id="S06",
+        track_id=33,
+        last_track_id=33,
+        status="suspected",
+        vacant_duration=10.0,
+    )
+
+    with patch("requests.post") as mock_post:
+        # Giả lập máy chủ Telegram trả về lỗi 401 Unauthorized
+        mock_resp = MagicMock()
+        mock_resp.status_code = 401
+        mock_resp.json.return_value = {"ok": False, "description": "Unauthorized"}
+        mock_post.return_value = mock_resp
+
+        alert = alert_service.process_event_for_alert(
+            event=evt,
+            current_time_sec=2000.0,
+            telegram_config={"enabled": True, "bot_token": "valid_token", "chat_id": "-1004483384365"},
+        )
+
+        # 1. Alert vẫn được tạo thành công
+        assert alert is not None
+        assert alert.seat_id == "S06"
+
+        # 2. Alert đã được lưu vào Database để hiển thị trong Trung tâm cảnh báo
+        assert mock_repo.save_alert.called
+
+        # Chờ worker ghi nhận log thất bại
+        for _ in range(20):
+            if mock_repo.log_notification.called:
+                break
+            time.sleep(0.05)
+
+        # 3. Notification log ghi nhận trạng thái FAILED với mã lỗi 401
+        assert mock_repo.log_notification.called
+        log_call = mock_repo.log_notification.call_args[1]
+        assert log_call.get("status") == "FAILED"
+        assert log_call.get("status_code") == 401

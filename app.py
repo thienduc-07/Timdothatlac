@@ -509,8 +509,15 @@ def main():
             st.warning(f"🔔 **{unresolved_alerts}** cảnh báo chưa xử lý")
 
         tg_notifier = get_telegram_notifier()
-        if tg_notifier.is_configured():
-            if tg_notifier.enabled:
+        is_tg_cfg = False
+        if tg_notifier and hasattr(tg_notifier, "is_configured"):
+            try:
+                is_tg_cfg = bool(tg_notifier.is_configured())
+            except Exception:
+                is_tg_cfg = False
+
+        if is_tg_cfg:
+            if getattr(tg_notifier, "enabled", True):
                 st.caption("🟢 **Telegram Bot:** Đang hoạt động")
             else:
                 st.caption("⏸️ **Telegram Bot:** Tạm dừng")
@@ -789,7 +796,7 @@ def _run_browser_camera_analysis(
         st.error(f"Lỗi khi xử lý hình ảnh camera: {e}")
 
 
-def render_telegram_diagnostics(service: AnalysisService, context_key: str = "default"):
+def render_telegram_diagnostics(service: Optional[AnalysisService] = None, context_key: str = "default"):
     """
     Hiển thị thông tin chẩn đoán trạng thái thông báo Telegram (Telegram Diagnostics):
     - Trạng thái cấu hình Bot Token & Chat ID
@@ -799,29 +806,60 @@ def render_telegram_diagnostics(service: AnalysisService, context_key: str = "de
     - Nút bấm thủ công gửi tin nhắn kiểm tra tới kênh Telegram (xác thực response ok: true)
     """
     notifier = get_telegram_notifier()
-    is_cfg = notifier.is_configured()
-    last_status = notifier.get_last_delivery_status()
+    is_cfg = False
+    if notifier and hasattr(notifier, "is_configured"):
+        try:
+            is_cfg = bool(notifier.is_configured())
+        except Exception:
+            is_cfg = False
+
+    last_status: Dict[str, Any] = {}
+    if notifier and hasattr(notifier, "get_last_delivery_status"):
+        try:
+            last_status = notifier.get_last_delivery_status() or {}
+        except Exception as e:
+            logger.warning(f"Lỗi khi lấy trạng thái phân phối Telegram: {e}")
+            last_status = {}
+    elif service and hasattr(service, "get_telegram_delivery_status"):
+        try:
+            last_status = service.get_telegram_delivery_status() or {}
+        except Exception as e:
+            logger.warning(f"Lỗi khi lấy trạng thái phân phối Telegram từ service: {e}")
+            last_status = {}
+    else:
+        last_status = {
+            "has_attempt": False,
+            "success": False,
+            "status_code": 0,
+            "message": "",
+            "timestamp": "",
+            "chat_id": getattr(notifier, "chat_id", "") if notifier else "",
+            "alert_id": "",
+        }
 
     st.markdown("##### 📡 Trạng thái Kênh Thông báo Telegram")
 
     col_stat1, col_stat2 = st.columns(2)
     with col_stat1:
-        if is_cfg:
-            masked_token = notifier.get_masked_token()
-            st.success(f"✅ **Đã cấu hình:** Kênh `{notifier.chat_id}`\n\n*(Token: `{masked_token}`)*")
+        if is_cfg and notifier:
+            masked_token = notifier.get_masked_token() if hasattr(notifier, "get_masked_token") else "••••••••"
+            target_chat = getattr(notifier, "chat_id", "")
+            st.success(f"✅ **Đã cấu hình:** Kênh `{target_chat}`\n\n*(Token: `{masked_token}`)*")
         else:
             st.warning("⚠️ **Chưa cấu hình đầy đủ:** Cần bổ sung `TELEGRAM_BOT_TOKEN` và `TELEGRAM_CHAT_ID` trong file `.env`.")
 
     with col_stat2:
-        if last_status.get("has_attempt"):
+        if isinstance(last_status, dict) and last_status.get("has_attempt"):
             ts_str = last_status.get("timestamp", "")
             ts_display = ts_str
             if ts_str:
                 try:
-                    dt = datetime.fromisoformat(ts_str)
+                    dt = datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
+                    if dt.tzinfo is not None:
+                        dt = dt.astimezone(APP_TIMEZONE)
                     ts_display = dt.strftime("%H:%M:%S %d/%m/%Y")
                 except Exception:
-                    pass
+                    ts_display = str(ts_str)[:19].replace("T", " ")
 
             if last_status.get("success"):
                 st.success(f"🟢 **Lần gửi gần nhất ({ts_display}):** Gửi thành công tới `{last_status.get('chat_id', '')}`")
@@ -835,12 +873,22 @@ def render_telegram_diagnostics(service: AnalysisService, context_key: str = "de
     col_btn, _ = st.columns([1, 1])
     with col_btn:
         if st.button("📨 Gửi tin nhắn kiểm tra tới kênh Telegram (Test Message)", key=f"btn_tg_test_{context_key}", use_container_width=True):
-            with st.spinner("Đang gửi tin nhắn kiểm tra tới kênh Telegram..."):
-                ok, msg = notifier.test_connection()
-            if ok:
-                st.success(f"✅ {msg}")
+            if notifier and hasattr(notifier, "test_connection"):
+                with st.spinner("Đang gửi tin nhắn kiểm tra tới kênh Telegram..."):
+                    ok, msg = notifier.test_connection()
+                if ok:
+                    st.success(f"✅ {msg}")
+                else:
+                    st.error(f"❌ {msg}")
+            elif service and hasattr(service, "test_telegram_connection"):
+                with st.spinner("Đang gửi tin nhắn kiểm tra tới kênh Telegram..."):
+                    ok, msg = service.test_telegram_connection()
+                if ok:
+                    st.success(f"✅ {msg}")
+                else:
+                    st.error(f"❌ {msg}")
             else:
-                st.error(f"❌ {msg}")
+                st.warning("Dịch vụ kiểm tra Telegram không khả dụng.")
 
 
 # ══════════════════════════════════════════════
@@ -2198,7 +2246,7 @@ def page_notifications(service: AnalysisService):
         st.divider()
 
         notifier = get_telegram_notifier()
-        is_cfg = notifier.is_configured()
+        is_cfg = notifier.is_configured() if notifier and hasattr(notifier, "is_configured") else False
 
         st.markdown("##### Cấu hình Telegram Bot:")
         col_tok, col_cid = st.columns(2)

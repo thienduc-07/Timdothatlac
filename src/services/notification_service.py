@@ -59,6 +59,23 @@ class NotificationService:
             res = notifier.send_message(text=message, chat_id=chat_id, bot_token=bot_token)
         return res.success, res.status_code, res.message
 
+    @staticmethod
+    def get_last_delivery_status() -> Dict:
+        """Lấy thông tin trạng thái phân phối Telegram gần nhất từ TelegramNotifier."""
+        from src.notifications.telegram_notifier import get_telegram_notifier
+        notifier = get_telegram_notifier()
+        if hasattr(notifier, "get_last_delivery_status"):
+            return notifier.get_last_delivery_status()
+        return {
+            "has_attempt": False,
+            "success": False,
+            "status_code": 0,
+            "message": "",
+            "timestamp": "",
+            "chat_id": getattr(notifier, "chat_id", ""),
+            "alert_id": "",
+        }
+
 
     # ──────────────────────────────────────────────
     # EMAIL SMTP ADAPTER
