@@ -813,7 +813,7 @@ def render_telegram_diagnostics(service: Optional[AnalysisService] = None, conte
         except Exception:
             is_cfg = False
 
-    last_status: Dict[str, Any] = {}
+    last_status: Dict[str, any] = {}
     if notifier and hasattr(notifier, "get_last_delivery_status"):
         try:
             last_status = notifier.get_last_delivery_status() or {}
