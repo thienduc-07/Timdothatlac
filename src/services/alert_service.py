@@ -343,10 +343,11 @@ class AlertService:
             seat_id=seat_id,
             object_id="O_TEST",
             priority=AlertPriority.HIGH,
-            status=AlertStatus.PENDING,
+            status=AlertStatus.DISMISSED,
             reason=f"Cảnh báo thử nghiệm hệ thống từ Notification Center trên ghế {seat_id}.",
             created_at=now_iso,
             sent_channels=[NotificationChannel.IN_APP],
+            resolution_type="SYSTEM_TEST",
         )
         if self._repo:
             self._repo.save_alert(alert)

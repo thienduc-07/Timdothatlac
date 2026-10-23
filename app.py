@@ -683,22 +683,6 @@ def page_dashboard(service: AnalysisService):
     </div>
     """, unsafe_allow_html=True)
 
-    if not has_custom_weights:
-        st.info(
-            "⏳ **Chờ nạp weights YOLO26 Instance Segmentation:**\n\n"
-            "Mô hình 3 lớp (`seat`, `person`, `item`) hiện đang được huấn luyện trên Ultralytics Platform. "
-            "Sau khi hoàn tất, hãy tải file weights và đặt tại đường dẫn: **`models/best.pt`**.\n\n"
-            "Hệ thống đã sẵn sàng 100% về kiến trúc Instance Segmentation, tự động trích xuất polygon masks, "
-            "dùng chung model duy nhất cho ghế & tracking đối tượng mà không cần tải lại model hai lần."
-        )
-
-    if method_val == "GEOMETRY_FALLBACK":
-        st.warning(
-            "⚠️ **CẢNH BÁO MINH BẠCH**: Hệ thống đang chạy ở chế độ **GEOMETRY FALLBACK** phục vụ kiểm thử. "
-            "Tọa độ các ghế hiện tại KHÔNG PHẢI do AI nhận diện trực tiếp từ hình ảnh. "
-            "Để nhận diện thực tế bằng AI, hãy đặt weights segmentation đã train vào `models/best.pt`."
-        )
-
     # 4 Metric Panels
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -749,7 +733,14 @@ def page_dashboard(service: AnalysisService):
                 st.rerun()
 
         st.markdown("#### 🔔 Cảnh báo Mới nhất")
-        recent_alerts = safe_get_recent_alerts(service, limit=5)
+        raw_alerts = safe_get_recent_alerts(service, limit=10, active_only=True)
+        # Loại bỏ các cảnh báo thử nghiệm cũ (TEST_*) hoặc đã bị loại bỏ
+        recent_alerts = [
+            a for a in raw_alerts
+            if not str(a.get("alert_id", "")).startswith("TEST_")
+            and a.get("object_id") != "O_TEST"
+            and "thử nghiệm" not in str(a.get("reason", "")).lower()
+        ][:5]
         if recent_alerts:
             for alt in recent_alerts:
                 p_color = "#EF4444" if alt["priority"] == "HIGH" else "#F59E0B"

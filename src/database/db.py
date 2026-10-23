@@ -226,6 +226,15 @@ class Database:
         self._migrate_events_table(cursor)
         self._migrate_alerts_table(cursor)
         self._init_default_data(cursor)
+
+        # Tự động dọn dẹp các cảnh báo thử nghiệm cũ (TEST_*) không còn tác dụng
+        try:
+            cursor.execute(
+                "DELETE FROM alerts WHERE alert_id LIKE 'TEST_%' OR object_id = 'O_TEST' OR reason LIKE '%thử nghiệm%'"
+            )
+        except Exception:
+            pass
+
         self._connection.commit()
         logger.debug("Schema database đã được khởi tạo và kiểm tra migration")
 
