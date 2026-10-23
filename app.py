@@ -101,6 +101,8 @@ from config.settings import (
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHAT_ID,
     TELEGRAM_ALERTS_ENABLED,
+    BUS_LICENSE_PLATE,
+    BUS_ROUTE,
     get_current_time,
     APP_TIMEZONE,
 )
@@ -2923,7 +2925,7 @@ def page_notifications(service: AnalysisService):
         notifier = get_telegram_notifier()
         is_cfg = notifier.is_configured() if notifier and hasattr(notifier, "is_configured") else False
 
-        st.markdown("##### Cấu hình Telegram Bot:")
+        st.markdown("##### Cấu hình Telegram Bot & Định danh Xe buýt:")
         col_tok, col_cid = st.columns(2)
         with col_tok:
             t_token = st.text_input(
@@ -2939,6 +2941,22 @@ def page_notifications(service: AnalysisService):
                 help="Numeric Chat ID của người nhận hoặc nhóm nhận thông báo",
             )
 
+        col_plate, col_route = st.columns(2)
+        with col_plate:
+            t_bus_plate = st.text_input(
+                "Biển số xe buýt:",
+                value=os.environ.get("BUS_LICENSE_PLATE", getattr(notifier, "bus_license_plate", "")),
+                placeholder="Ví dụ: 51B-123.45 (Để trống hiển thị 'Chưa cập nhật')",
+                help="Biển số xe buýt hiển thị trên thông báo cảnh báo Telegram",
+            )
+        with col_route:
+            t_bus_route = st.text_input(
+                "Tuyến xe buýt:",
+                value=os.environ.get("BUS_ROUTE", getattr(notifier, "bus_route", "")),
+                placeholder="Ví dụ: 08 hoặc Tuyến 08 (Bến Thành - ĐHQG)",
+                help="Số hoặc mã tuyến xe buýt hiển thị trên thông báo cảnh báo Telegram",
+            )
+
         t_enabled = st.checkbox(
             "Bật gửi cảnh báo tự động khi phát hiện đồ bỏ quên (Active Telegram Alerts)",
             value=st.session_state.get("tg_alerts_enabled", TELEGRAM_ALERTS_ENABLED),
@@ -2949,6 +2967,10 @@ def page_notifications(service: AnalysisService):
             notifier.bot_token = t_token
         if t_chat_id:
             notifier.chat_id = t_chat_id
+        notifier.bus_license_plate = t_bus_plate.strip()
+        notifier.bus_route = t_bus_route.strip()
+        os.environ["BUS_LICENSE_PLATE"] = t_bus_plate.strip()
+        os.environ["BUS_ROUTE"] = t_bus_route.strip()
 
         b1, b2 = st.columns(2)
         with b1:
@@ -2967,7 +2989,13 @@ def page_notifications(service: AnalysisService):
                 else:
                     with st.spinner("Đang phát cảnh báo thử nghiệm tới Telegram..."):
                         alt = service.send_test_alert(
-                            telegram_config={"enabled": True, "bot_token": t_token, "chat_id": t_chat_id}
+                            telegram_config={
+                                "enabled": True,
+                                "bot_token": t_token,
+                                "chat_id": t_chat_id,
+                                "bus_license_plate": t_bus_plate.strip(),
+                                "bus_route": t_bus_route.strip(),
+                            }
                         )
                         logs = service.get_notification_logs(limit=3)
                         tg_log = next((l for l in logs if l.get("channel") == "telegram" and l.get("alert_id") == alt.alert_id), None)

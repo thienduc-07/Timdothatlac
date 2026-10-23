@@ -23,6 +23,8 @@ from config.settings import (
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHAT_ID,
     TELEGRAM_ALERTS_ENABLED,
+    BUS_LICENSE_PLATE,
+    BUS_ROUTE,
     get_current_time,
 )
 from src.detection.class_mapper import get_user_facing_label, format_seat_label
@@ -209,17 +211,25 @@ class AlertService:
                 "enabled": TELEGRAM_ALERTS_ENABLED,
                 "bot_token": TELEGRAM_BOT_TOKEN,
                 "chat_id": TELEGRAM_CHAT_ID,
+                "bus_license_plate": BUS_LICENSE_PLATE,
+                "bus_route": BUS_ROUTE,
             }
 
         if t_cfg and t_cfg.get("enabled", True):
             token = (t_cfg.get("bot_token") or TELEGRAM_BOT_TOKEN or "").strip()
             chat_id = (t_cfg.get("chat_id") or TELEGRAM_CHAT_ID or "").strip()
+            cfg_plate = (t_cfg.get("bus_license_plate") if "bus_license_plate" in t_cfg else os.environ.get("BUS_LICENSE_PLATE", BUS_LICENSE_PLATE) or "").strip()
+            cfg_route = (t_cfg.get("bus_route") if "bus_route" in t_cfg else os.environ.get("BUS_ROUTE", BUS_ROUTE) or "").strip()
 
             notifier = get_telegram_notifier()
             if token and notifier.bot_token != token:
                 notifier.bot_token = token
             if chat_id and notifier.chat_id != chat_id:
                 notifier.chat_id = chat_id
+            if cfg_plate:
+                notifier.bus_license_plate = cfg_plate
+            if cfg_route:
+                notifier.bus_route = cfg_route
 
             if not notifier.is_configured():
                 logger.warning("Telegram chưa được cấu hình đầy đủ Bot Token hoặc Chat ID")
@@ -234,7 +244,7 @@ class AlertService:
                         payload={"message": msg_title, "object_id": alert.object_id},
                     )
             else:
-                bus_name = getattr(event, "video_name", "Xe buýt Tuyến 01") or "Xe buýt Tuyến 01"
+                bus_name = getattr(event, "video_name", "") or ""
                 target_recipient = notifier.chat_id
 
                 def _on_telegram_result(res):
@@ -261,6 +271,8 @@ class AlertService:
                     is_async=not is_test,
                     force=is_test,
                     on_complete=_on_telegram_result,
+                    bus_license_plate=cfg_plate or notifier.bus_license_plate,
+                    bus_route=cfg_route or notifier.bus_route,
                 )
 
         # 2. Kênh Email SMTP

@@ -259,6 +259,8 @@ CLASS_NAMES_VI = {
     "unknown_object": "Vật thể chưa rõ",
 }
 
+VIETNAMESE_CLASSES = CLASS_NAMES_VI
+
 # ──────────────────────────────────────────────
 # Cấu hình Thông báo & Cảnh báo (Alerts & Notifications)
 # ──────────────────────────────────────────────
@@ -270,6 +272,10 @@ TELEGRAM_BOT_TOKEN = get_secret_or_env("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = get_secret_or_env("TELEGRAM_CHAT_ID", "")
 TELEGRAM_ALERTS_ENABLED = get_secret_or_env("TELEGRAM_ALERTS_ENABLED", "true").lower() in ("true", "1", "yes")
 TELEGRAM_ALERT_COOLDOWN_SECONDS = float(get_secret_or_env("TELEGRAM_ALERT_COOLDOWN_SECONDS", "60.0"))
+
+# Cấu hình thông tin Xe buýt cho Thông báo Telegram (Biển số xe & Tuyến xe)
+BUS_LICENSE_PLATE = get_secret_or_env("BUS_LICENSE_PLATE", "")
+BUS_ROUTE = get_secret_or_env("BUS_ROUTE", "")
 
 
 # Mức độ ưu tiên
