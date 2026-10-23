@@ -789,6 +789,60 @@ def _run_browser_camera_analysis(
         st.error(f"Lỗi khi xử lý hình ảnh camera: {e}")
 
 
+def render_telegram_diagnostics(service: AnalysisService, context_key: str = "default"):
+    """
+    Hiển thị thông tin chẩn đoán trạng thái thông báo Telegram (Telegram Diagnostics):
+    - Trạng thái cấu hình Bot Token & Chat ID
+    - Trạng thái phân phối gần nhất (Thành công / Thất bại)
+    - Thời điểm của lần gửi gần nhất
+    - Lỗi an toàn (không hiển thị lộ Bot Token)
+    - Nút bấm thủ công gửi tin nhắn kiểm tra tới kênh Telegram (xác thực response ok: true)
+    """
+    notifier = get_telegram_notifier()
+    is_cfg = notifier.is_configured()
+    last_status = notifier.get_last_delivery_status()
+
+    st.markdown("##### 📡 Trạng thái Kênh Thông báo Telegram")
+
+    col_stat1, col_stat2 = st.columns(2)
+    with col_stat1:
+        if is_cfg:
+            masked_token = notifier.get_masked_token()
+            st.success(f"✅ **Đã cấu hình:** Kênh `{notifier.chat_id}`\n\n*(Token: `{masked_token}`)*")
+        else:
+            st.warning("⚠️ **Chưa cấu hình đầy đủ:** Cần bổ sung `TELEGRAM_BOT_TOKEN` và `TELEGRAM_CHAT_ID` trong file `.env`.")
+
+    with col_stat2:
+        if last_status.get("has_attempt"):
+            ts_str = last_status.get("timestamp", "")
+            ts_display = ts_str
+            if ts_str:
+                try:
+                    dt = datetime.fromisoformat(ts_str)
+                    ts_display = dt.strftime("%H:%M:%S %d/%m/%Y")
+                except Exception:
+                    pass
+
+            if last_status.get("success"):
+                st.success(f"🟢 **Lần gửi gần nhất ({ts_display}):** Gửi thành công tới `{last_status.get('chat_id', '')}`")
+            else:
+                err_msg = last_status.get("message", "Lỗi gửi thông báo")
+                code = last_status.get("status_code", "")
+                st.error(f"🔴 **Lần gửi gần nhất ({ts_display}):** Thất bại [{code}]: {err_msg}")
+        else:
+            st.info("ℹ️ **Lần gửi gần nhất:** Chưa có thông báo nào được gửi trong phiên hiện tại.")
+
+    col_btn, _ = st.columns([1, 1])
+    with col_btn:
+        if st.button("📨 Gửi tin nhắn kiểm tra tới kênh Telegram (Test Message)", key=f"btn_tg_test_{context_key}", use_container_width=True):
+            with st.spinner("Đang gửi tin nhắn kiểm tra tới kênh Telegram..."):
+                ok, msg = notifier.test_connection()
+            if ok:
+                st.success(f"✅ {msg}")
+            else:
+                st.error(f"❌ {msg}")
+
+
 # ══════════════════════════════════════════════
 # TRANG 2: GIÁM SÁT CAMERA & VIDEO (CAMERA MONITOR)
 # ══════════════════════════════════════════════
@@ -1053,6 +1107,17 @@ def page_camera_monitor(service: AnalysisService):
             if is_running:
                 if suspected_cnt > 0:
                     st.error(f"⚠️ **CẢNH BÁO BỎ QUÊN:** Phát hiện {suspected_cnt} đồ vật cá nhân bị bỏ lại trên ghế trống! Hãy kiểm tra khoang hành khách.")
+                    suspected_items = cam_telemetry.get("suspected_items") or []
+                    snapshot_base64 = cam_telemetry.get("snapshot_base64")
+                    if suspected_items and service:
+                        service.process_browser_camera_events(
+                            suspected_items=suspected_items,
+                            snapshot_base64=snapshot_base64,
+                            camera_name="Live Camera (Browser)",
+                        )
+
+            with st.expander("📡 Trạng thái thông báo Telegram (Kênh tự động)", expanded=False):
+                render_telegram_diagnostics(service, context_key="cam_monitor")
 
             # Tùy chọn dự phòng: WebRTC Streamer cho các thiết bị cũ không hỗ trợ WebAssembly/WebGPU
             with st.expander("🛠️ Dự phòng máy chủ: Server WebRTC Streamer (Dành cho trình duyệt cũ)", expanded=False):
@@ -2129,13 +2194,11 @@ def page_notifications(service: AnalysisService):
     ])
 
     with tab_tele:
+        render_telegram_diagnostics(service, context_key="notifications_tab")
+        st.divider()
+
         notifier = get_telegram_notifier()
         is_cfg = notifier.is_configured()
-
-        if is_cfg:
-            st.success("🟢 **Trạng thái:** Đã cấu hình Telegram Bot từ môi trường. Sẵn sàng gửi cảnh báo khi phát hiện đồ bỏ quên.")
-        else:
-            st.warning("⚠️ **Trạng thái:** Chưa cấu hình đầy đủ. Cần bổ sung `TELEGRAM_BOT_TOKEN` và `TELEGRAM_CHAT_ID` trong file `.env`.")
 
         st.markdown("##### Cấu hình Telegram Bot:")
         col_tok, col_cid = st.columns(2)

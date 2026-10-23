@@ -15,7 +15,8 @@ import os
 from pathlib import Path
 import re
 import threading
-from typing import Dict, Optional, Set, Tuple, Union
+import time
+from typing import Any, Callable, Dict, Optional, Set, Tuple, Union
 
 import requests
 
@@ -84,6 +85,17 @@ class TelegramNotifier:
         self._last_alert_timestamps: Dict[str, float] = {}
         self._notified_event_ids: Set[str] = set()
 
+        # Quản lý trạng thái phân phối gần nhất cho giao diện chẩn đoán UI
+        self._last_delivery_status: Dict[str, Any] = {
+            "has_attempt": False,
+            "success": False,
+            "status_code": 0,
+            "message": "",
+            "timestamp": "",
+            "chat_id": self._chat_id,
+            "alert_id": "",
+        }
+
     @property
     def bot_token(self) -> str:
         return self._bot_token
@@ -128,6 +140,11 @@ class TelegramNotifier:
             return "••••••••"
         return f"{self._bot_token[:4]}••••••••{self._bot_token[-4:]}"
 
+    def get_last_delivery_status(self) -> Dict[str, Any]:
+        """Trả về thông tin trạng thái phân phối gần nhất phục vụ UI Diagnostics."""
+        with self._lock:
+            return dict(self._last_delivery_status)
+
     def reset_deduplication(self):
         """Xóa bộ đệm chống spam (thường dùng trong unit tests hoặc restart session)."""
         with self._lock:
@@ -144,13 +161,24 @@ class TelegramNotifier:
     ) -> Tuple[bool, str]:
         """
         Kiểm tra thông tin token và kết nối mạng bằng API getMe của Telegram.
-        Nếu có chat_id, gửi 1 tin nhắn kiểm tra.
+        Nếu có chat_id, gửi 1 tin nhắn kiểm tra tới kênh.
         """
         token = (bot_token if bot_token is not None else self._bot_token).strip()
         target_chat = (chat_id if chat_id is not None else self._chat_id).strip()
 
         if not token:
-            return False, "Chưa cấu hình Telegram Bot Token (vui lòng kiểm tra file .env)"
+            err_msg = "Chưa cấu hình Telegram Bot Token (vui lòng kiểm tra file .env)"
+            with self._lock:
+                self._last_delivery_status = {
+                    "has_attempt": True,
+                    "success": False,
+                    "status_code": 400,
+                    "message": err_msg,
+                    "timestamp": get_current_time().isoformat(),
+                    "chat_id": target_chat,
+                    "alert_id": "TEST_CONN",
+                }
+            return False, err_msg
 
         url = f"https://api.telegram.org/bot{token}/getMe"
         try:
@@ -161,29 +189,105 @@ class TelegramNotifier:
             )
             data = resp.json()
         except requests.exceptions.Timeout:
-            return False, "Lỗi kết nối: Hết thời gian chờ phản hồi từ máy chủ Telegram (Timeout)."
+            err_msg = "Lỗi kết nối: Hết thời gian chờ phản hồi từ máy chủ Telegram (Timeout)."
+            with self._lock:
+                self._last_delivery_status = {
+                    "has_attempt": True,
+                    "success": False,
+                    "status_code": 408,
+                    "message": err_msg,
+                    "timestamp": get_current_time().isoformat(),
+                    "chat_id": target_chat,
+                    "alert_id": "TEST_CONN",
+                }
+            return False, err_msg
         except requests.exceptions.RequestException as e:
-            return False, f"Lỗi kết nối mạng: {sanitize_telegram_error(e, token)}"
+            err_msg = f"Lỗi kết nối mạng: {sanitize_telegram_error(e, token)}"
+            with self._lock:
+                self._last_delivery_status = {
+                    "has_attempt": True,
+                    "success": False,
+                    "status_code": 500,
+                    "message": err_msg,
+                    "timestamp": get_current_time().isoformat(),
+                    "chat_id": target_chat,
+                    "alert_id": "TEST_CONN",
+                }
+            return False, err_msg
         except Exception as e:
-            return False, f"Lỗi không xác định: {sanitize_telegram_error(e, token)}"
+            err_msg = f"Lỗi không xác định: {sanitize_telegram_error(e, token)}"
+            with self._lock:
+                self._last_delivery_status = {
+                    "has_attempt": True,
+                    "success": False,
+                    "status_code": 500,
+                    "message": err_msg,
+                    "timestamp": get_current_time().isoformat(),
+                    "chat_id": target_chat,
+                    "alert_id": "TEST_CONN",
+                }
+            return False, err_msg
 
         if resp.status_code == 401:
-            return False, "Bot Token không hợp lệ hoặc đã bị vô hiệu hóa bởi Telegram."
+            err_msg = "Bot Token không hợp lệ hoặc đã bị vô hiệu hóa bởi Telegram."
+            with self._lock:
+                self._last_delivery_status = {
+                    "has_attempt": True,
+                    "success": False,
+                    "status_code": 401,
+                    "message": err_msg,
+                    "timestamp": get_current_time().isoformat(),
+                    "chat_id": target_chat,
+                    "alert_id": "TEST_CONN",
+                }
+            return False, err_msg
+
         if not data.get("ok"):
             err_desc = data.get("description", "Không xác định")
-            return False, f"Lỗi Telegram API: {err_desc}"
+            err_msg = f"Lỗi Telegram API: {err_desc}"
+            with self._lock:
+                self._last_delivery_status = {
+                    "has_attempt": True,
+                    "success": False,
+                    "status_code": resp.status_code,
+                    "message": err_msg,
+                    "timestamp": get_current_time().isoformat(),
+                    "chat_id": target_chat,
+                    "alert_id": "TEST_CONN",
+                }
+            return False, err_msg
 
         bot_username = data.get("result", {}).get("username", "Bot")
         if target_chat:
             test_text = (
-                f"🔔 <b>[Lost & Found AI Bus]</b> Kết nối thành công!\n"
+                f"🔔 <b>[Lost & Found AI Bus]</b> Kiểm tra kết nối thành công!\n"
                 f"Hệ thống giám sát trần xe buýt đã liên kết với Bot <code>@{bot_username}</code>."
             )
             sub_res = self.send_message(text=test_text, chat_id=target_chat, bot_token=token)
+            with self._lock:
+                self._last_delivery_status = {
+                    "has_attempt": True,
+                    "success": sub_res.success,
+                    "status_code": sub_res.status_code,
+                    "message": "Thành công" if sub_res.success else sub_res.message,
+                    "timestamp": get_current_time().isoformat(),
+                    "chat_id": target_chat,
+                    "alert_id": "TEST_CONN",
+                }
             if sub_res.success:
                 return True, f"Kết nối thành công! Đã gửi tin nhắn test tới Chat ID: {target_chat} (Bot @{bot_username})"
             return False, f"Bot Token đúng (@{bot_username}) nhưng không gửi được tới Chat ID {target_chat}: {sub_res.message}"
 
+        with self._lock:
+            self._last_delivery_status = {
+                "has_attempt": True,
+                "success": True,
+                "status_code": 200,
+                "message": f"Bot Token hợp lệ (@{bot_username})",
+                "timestamp": get_current_time().isoformat(),
+                "chat_id": "",
+                "alert_id": "TEST_CONN",
+            }
         return True, f"Bot Token hợp lệ! Đã xác thực thành công Bot @{bot_username}."
 
     # ──────────────────────────────────────────────
@@ -475,6 +579,7 @@ class TelegramNotifier:
         bus_or_camera_id: str = "Tuyến xe buýt Demo 01",
         is_async: bool = True,
         force: bool = False,
+        on_complete: Optional[Callable[["TelegramResponse"], None]] = None,
     ) -> TelegramResponse:
         """
         Gửi cảnh báo phát hiện đồ bỏ quên tới Telegram Bot với cơ chế chống spam (anti-spam / deduplication).
@@ -485,6 +590,7 @@ class TelegramNotifier:
             bus_or_camera_id: Tên xe buýt hoặc camera nguồn
             is_async: True nếu muốn gửi trong thread pool chạy ngầm (không chặn FPS xử lý video)
             force: True nếu muốn bỏ qua kiểm tra cooldown (ví dụ: nút test trên UI)
+            on_complete: Callback tùy chọn được gọi sau khi hoàn tất gửi tin (nhận TelegramResponse thực tế)
 
         Returns:
             TelegramResponse (khi is_async=True, trả về kết quả tiếp nhận hàng đợi)
@@ -506,16 +612,15 @@ class TelegramNotifier:
             )
 
         now_sec = get_current_time().timestamp()
+        evt_id = (event.event_id if event else "") or alert.event_id or alert.alert_id
+        seat_id = alert.seat_id or (event.seat_id if event else "")
+        track_id = event.last_track_id if (event and event.last_track_id != -1) else alert.object_id
+        cooldown_key = f"{evt_id}_{seat_id}_{track_id}"
 
         # Kiểm tra Deduplication & Cooldown
         if not force:
-            evt_id = (event.event_id if event else "") or alert.event_id or alert.alert_id
-            seat_id = alert.seat_id or (event.seat_id if event else "")
-            track_id = event.last_track_id if (event and event.last_track_id != -1) else alert.object_id
-            cooldown_key = f"{evt_id}_{seat_id}_{track_id}"
-
             with self._lock:
-                # 1. Tránh gửi lại cho cùng 1 event_id đã thông báo trong phiên này
+                # 1. Tránh gửi lại cho cùng 1 event_id đã thông báo thành công trước đó
                 if evt_id and evt_id in self._notified_event_ids:
                     logger.debug(f"Bỏ qua cảnh báo lặp (Event ID {evt_id} đã được thông báo trước đó)")
                     return TelegramResponse(
@@ -534,10 +639,8 @@ class TelegramNotifier:
                         message=f"Bỏ qua do đang trong thời gian giãn cách ({self._cooldown_seconds}s cooldown)",
                     )
 
-                # Ghi nhận trạng thái
+                # Đánh dấu thời điểm tiếp nhận để ngăn gửi trùng lặp đồng thời
                 self._last_alert_timestamps[cooldown_key] = now_sec
-                if evt_id:
-                    self._notified_event_ids.add(evt_id)
 
         # Chuẩn bị nội dung
         msg_text = self.format_forgotten_item_message(
@@ -546,18 +649,69 @@ class TelegramNotifier:
             bus_or_camera_id=bus_or_camera_id,
         )
 
-        def _do_send():
+        def _do_send() -> TelegramResponse:
             photo_path = alert.snapshot_path or (event.snapshot_path if event else "")
-            if photo_path and Path(photo_path).exists():
-                res = self.send_photo(photo_path=photo_path, caption=msg_text)
-            else:
-                res = self.send_message(text=msg_text)
+            max_retries = 2
+            retry_delay = 1.5
+            res: Optional[TelegramResponse] = None
 
-            if res.success:
-                logger.info(f"Đã gửi cảnh báo Telegram thành công cho Alert {alert.alert_id}")
-            else:
-                logger.warning(f"Gửi cảnh báo Telegram thất bại ({res.status_code}): {res.message}")
-            return res
+            for attempt in range(max_retries + 1):
+                if photo_path and Path(photo_path).exists():
+                    res = self.send_photo(photo_path=photo_path, caption=msg_text)
+                else:
+                    res = self.send_message(text=msg_text)
+
+                if res.success:
+                    break
+
+                # Dừng thử lại nếu gặp lỗi từ phía client không thể khắc phục (400, 401, 403, 404)
+                if res.status_code in (400, 401, 403, 404) and res.error_type not in ("TIMEOUT", "NETWORK_ERROR"):
+                    logger.warning(
+                        f"Gửi cảnh báo Telegram gặp lỗi client ({res.status_code}): {res.message}. Không thử lại."
+                    )
+                    break
+
+                # Lỗi mạng tạm thời hoặc 5xx: thử lại nếu còn lượt
+                if attempt < max_retries:
+                    logger.warning(
+                        f"Gửi cảnh báo Telegram thất bại ({res.status_code}): {res.message}. Thử lại lần {attempt + 1}/{max_retries} sau {retry_delay}s..."
+                    )
+                    time.sleep(retry_delay)
+
+            final_res = res or TelegramResponse(
+                success=False,
+                status_code=500,
+                message="Không nhận được phản hồi từ máy chủ Telegram",
+                error_type="NO_RESPONSE",
+            )
+
+            with self._lock:
+                self._last_delivery_status = {
+                    "has_attempt": True,
+                    "success": final_res.success,
+                    "status_code": final_res.status_code,
+                    "message": "Thành công" if final_res.success else final_res.message,
+                    "timestamp": get_current_time().isoformat(),
+                    "chat_id": self._chat_id,
+                    "alert_id": alert.alert_id,
+                }
+                if final_res.success:
+                    if evt_id:
+                        self._notified_event_ids.add(evt_id)
+                    logger.info(f"Đã gửi cảnh báo Telegram thành công cho Alert {alert.alert_id}")
+                else:
+                    # Nếu thất bại, xóa key cooldown để lần sau có thể thử lại thay vì bị khóa hoàn toàn
+                    if cooldown_key in self._last_alert_timestamps:
+                        del self._last_alert_timestamps[cooldown_key]
+                    logger.warning(f"Gửi cảnh báo Telegram thất bại ({final_res.status_code}): {final_res.message}")
+
+            if on_complete:
+                try:
+                    on_complete(final_res)
+                except Exception as ex:
+                    logger.warning(f"Lỗi khi thực thi on_complete callback: {ex}")
+
+            return final_res
 
         if is_async:
             self._executor.submit(_do_send)

@@ -358,6 +358,7 @@ def test_suspected_event_triggers_telegram_alert(mock_post):
     assert alert.seat_id == "S03"
     assert alert.priority == "HIGH"
     mock_repo.save_alert.assert_called()
+    time.sleep(0.15)
     mock_repo.log_notification.assert_called()
 
 

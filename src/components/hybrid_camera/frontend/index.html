@@ -538,9 +538,10 @@
     function notifyStreamlit(val, force = false) {
       if (!val) return;
       const now = performance.now();
-      // Khóa trạng thái nghiệp vụ (status, is_running, suspected_count, error).
+      // Khóa trạng thái nghiệp vụ (status, is_running, suspected_count, suspected_items, error).
       // Loại bỏ hoàn toàn FPS dao động theo từng frame để tránh Streamlit bị kích hoạt rerun vô tận (nguyên nhân gây tối mờ UI)!
-      const stateKey = `${val.status || ""}_${val.is_running ? 1 : 0}_${val.suspected_count || 0}_${val.error || ""}`;
+      const itemsSig = (val.suspected_items || []).map(i => `${i.track_id}:${i.seat_id}:${i.status}`).join("|");
+      const stateKey = `${val.status || ""}_${val.is_running ? 1 : 0}_${val.suspected_count || 0}_${itemsSig}_${val.error || ""}`;
       const stateChanged = (stateKey !== lastNotifiedStateKey);
       const throttleElapsed = (now - lastNotifiedTime > 2500);
 
@@ -2091,15 +2092,41 @@
       // Tuyệt đối không gửi FPS dao động mỗi frame để tránh Streamlit bị kích hoạt rerun liên tục làm tối mờ website!
       const currentSuspectCount = suspectItems.length;
       if (currentSuspectCount !== latestSuspectCount || (now - lastNotifiedTime > 2500)) {
+        const isNewSuspect = currentSuspectCount > latestSuspectCount;
         latestSuspectCount = currentSuspectCount;
+
+        let suspectList = [];
+        let snapshotData = null;
+        if (currentSuspectCount > 0) {
+          suspectList = suspectItems.map(s => ({
+            track_id: s.id,
+            display_id: s.displayId,
+            class_name: s.className || "item",
+            seat_id: (s.associatedSeat && s.associatedSeat !== "UNKNOWN_SEAT") ? s.associatedSeat : "",
+            status: s.status || "SUSPECTED",
+            confidence: s.confidence || 0.8,
+            vacant_duration: (now - s.stationarySince) / 1000.0
+          }));
+
+          if (isNewSuspect && canvasEl && canvasEl.width > 0 && canvasEl.height > 0) {
+            try {
+              snapshotData = canvasEl.toDataURL("image/jpeg", 0.65);
+            } catch (err) {
+              // canvas may be tainted or unavailable
+            }
+          }
+        }
+
         notifyStreamlit({
           status: "running",
           is_running: true,
           seat_count: trackedSeats.size,
           person_count: confirmedPersons.length,
           item_count: confirmedItems.length,
-          suspected_count: currentSuspectCount
-        });
+          suspected_count: currentSuspectCount,
+          suspected_items: suspectList,
+          snapshot_base64: snapshotData
+        }, isNewSuspect);
       }
     }
 

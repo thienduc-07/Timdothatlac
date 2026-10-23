@@ -36,8 +36,8 @@ class NotificationService:
         Kiểm tra token bot Telegram bằng API getMe.
         Nếu có chat_id, gửi thử một tin nhắn kiểm tra.
         """
-        from src.notifications.telegram_notifier import TelegramNotifier
-        notifier = TelegramNotifier(bot_token=bot_token, chat_id=chat_id)
+        from src.notifications.telegram_notifier import get_telegram_notifier
+        notifier = get_telegram_notifier()
         return notifier.test_connection(bot_token=bot_token, chat_id=chat_id)
 
     @staticmethod
@@ -51,8 +51,8 @@ class NotificationService:
         Gửi tin nhắn Telegram kèm ảnh bằng chứng nếu có.
         Trả về: (thành_công, mã_lỗi, thông_điệp_lỗi)
         """
-        from src.notifications.telegram_notifier import TelegramNotifier
-        notifier = TelegramNotifier(bot_token=bot_token, chat_id=chat_id)
+        from src.notifications.telegram_notifier import get_telegram_notifier
+        notifier = get_telegram_notifier()
         if image_path and Path(image_path).exists():
             res = notifier.send_photo(photo_path=image_path, caption=message, chat_id=chat_id, bot_token=bot_token)
         else:

@@ -7,7 +7,7 @@ app.py không cần biết chi tiết về YOLO, tracker, database, v.v.
 import os
 import tempfile
 from pathlib import Path
-from typing import Callable, Optional, Dict, List, Tuple
+from typing import Any, Callable, Optional, Dict, List, Tuple
 import numpy as np
 
 
@@ -33,7 +33,7 @@ from config.settings import (
 
 from src.seats.seat_config import SeatConfigManager
 from src.seats.seat_manager import SeatManager
-from src.models import SeatConfig, SeatStatus, Event, Alert
+from src.models import SeatConfig, SeatStatus, Event, Alert, Detection
 from src.database.alert_repository import AlertRepository
 from src.database.dataset_repository import DatasetRepository
 from src.database.model_repository import ModelRepository
@@ -42,6 +42,7 @@ from src.services.notification_service import NotificationService
 from src.services.dataset_service import DatasetService
 from src.services.model_service import ModelService
 from src.video.camera_service import CameraStreamManager
+from src.notifications.telegram_notifier import get_telegram_notifier
 
 
 logger = get_logger(__name__)
@@ -608,6 +609,108 @@ class AnalysisService:
                 seat_id=seat_id,
             )
         return None
+
+    def get_telegram_delivery_status(self) -> Dict[str, Any]:
+        """Lấy trạng thái kết quả phân phối thông báo Telegram gần nhất."""
+        return get_telegram_notifier().get_last_delivery_status()
+
+    def test_telegram_connection(
+        self,
+        bot_token: Optional[str] = None,
+        chat_id: Optional[str] = None,
+    ) -> Tuple[bool, str]:
+        """Kiểm tra kết nối và gửi tin nhắn test tới kênh Telegram đã cấu hình."""
+        return get_telegram_notifier().test_connection(bot_token=bot_token, chat_id=chat_id)
+
+    def process_browser_camera_events(
+        self,
+        suspected_items: List[Dict[str, Any]],
+        snapshot_base64: Optional[str] = None,
+        camera_name: str = "Live Camera (Browser)",
+    ) -> List[Alert]:
+        """
+        Cầu nối sự kiện: Tiếp nhận danh sách đồ vật nghi bị bỏ quên từ Browser-Native Camera (WASM/WebGPU),
+        đồng bộ hóa sang mô hình Event của backend, ghi nhận Database và kích hoạt Alert Service gửi Telegram.
+        """
+        if not suspected_items or not self._alert_service:
+            return []
+
+        import base64
+        import re
+        import time
+        from config.settings import SNAPSHOTS_DIR, get_current_time, EventStatus
+        from src.detection.class_mapper import get_user_facing_label
+        from src.models import Event
+
+        saved_snapshot_path = None
+        if snapshot_base64 and isinstance(snapshot_base64, str):
+            try:
+                clean_b64 = snapshot_base64
+                if "," in clean_b64:
+                    clean_b64 = clean_b64.split(",", 1)[1]
+                img_data = base64.b64decode(clean_b64)
+                if img_data:
+                    ts_now = int(time.time() * 1000)
+                    snap_file = SNAPSHOTS_DIR / f"browser_cam_{ts_now}.jpg"
+                    with open(snap_file, "wb") as f:
+                        f.write(img_data)
+                    saved_snapshot_path = str(snap_file)
+            except Exception as e:
+                logger.warning(f"Không thể lưu snapshot từ browser camera: {e}")
+
+        alerts = []
+        now_ts = time.time()
+        now_iso = get_current_time().isoformat()
+
+        for item in suspected_items:
+            track_id = item.get("track_id", "") or item.get("display_id", "")
+            seat_id = (item.get("seat_id") or "").strip()
+            class_name = item.get("class_name") or "item"
+            confidence = float(item.get("confidence", 0.8))
+            status_str = str(item.get("status") or "SUSPECTED").upper()
+
+            seat_suffix = seat_id if seat_id and seat_id.lower() not in ("chưa rõ", "none", "unknown_seat") else "NOSEAT"
+            evt_id = f"EVT_BROWSER_{track_id}_{seat_suffix}"
+
+            try:
+                numeric_track_id = int(re.sub(r"\D", "", str(track_id))) if any(c.isdigit() for c in str(track_id)) else -1
+            except Exception:
+                numeric_track_id = -1
+
+            seat_display = seat_id if seat_suffix != "NOSEAT" else "Chưa rõ"
+            vi_name = get_user_facing_label(class_name)
+            reason = f"Phát hiện vật thể {vi_name} bị bỏ lại trên ghế trống {seat_display}"
+
+            evt = Event(
+                event_id=evt_id,
+                track_id=numeric_track_id,
+                last_track_id=numeric_track_id,
+                seat_id=seat_display,
+                class_name=class_name,
+                status=EventStatus.SUSPECTED if status_str == "SUSPECTED" else EventStatus.REVIEW_REQUIRED,
+                confidence=confidence,
+                notes=reason,
+                snapshot_path=saved_snapshot_path or "",
+                timestamp=now_iso,
+                vacant_duration=float(item.get("vacant_duration", 5.0)),
+                video_name=camera_name,
+            )
+            setattr(evt, "reason", reason)
+
+            if self._repo:
+                try:
+                    self._repo.save_event(evt, analysis_id="browser_live_camera")
+                except Exception as ex:
+                    logger.debug(f"Lưu event vào database: {ex}")
+
+            alert = self._alert_service.process_event_for_alert(
+                event=evt,
+                current_time_sec=now_ts,
+            )
+            if alert:
+                alerts.append(alert)
+
+        return alerts
 
     # ──────────────────────────────────────────────
     # Dataset Delegators

@@ -141,34 +141,56 @@ class AlertService:
             }
 
         if t_cfg and t_cfg.get("enabled", True):
-            token = t_cfg.get("bot_token") or TELEGRAM_BOT_TOKEN
-            chat_id = t_cfg.get("chat_id") or TELEGRAM_CHAT_ID
-            if token and chat_id:
-                notifier = TelegramNotifier(bot_token=token, chat_id=chat_id)
+            token = (t_cfg.get("bot_token") or TELEGRAM_BOT_TOKEN or "").strip()
+            chat_id = (t_cfg.get("chat_id") or TELEGRAM_CHAT_ID or "").strip()
+
+            notifier = get_telegram_notifier()
+            if token and notifier.bot_token != token:
+                notifier.bot_token = token
+            if chat_id and notifier.chat_id != chat_id:
+                notifier.chat_id = chat_id
+
+            if not notifier.is_configured():
+                logger.warning("Telegram chưa được cấu hình đầy đủ Bot Token hoặc Chat ID")
+                if self._repo:
+                    self._repo.log_notification(
+                        alert_id=alert.alert_id,
+                        channel=NotificationChannel.TELEGRAM,
+                        recipient=chat_id or "Chưa cấu hình",
+                        status="FAILED",
+                        status_code=400,
+                        error_message="Chưa cấu hình TELEGRAM_BOT_TOKEN hoặc TELEGRAM_CHAT_ID trong .env",
+                        payload={"message": msg_title, "object_id": alert.object_id},
+                    )
+            else:
                 bus_name = getattr(event, "video_name", "Xe buýt Tuyến 01") or "Xe buýt Tuyến 01"
-                res = notifier.send_alert(
+                target_recipient = notifier.chat_id
+
+                def _on_telegram_result(res):
+                    if res.success:
+                        if NotificationChannel.TELEGRAM not in alert.sent_channels:
+                            alert.sent_channels.append(NotificationChannel.TELEGRAM)
+                        if self._repo:
+                            self._repo.save_alert(alert)
+                    if self._repo:
+                        self._repo.log_notification(
+                            alert_id=alert.alert_id,
+                            channel=NotificationChannel.TELEGRAM,
+                            recipient=target_recipient,
+                            status="SUCCESS" if res.success else "FAILED",
+                            status_code=res.status_code,
+                            error_message="" if res.success else res.message,
+                            payload={"message": msg_title, "object_id": alert.object_id},
+                        )
+
+                notifier.send_alert(
                     alert=alert,
                     event=event,
                     bus_or_camera_id=bus_name,
                     is_async=not is_test,
                     force=is_test,
+                    on_complete=_on_telegram_result,
                 )
-                if res.success:
-                    if NotificationChannel.TELEGRAM not in alert.sent_channels:
-                        alert.sent_channels.append(NotificationChannel.TELEGRAM)
-                    if self._repo:
-                        self._repo.save_alert(alert)
-
-                if self._repo:
-                    self._repo.log_notification(
-                        alert_id=alert.alert_id,
-                        channel=NotificationChannel.TELEGRAM,
-                        recipient=chat_id,
-                        status="SUCCESS" if res.success else "FAILED",
-                        status_code=res.status_code,
-                        error_message="" if res.success else res.message,
-                        payload={"message": msg_title, "object_id": alert.object_id},
-                    )
 
         # 2. Kênh Email SMTP
         if email_config and email_config.get("enabled"):
