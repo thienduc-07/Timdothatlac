@@ -322,17 +322,19 @@ st.markdown(f"""
         display: flex !important;
         flex-direction: column !important;
         justify-content: space-between !important;
-        min-height: 125px !important;
+        min-height: 110px !important;
         height: 100% !important;
         box-sizing: border-box !important;
     }}
     [data-testid="stHorizontalBlock"]:has(.metric-panel) {{
         align-items: stretch !important;
     }}
+    [data-testid="stHorizontalBlock"]:has(.metric-panel) [data-testid="stColumn"],
     [data-testid="stHorizontalBlock"]:has(.metric-panel) [data-testid="column"] {{
         display: flex !important;
         flex-direction: column !important;
     }}
+    [data-testid="stHorizontalBlock"]:has(.metric-panel) [data-testid="stColumn"] > div,
     [data-testid="stHorizontalBlock"]:has(.metric-panel) [data-testid="column"] > div {{
         flex: 1 1 auto !important;
         display: flex !important;
@@ -626,15 +628,25 @@ st.markdown(f"""
        ══════════════════════════════════════════════════════════════ */
 
     /* ── Base Reset & Geometry for All Interactive Buttons ── */
+    .stButton,
+    .stButton .stTooltipIcon,
+    .stButton .stTooltipHoverTarget {{
+        width: 100% !important;
+        display: flex !important;
+    }}
+    .stButton button,
     .stButton > button,
+    .stDownloadButton button,
     .stDownloadButton > button,
     [data-testid="stFileUploaderDropzone"] button,
     section[data-testid="stFileUploaderDropzone"] button,
+    div[data-testid="stFormSubmitButton"] button,
     div[data-testid="stFormSubmitButton"] > button {{
         position: relative !important;
         box-sizing: border-box !important;
         min-height: 42px !important;
         height: auto !important;
+        width: 100% !important;
         max-width: 100% !important;
         padding: 0.52rem 0.8rem !important;
         font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
@@ -664,11 +676,11 @@ st.markdown(f"""
     }}
 
     /* Đảm bảo nội dung chữ & icon bên trong button không bị clipping hay sát lề, tự động co giãn không tràn */
-    .stButton > button div[data-testid="stMarkdownContainer"],
-    .stDownloadButton > button div[data-testid="stMarkdownContainer"],
+    .stButton div[data-testid="stMarkdownContainer"],
+    .stDownloadButton div[data-testid="stMarkdownContainer"],
     [data-testid="stFileUploaderDropzone"] button div[data-testid="stMarkdownContainer"],
-    .stButton > button p,
-    .stDownloadButton > button p,
+    .stButton p,
+    .stDownloadButton p,
     [data-testid="stFileUploaderDropzone"] button p {{
         margin: 0 !important;
         padding: 0 !important;
@@ -686,9 +698,12 @@ st.markdown(f"""
     }}
 
     /* Hover state: Neon Cyan Glow & Subtle Lift */
+    .stButton button:not(:disabled):hover,
     .stButton > button:not(:disabled):hover,
+    .stDownloadButton button:not(:disabled):hover,
     .stDownloadButton > button:not(:disabled):hover,
     [data-testid="stFileUploaderDropzone"] button:not(:disabled):hover,
+    div[data-testid="stFormSubmitButton"] button:not(:disabled):hover,
     div[data-testid="stFormSubmitButton"] > button:not(:disabled):hover {{
         background: linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 1) 100%) !important;
         border-color: rgba(56, 189, 248, 0.55) !important;
@@ -698,9 +713,12 @@ st.markdown(f"""
     }}
 
     /* Pressed / Click State: Snappy scale feedback (0.98) */
+    .stButton button:not(:disabled):active,
     .stButton > button:not(:disabled):active,
+    .stDownloadButton button:not(:disabled):active,
     .stDownloadButton > button:not(:disabled):active,
     [data-testid="stFileUploaderDropzone"] button:not(:disabled):active,
+    div[data-testid="stFormSubmitButton"] button:not(:disabled):active,
     div[data-testid="stFormSubmitButton"] > button:not(:disabled):active {{
         transform: scale(0.98) !important;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
@@ -708,25 +726,35 @@ st.markdown(f"""
     }}
 
     /* Keyboard Focus: Clear Neon Cyan Ring */
+    .stButton button:focus-visible,
     .stButton > button:focus-visible,
+    .stDownloadButton button:focus-visible,
     .stDownloadButton > button:focus-visible,
     [data-testid="stFileUploaderDropzone"] button:focus-visible,
+    div[data-testid="stFormSubmitButton"] button:focus-visible,
     div[data-testid="stFormSubmitButton"] > button:focus-visible {{
         outline: 2px solid #00E5FF !important;
         outline-offset: 2px !important;
         box-shadow: 0 0 0 4px rgba(0, 229, 255, 0.28) !important;
     }}
+    .stButton button:focus:not(:focus-visible),
     .stButton > button:focus:not(:focus-visible),
+    .stDownloadButton button:focus:not(:focus-visible),
     .stDownloadButton > button:focus:not(:focus-visible),
     [data-testid="stFileUploaderDropzone"] button:focus:not(:focus-visible) {{
         outline: none !important;
     }}
 
     /* ── Primary Action Buttons (Khởi chạy, Huấn luyện, Kích hoạt, Xuất file) ── */
+    .stButton button[kind="primary"],
     .stButton > button[kind="primary"],
+    .stButton button[data-testid="baseButton-primary"],
     .stButton > button[data-testid="baseButton-primary"],
+    .stButton button[data-testid="stBaseButton-primary"],
     .stButton > button[data-testid="stBaseButton-primary"],
+    .stDownloadButton button[kind="primary"],
     .stDownloadButton > button[kind="primary"],
+    div[data-testid="stFormSubmitButton"] button[kind="primary"],
     div[data-testid="stFormSubmitButton"] > button[kind="primary"] {{
         background: linear-gradient(135deg, rgba(14, 165, 233, 0.95) 0%, rgba(2, 132, 199, 0.95) 100%) !important;
         border: 1px solid rgba(56, 189, 248, 0.65) !important;
@@ -734,10 +762,15 @@ st.markdown(f"""
         font-weight: 700 !important;
         box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4), 0 0 16px rgba(0, 229, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
     }}
+    .stButton button[kind="primary"]:not(:disabled):hover,
     .stButton > button[kind="primary"]:not(:disabled):hover,
+    .stButton button[data-testid="baseButton-primary"]:not(:disabled):hover,
     .stButton > button[data-testid="baseButton-primary"]:not(:disabled):hover,
+    .stButton button[data-testid="stBaseButton-primary"]:not(:disabled):hover,
     .stButton > button[data-testid="stBaseButton-primary"]:not(:disabled):hover,
+    .stDownloadButton button[kind="primary"]:not(:disabled):hover,
     .stDownloadButton > button[kind="primary"]:not(:disabled):hover,
+    div[data-testid="stFormSubmitButton"] button[kind="primary"]:not(:disabled):hover,
     div[data-testid="stFormSubmitButton"] > button[kind="primary"]:not(:disabled):hover {{
         background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%) !important;
         border-color: #00E5FF !important;
@@ -745,8 +778,11 @@ st.markdown(f"""
         box-shadow: 0 6px 22px rgba(2, 132, 199, 0.55), 0 0 22px rgba(0, 229, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
         transform: translateY(-1.5px) !important;
     }}
+    .stButton button[kind="primary"]:not(:disabled):active,
     .stButton > button[kind="primary"]:not(:disabled):active,
+    .stButton button[data-testid="baseButton-primary"]:not(:disabled):active,
     .stButton > button[data-testid="baseButton-primary"]:not(:disabled):active,
+    .stDownloadButton button[kind="primary"]:not(:disabled):active,
     .stDownloadButton > button[kind="primary"]:not(:disabled):active {{
         transform: scale(0.98) !important;
     }}
@@ -828,12 +864,17 @@ st.markdown(f"""
     }}
 
     /* ── Disabled State For All Buttons ── */
+    .stButton button:disabled,
+    .stButton button[disabled],
     .stButton > button:disabled,
     .stButton > button[disabled],
+    .stDownloadButton button:disabled,
+    .stDownloadButton button[disabled],
     .stDownloadButton > button:disabled,
     .stDownloadButton > button[disabled],
     [data-testid="stFileUploaderDropzone"] button:disabled,
     [data-testid="stFileUploaderDropzone"] button[disabled],
+    div[data-testid="stFormSubmitButton"] button:disabled,
     div[data-testid="stFormSubmitButton"] > button:disabled {{
         opacity: 0.45 !important;
         cursor: not-allowed !important;
@@ -1537,18 +1578,9 @@ def page_dashboard(service: AnalysisService):
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(f"""
-        <div class="metric-panel" title="Chi tiết ghế: 👤 Có người ngồi | 🟢 Ghế trống (sẵn sàng đón khách) | ⚪ Chưa xác định">
+        <div class="metric-panel" title="Tổng số vị trí ghế đã được định danh trên sơ đồ xe buýt">
             <p>🪑 GHẾ ĐÃ ĐỊNH DANH</p>
-            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
-                <h3>{seat_count}</h3>
-                <div style="font-size: 0.78rem; font-weight: 500; color: #94A3B8; display: flex; align-items: center; gap: 5px;">
-                    <span title="Ghế có người ngồi">👤 {occ_count}</span>
-                    <span style="color: rgba(255,255,255,0.2);">|</span>
-                    <span style="color: #34D399; font-weight: 600;" title="Ghế trống (sẵn sàng đón khách)">🟢 {vac_count} trống</span>
-                    <span style="color: rgba(255,255,255,0.2);">|</span>
-                    <span title="Chưa xác định trạng thái">⚪ {amb_count}</span>
-                </div>
-            </div>
+            <h3>{seat_count}</h3>
         </div>
         """, unsafe_allow_html=True)
     with c2:
