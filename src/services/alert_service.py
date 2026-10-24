@@ -232,21 +232,28 @@ class AlertService:
             )
         )
 
+        from src.utils.bus_info import get_bus_info, DEFAULT_BUS_ROUTE
+        default_plate, default_route = get_bus_info(auto_generate_if_missing=True)
+
         cfg_plate = (
             (t_cfg.get("bus_license_plate") if t_cfg and t_cfg.get("bus_license_plate") else None)
-            or os.environ.get("BUS_LICENSE_PLATE")
             or getattr(notifier, "bus_license_plate", "")
+            or default_plate
+            or os.environ.get("BUS_LICENSE_PLATE")
             or BUS_LICENSE_PLATE
             or ""
         ).strip()
 
         cfg_route = (
             (t_cfg.get("bus_route") if t_cfg and t_cfg.get("bus_route") else None)
-            or os.environ.get("BUS_ROUTE")
             or getattr(notifier, "bus_route", "")
+            or default_route
+            or os.environ.get("BUS_ROUTE")
             or BUS_ROUTE
-            or ""
+            or DEFAULT_BUS_ROUTE
         ).strip()
+        if not cfg_route:
+            cfg_route = DEFAULT_BUS_ROUTE
 
         if token and notifier.bot_token != token:
             notifier.bot_token = token

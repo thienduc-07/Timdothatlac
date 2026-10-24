@@ -196,24 +196,30 @@ def test_message_formatting_standard_template():
         alert=alert,
         event=event,
         bus_or_camera_id="Tuyến xe buýt 08 (Bến Thành - ĐHQG)",
-        bus_license_plate="51B-123.45",
-        bus_route="08 (Bến Thành - ĐHQG)",
+        bus_license_plate="51B-12345",
+        bus_route="Tuyến số 1",
         has_photo=True,
     )
 
-    assert "CẢNH BÁO ĐỒ VẬT THẤT LẠC" in msg
+    assert "LOST & FOUND AI BUS — CẢNH BÁO ĐỒ BỎ QUÊN" in msg
     assert "Biển số xe buýt:" in msg
-    assert "51B-123.45" in msg
+    assert "51B-12345" in msg
     assert "Tuyến xe buýt:" in msg
-    assert "08 (Bến Thành - ĐHQG)" in msg
-    assert "Vị trí:" in msg
+    assert "Tuyến số 1" in msg
+    assert "Ghế:" in msg
     assert "Ghế S02" in msg or "S02" in msg
     assert "Đồ vật:" in msg
-    assert "Thời gian:" in msg
+    assert "Mã theo dõi:" in msg
+    assert "T15" in msg
+    assert "Thời điểm:" in msg
+    assert "Trạng thái:" in msg
+    assert "Ảnh chụp bằng chứng:" in msg
+    assert "Đính kèm bên dưới" in msg
+    assert "Vui lòng kiểm tra camera hoặc khoang hành khách để xác nhận đồ vật." in msg
 
 
 def test_message_formatting_unknown_seat_limitation():
-    """Nếu không xác định được ghế, phải dán nhãn Chưa rõ vị trí ghế; nếu chưa có biển số/tuyến xe thì hiển thị 'Chưa cập nhật'."""
+    """Nếu không xác định được ghế, phải dán nhãn Chưa rõ vị trí ghế; tự động gán tuyến mặc định nếu để trống."""
     alert = Alert(
         alert_id="ALT_UNKN",
         event_id="EVT_UNKNOWN",
@@ -231,21 +237,22 @@ def test_message_formatting_unknown_seat_limitation():
         status="suspected",
     )
 
-    with patch.dict(os.environ, {"BUS_LICENSE_PLATE": "", "BUS_ROUTE": ""}):
-        msg = TelegramNotifier.format_forgotten_item_message(
-            alert=alert,
-            event=event,
-            bus_or_camera_id="",
-            bus_license_plate="",
-            bus_route="",
-            has_photo=False,
-        )
+    msg = TelegramNotifier.format_forgotten_item_message(
+        alert=alert,
+        event=event,
+        bus_or_camera_id="",
+        bus_license_plate="",
+        bus_route="",
+        has_photo=False,
+    )
 
-    assert "CẢNH BÁO ĐỒ VẬT THẤT LẠC" in msg
-    assert "Biển số xe buýt:</b> Chưa cập nhật" in msg
-    assert "Tuyến xe buýt:</b> Chưa cập nhật" in msg
+    assert "LOST & FOUND AI BUS — CẢNH BÁO ĐỒ BỎ QUÊN" in msg
+    assert "Biển số xe buýt:" in msg
+    assert "Tuyến xe buýt:" in msg
+    assert "Tuyến số 1" in msg
     assert "Chưa rõ vị trí ghế" in msg
-    assert "Thời gian:" in msg
+    assert "Không khả dụng" in msg
+    assert "Vui lòng kiểm tra camera hoặc khoang hành khách để xác nhận đồ vật." in msg
 
 
 # ──────────────────────────────────────────────

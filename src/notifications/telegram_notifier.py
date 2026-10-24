@@ -109,7 +109,11 @@ class TelegramNotifier:
 
     @property
     def bus_license_plate(self) -> str:
-        return self._bus_license_plate or os.environ.get("BUS_LICENSE_PLATE", "")
+        if self._bus_license_plate:
+            return self._bus_license_plate
+        from src.utils.bus_info import get_bus_info
+        p, _ = get_bus_info(auto_generate_if_missing=True)
+        return p or os.environ.get("BUS_LICENSE_PLATE", "")
 
     @bus_license_plate.setter
     def bus_license_plate(self, val: str):
@@ -117,7 +121,11 @@ class TelegramNotifier:
 
     @property
     def bus_route(self) -> str:
-        return self._bus_route or os.environ.get("BUS_ROUTE", "")
+        if self._bus_route:
+            return self._bus_route
+        from src.utils.bus_info import get_bus_info
+        _, r = get_bus_info(auto_generate_if_missing=True)
+        return r or os.environ.get("BUS_ROUTE", "Tuyến số 1")
 
     @bus_route.setter
     def bus_route(self, val: str):
@@ -561,10 +569,13 @@ class TelegramNotifier:
         Vui lòng kiểm tra camera hoặc khoang hành khách để xác nhận đồ vật.
         """
         # 1. Biển số xe buýt
+        from src.utils.bus_info import get_bus_info, DEFAULT_BUS_ROUTE
+        def_plate, def_route = get_bus_info(auto_generate_if_missing=True)
+
         plate = (
             bus_license_plate
             if (bus_license_plate is not None and str(bus_license_plate).strip())
-            else (os.environ.get("BUS_LICENSE_PLATE") or BUS_LICENSE_PLATE or "")
+            else (os.environ.get("BUS_LICENSE_PLATE") or def_plate or BUS_LICENSE_PLATE or "")
         )
         plate_str = str(plate or "").strip()
         plate_display = html.escape(plate_str) if plate_str else "Chưa cập nhật"
@@ -573,46 +584,44 @@ class TelegramNotifier:
         route = (
             bus_route
             if (bus_route is not None and str(bus_route).strip())
-            else (os.environ.get("BUS_ROUTE") or BUS_ROUTE or "")
+            else (os.environ.get("BUS_ROUTE") or def_route or BUS_ROUTE or DEFAULT_BUS_ROUTE)
         )
         route_str = str(route or "").strip()
-        if not route_str and bus_or_camera_id:
-            bid_clean = str(bus_or_camera_id).strip()
-            # Tránh dùng chuỗi camera/placeholder nếu không phải thông tin tuyến
-            if bid_clean and not any(k in bid_clean.lower() for k in ("live camera", "browser", "camera hành lang", "camera 01", "demo")):
-                route_str = bid_clean
-
-        route_display = html.escape(route_str) if route_str else "Chưa cập nhật"
+        if not route_str:
+            route_str = DEFAULT_BUS_ROUTE
+        route_display = html.escape(route_str)
 
         # 3. Vị trí ghế
         seat_raw = alert.seat_id or (event.seat_id if event else "")
         if seat_raw and seat_raw.strip() and seat_raw.strip().lower() not in ("chưa rõ", "none", "", "unknown", "unknown_seat", "n/a"):
             seat_display = html.escape(format_seat_label(seat_raw))
+            has_seat = True
         else:
             seat_display = "Chưa rõ vị trí ghế"
+            has_seat = False
 
-        # 4. Tên đồ vật
+        # 4. Tên đồ vật (luôn là "Đồ vật")
         item_class = ""
         if event and event.class_name:
             item_class = event.class_name
         elif alert.object_id:
             item_class = alert.object_id
         label = get_user_facing_label(item_class) if item_class else "Đồ vật"
+        item_display = html.escape(label)
 
-        obj_ident = ""
+        # 5. Mã theo dõi
+        track_id = ""
         if event and event.last_track_id not in (-1, None):
-            obj_ident = f"T{event.last_track_id}"
+            track_id = f"T{event.last_track_id}"
         elif event and event.track_id not in (-1, None):
-            obj_ident = f"T{event.track_id}"
+            track_id = f"T{event.track_id}"
         elif alert.object_id:
-            obj_ident = str(alert.object_id).strip()
-
-        if obj_ident and obj_ident not in label:
-            item_display = html.escape(f"{label} ({obj_ident})")
+            track_id = alert.object_id
         else:
-            item_display = html.escape(label)
+            track_id = "Chưa gán ID"
+        track_safe = html.escape(str(track_id))
 
-        # 5. Thời điểm
+        # 6. Thời điểm
         ts_str = alert.created_at or (event.timestamp if event else "")
         if not ts_str:
             ts_display = get_current_time().strftime("%H:%M:%S %d/%m/%Y")
@@ -626,13 +635,35 @@ class TelegramNotifier:
                 ts_display = str(ts_str)
         ts_safe = html.escape(ts_display)
 
+        # 7. Trạng thái logic
+        status_val = (event.status if event else alert.status or "").lower()
+        if status_val == "suspected" and has_seat:
+            status_desc = "Xác nhận bởi logic AI (Ghế trống sau khi khách rời đi)"
+        elif status_val == "review_required":
+            status_desc = "Cần nhân viên kiểm tra (Vật thể biến mất bất thường khỏi ghế trống)"
+        elif not has_seat:
+            status_desc = "Ứng viên cần rà soát (Chưa liên kết vùng ghế cố định)"
+        else:
+            status_desc = "Nghi ngờ bỏ quên (Đang theo dõi vị trí)"
+        status_safe = html.escape(status_desc)
+
+        # 8. Ảnh chụp bằng chứng
+        if has_photo:
+            photo_status_line = "📷 <b>Ảnh chụp bằng chứng:</b> <i>Đính kèm bên dưới</i>"
+        else:
+            photo_status_line = "📷 <b>Ảnh chụp bằng chứng:</b> <i>Không khả dụng (Không có snapshot)</i>"
+
         message = (
-            f"🚌 <b>CẢNH BÁO ĐỒ VẬT THẤT LẠC</b>\n\n"
-            f"🚍 <b>Biển số xe buýt:</b> {plate_display}\n"
+            f"🚨 <b>LOST & FOUND AI BUS — CẢNH BÁO ĐỒ BỎ QUÊN</b>\n\n"
+            f"🚌 <b>Biển số xe buýt:</b> {plate_display}\n"
             f"🛣️ <b>Tuyến xe buýt:</b> {route_display}\n"
-            f"💺 <b>Vị trí:</b> {seat_display}\n"
-            f"🎒 <b>Đồ vật:</b> {item_display}\n"
-            f"🕒 <b>Thời gian:</b> {ts_safe}"
+            f"💺 <b>Ghế:</b> {seat_display}\n"
+            f"📦 <b>Đồ vật:</b> {item_display}\n"
+            f"🆔 <b>Mã theo dõi:</b> <code>{track_safe}</code>\n"
+            f"🕒 <b>Thời điểm:</b> {ts_safe}\n"
+            f"📋 <b>Trạng thái:</b> {status_safe}\n"
+            f"{photo_status_line}\n\n"
+            f"<i>Vui lòng kiểm tra camera hoặc khoang hành khách để xác nhận đồ vật.</i>"
         )
         return message
 
@@ -713,16 +744,21 @@ class TelegramNotifier:
                 # Đánh dấu thời điểm tiếp nhận để ngăn gửi trùng lặp đồng thời
                 self._last_alert_timestamps[cooldown_key] = now_sec
 
+        from src.utils.bus_info import get_bus_info, DEFAULT_BUS_ROUTE
+        def_plate, def_route = get_bus_info(auto_generate_if_missing=True)
+
         resolved_plate = (
             bus_license_plate
             if (bus_license_plate is not None and str(bus_license_plate).strip())
-            else (os.environ.get("BUS_LICENSE_PLATE") or self._bus_license_plate or "")
+            else (self._bus_license_plate or os.environ.get("BUS_LICENSE_PLATE") or def_plate or "")
         ).strip()
         resolved_route = (
             bus_route
             if (bus_route is not None and str(bus_route).strip())
-            else (os.environ.get("BUS_ROUTE") or self._bus_route or "")
+            else (self._bus_route or os.environ.get("BUS_ROUTE") or def_route or DEFAULT_BUS_ROUTE)
         ).strip()
+        if not resolved_route:
+            resolved_route = DEFAULT_BUS_ROUTE
 
         def _do_send() -> TelegramResponse:
             raw_photo_path = alert.snapshot_path or (event.snapshot_path if event else "")

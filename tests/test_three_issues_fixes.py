@@ -339,9 +339,9 @@ def test_08_telegram_sends_photo_and_caption_when_snapshot_valid(tmp_path):
         data_payload = mock_post.call_args[1].get("data", {})
         assert data_payload.get("chat_id") == "123456"
         caption = data_payload.get("caption", "")
-        assert "CẢNH BÁO ĐỒ VẬT THẤT LẠC" in caption
+        assert "CẢNH BÁO ĐỒ BỎ QUÊN" in caption
+        assert "LOST & FOUND AI BUS" in caption
         assert "S08" in caption
-        assert "O88" in caption
         assert len(caption) <= 1024
 
 
@@ -378,9 +378,9 @@ def test_09_telegram_sends_text_when_snapshot_unavailable():
         assert "sendMessage" in call_url
         sent_json = mock_post.call_args[1].get("json", {})
         msg_text = sent_json.get("text", "")
-        assert "CẢNH BÁO ĐỒ VẬT THẤT LẠC" in msg_text
+        assert "CẢNH BÁO ĐỒ BỎ QUÊN" in msg_text
+        assert "LOST & FOUND AI BUS" in msg_text
         assert "S09" in msg_text
-        assert "O99" in msg_text
 
 
 def test_10_corrupt_snapshot_does_not_crash_camera_or_lose_alert(temp_db):

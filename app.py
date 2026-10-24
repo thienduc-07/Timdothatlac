@@ -1418,10 +1418,10 @@ def render_telegram_diagnostics(service: Optional[AnalysisService] = None, conte
     col_stat1, col_stat2 = st.columns(2)
     with col_stat1:
         if is_cfg and notifier:
-            masked_token = notifier.get_masked_token() if hasattr(notifier, "get_masked_token") else "••••••••"
             target_chat = getattr(notifier, "chat_id", "")
-            curr_plate = getattr(notifier, "bus_license_plate", "") or os.environ.get("BUS_LICENSE_PLATE", "") or "Chưa cập nhật"
-            curr_route = getattr(notifier, "bus_route", "") or os.environ.get("BUS_ROUTE", "") or "Chưa cập nhật"
+            masked_token = notifier.get_masked_token() if hasattr(notifier, "get_masked_token") else "••••••••"
+            from src.utils.bus_info import get_bus_info
+            curr_plate, curr_route = get_bus_info(auto_generate_if_missing=True)
             st.success(
                 f"✅ **Đã cấu hình:** Kênh `{target_chat}`\n\n"
                 f"🚍 **Biển số xe:** `{curr_plate}` | 🛣️ **Tuyến xe:** `{curr_route}`\n\n"
@@ -1523,6 +1523,42 @@ def page_camera_monitor(service: AnalysisService):
         privacy_blur = st.checkbox("🛡️ Làm mờ mặt (Privacy Blur)", value=False)
 
     st.markdown("---")
+
+    # ── Thông tin Xe buýt & Tuyến xe (Áp dụng thống nhất cho cảnh báo Telegram) ──
+    from src.utils.bus_info import get_bus_info, save_bus_info
+    curr_cam_plate, curr_cam_route = get_bus_info(auto_generate_if_missing=True)
+
+    with st.expander(f"🚍 Thông tin Xe buýt & Tuyến xe: {curr_cam_plate} | {curr_cam_route}", expanded=False):
+        st.caption("Cấu hình biển số xe và tuyến xe buýt hiển thị trên thông báo gửi về Telegram. Biển số xe được lưu cố định và áp dụng nhất quán cho mọi cảnh báo.")
+        bc1, bc2, bc3 = st.columns([2, 2, 1])
+        with bc1:
+            in_cam_plate = st.text_input(
+                "Biển số xe buýt:",
+                value=curr_cam_plate,
+                placeholder="Ví dụ: 51B-12345 (Để trống và Lưu để sinh mới)",
+                help="Biển số xe buýt hiển thị trên thông báo cảnh báo",
+                key="cam_bus_plate_input",
+            )
+        with bc2:
+            in_cam_route = st.text_input(
+                "Tuyến xe buýt:",
+                value=curr_cam_route,
+                placeholder="Ví dụ: Tuyến số 1",
+                help="Mã hoặc tên tuyến xe buýt (mặc định: Tuyến số 1)",
+                key="cam_bus_route_input",
+            )
+        with bc3:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("💾 Lưu xe", key="btn_save_cam_bus", use_container_width=True):
+                new_p, new_r = save_bus_info(
+                    plate=in_cam_plate.strip(),
+                    route=in_cam_route.strip(),
+                    auto_generate_if_empty=True,
+                )
+                st.toast(f"✅ Đã cập nhật: {new_p} | {new_r}")
+                st.rerun()
+
+    st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
 
     # Xử lý theo từng nguồn
     if "Demo Mode" in source_mode:
@@ -2987,27 +3023,24 @@ def page_notifications(service: AnalysisService):
                 help="Numeric Chat ID của người nhận hoặc nhóm nhận thông báo",
             )
 
+        from src.utils.bus_info import get_bus_info, save_bus_info
+        curr_ntf_plate, curr_ntf_route = get_bus_info(auto_generate_if_missing=True)
+
         col_plate, col_route = st.columns(2)
         with col_plate:
             t_bus_plate = st.text_input(
                 "Biển số xe buýt:",
-                value=st.session_state.get(
-                    "bus_license_plate",
-                    os.environ.get("BUS_LICENSE_PLATE", getattr(notifier, "bus_license_plate", ""))
-                ),
-                placeholder="Ví dụ: 51B-123.45 (Để trống hiển thị 'Chưa cập nhật')",
+                value=curr_ntf_plate,
+                placeholder="Ví dụ: 51B-12345 (Để trống và Lưu để sinh biển số demo mới)",
                 help="Biển số xe buýt hiển thị trên thông báo cảnh báo Telegram",
                 key="input_bus_license_plate",
             )
         with col_route:
             t_bus_route = st.text_input(
                 "Tuyến xe buýt:",
-                value=st.session_state.get(
-                    "bus_route",
-                    os.environ.get("BUS_ROUTE", getattr(notifier, "bus_route", ""))
-                ),
-                placeholder="Ví dụ: 08 hoặc Tuyến 08 (Bến Thành - ĐHQG)",
-                help="Số hoặc mã tuyến xe buýt hiển thị trên thông báo cảnh báo Telegram",
+                value=curr_ntf_route,
+                placeholder="Ví dụ: Tuyến số 1 hoặc Tuyến 08 (Bến Thành - ĐHQG)",
+                help="Số hoặc mã tuyến xe buýt hiển thị trên thông báo cảnh báo Telegram (Mặc định: Tuyến số 1)",
                 key="input_bus_route",
             )
 
@@ -3033,13 +3066,18 @@ def page_notifications(service: AnalysisService):
         b_save, b_test, b_alert = st.columns([1, 1, 1])
         with b_save:
             if st.button("💾 Lưu Cấu hình Xe buýt & Telegram", use_container_width=True):
+                new_plate, new_route = save_bus_info(
+                    plate=t_bus_plate.strip(),
+                    route=t_bus_route.strip(),
+                    auto_generate_if_empty=True,
+                )
                 env_saved = False
                 try:
                     env_p = Path(".env")
                     lines = env_p.read_text(encoding="utf-8").splitlines() if env_p.exists() else []
                     upd = {
-                        "BUS_LICENSE_PLATE": t_bus_plate.strip(),
-                        "BUS_ROUTE": t_bus_route.strip(),
+                        "BUS_LICENSE_PLATE": new_plate,
+                        "BUS_ROUTE": new_route,
                     }
                     if t_token:
                         upd["TELEGRAM_BOT_TOKEN"] = t_token.strip()
@@ -3064,10 +3102,8 @@ def page_notifications(service: AnalysisService):
                 except Exception as e:
                     logger.warning(f"Không thể ghi .env: {e}")
 
-                if env_saved:
-                    st.success("✅ Đã lưu cấu hình Biển số xe, Tuyến xe và Telegram vào .env!")
-                else:
-                    st.success("✅ Đã lưu cấu hình vào phiên làm việc hiện tại!")
+                st.success(f"✅ Đã lưu cấu hình! Biển số xe: `{new_plate}` | Tuyến xe: `{new_route}`")
+                st.rerun()
 
         with b_test:
             if st.button("🔍 Kiểm tra Kết nối Telegram (Test Connection)", use_container_width=True):
@@ -3090,8 +3126,8 @@ def page_notifications(service: AnalysisService):
                                 "enabled": True,
                                 "bot_token": t_token,
                                 "chat_id": t_chat_id,
-                                "bus_license_plate": t_bus_plate.strip(),
-                                "bus_route": t_bus_route.strip(),
+                                "bus_license_plate": t_bus_plate.strip() or curr_ntf_plate,
+                                "bus_route": t_bus_route.strip() or curr_ntf_route or "Tuyến số 1",
                             }
                         )
                         logs = service.get_notification_logs(limit=3)
