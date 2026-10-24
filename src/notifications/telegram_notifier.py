@@ -60,6 +60,142 @@ class TelegramResponse:
     raw_response: Optional[dict] = None
 
 
+def build_lost_item_telegram_caption(
+    alert: Optional[Alert] = None,
+    event: Optional[Event] = None,
+    bus_or_camera_id: str = "",
+    has_photo: bool = True,
+    bus_license_plate: Optional[str] = None,
+    bus_route: Optional[str] = None,
+    seat_id: Optional[str] = None,
+    item_name: Optional[str] = None,
+    track_id: Optional[str] = None,
+    timestamp: Optional[str] = None,
+    status_desc: Optional[str] = None,
+) -> str:
+    """
+    Hàm tạo nội dung thông báo Telegram dùng chung (Single Source of Truth)
+    cho toàn bộ các luồng cảnh báo đồ bỏ quên (Live Camera, WebRTC, Video demo, Offline video, Test alert).
+
+    Định dạng bắt buộc:
+    🚨 LOST & FOUND AI BUS — CẢNH BÁO ĐỒ BỎ QUÊN
+
+    🚌 Biển số xe buýt: [Biển số đã cấu hình hoặc đã tự sinh]
+    🛣️ Tuyến xe buýt: [Tuyến đã cấu hình hoặc Tuyến số 1]
+    💺 Ghế: [Mã ghế]
+    📦 Đồ vật: [Mô tả đồ vật]
+    🆔 Mã theo dõi: [Mã tracking ID]
+    🕒 Thời điểm: [Thời điểm phát hiện]
+    📋 Trạng thái: [Trạng thái logic]
+    📷 Ảnh chụp bằng chứng: [Đính kèm / Không khả dụng]
+
+    Vui lòng kiểm tra camera hoặc khoang hành khách để xác nhận đồ vật.
+    """
+    # 1. Biển số xe buýt
+    from src.utils.bus_info import get_bus_info, DEFAULT_BUS_ROUTE
+    def_plate, def_route = get_bus_info(auto_generate_if_missing=True)
+
+    plate = (
+        bus_license_plate
+        if (bus_license_plate is not None and str(bus_license_plate).strip())
+        else (os.environ.get("BUS_LICENSE_PLATE") or def_plate or BUS_LICENSE_PLATE or "")
+    )
+    plate_str = str(plate or "").strip()
+    plate_display = html.escape(plate_str) if plate_str else "Chưa cập nhật"
+
+    # 2. Tuyến xe buýt (mặc định Tuyến số 1)
+    route = (
+        bus_route
+        if (bus_route is not None and str(bus_route).strip())
+        else (os.environ.get("BUS_ROUTE") or def_route or BUS_ROUTE or DEFAULT_BUS_ROUTE)
+    )
+    route_str = str(route or "").strip()
+    if not route_str:
+        route_str = DEFAULT_BUS_ROUTE
+    route_display = html.escape(route_str)
+
+    # 3. Vị trí ghế
+    seat_raw = seat_id or (alert.seat_id if alert else (event.seat_id if event else ""))
+    if seat_raw and str(seat_raw).strip() and str(seat_raw).strip().lower() not in ("chưa rõ", "none", "", "unknown", "unknown_seat", "n/a"):
+        seat_display = html.escape(format_seat_label(str(seat_raw).strip()))
+        has_seat = True
+    else:
+        seat_display = "Chưa rõ vị trí ghế"
+        has_seat = False
+
+    # 4. Tên đồ vật (luôn là "Đồ vật" trên giao diện người dùng)
+    item_class = item_name or ""
+    if not item_class:
+        if event and event.class_name:
+            item_class = event.class_name
+        elif alert and alert.object_id:
+            item_class = alert.object_id
+    label = get_user_facing_label(item_class) if item_class else "Đồ vật"
+    item_display = html.escape(label)
+
+    # 5. Mã theo dõi
+    tr_id = track_id or ""
+    if not tr_id:
+        if event and event.last_track_id not in (-1, None):
+            tr_id = f"T{event.last_track_id}"
+        elif event and event.track_id not in (-1, None):
+            tr_id = f"T{event.track_id}"
+        elif alert and alert.object_id:
+            tr_id = alert.object_id
+        else:
+            tr_id = "Chưa gán ID"
+    track_safe = html.escape(str(tr_id))
+
+    # 6. Thời điểm
+    ts_str = timestamp or (alert.created_at if alert else (event.timestamp if event else ""))
+    if not ts_str:
+        ts_display = get_current_time().strftime("%H:%M:%S %d/%m/%Y")
+    else:
+        try:
+            dt = datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(APP_TIMEZONE)
+            ts_display = dt.strftime("%H:%M:%S %d/%m/%Y")
+        except Exception:
+            ts_display = str(ts_str)
+    ts_safe = html.escape(ts_display)
+
+    # 7. Trạng thái logic
+    if status_desc:
+        final_status_desc = status_desc
+    else:
+        status_val = ((event.status if event else (alert.status if alert else "")) or "").lower()
+        if status_val == "suspected" and has_seat:
+            final_status_desc = "Xác nhận bởi logic AI (Ghế trống sau khi khách rời đi)"
+        elif status_val == "review_required":
+            final_status_desc = "Cần nhân viên kiểm tra (Vật thể biến mất bất thường khỏi ghế trống)"
+        elif not has_seat:
+            final_status_desc = "Ứng viên cần rà soát (Chưa liên kết vùng ghế cố định)"
+        else:
+            final_status_desc = "Nghi ngờ bỏ quên (Đang theo dõi vị trí)"
+    status_safe = html.escape(final_status_desc)
+
+    # 8. Ảnh chụp bằng chứng
+    if has_photo:
+        photo_status_line = "📷 <b>Ảnh chụp bằng chứng:</b> <i>Đính kèm bên dưới</i>"
+    else:
+        photo_status_line = "📷 <b>Ảnh chụp bằng chứng:</b> <i>Không khả dụng (Không có snapshot)</i>"
+
+    message = (
+        f"🚨 <b>LOST & FOUND AI BUS — CẢNH BÁO ĐỒ BỎ QUÊN</b>\n\n"
+        f"🚌 <b>Biển số xe buýt:</b> {plate_display}\n"
+        f"🛣️ <b>Tuyến xe buýt:</b> {route_display}\n"
+        f"💺 <b>Ghế:</b> {seat_display}\n"
+        f"📦 <b>Đồ vật:</b> {item_display}\n"
+        f"🆔 <b>Mã theo dõi:</b> <code>{track_safe}</code>\n"
+        f"🕒 <b>Thời điểm:</b> {ts_safe}\n"
+        f"📋 <b>Trạng thái:</b> {status_safe}\n"
+        f"{photo_status_line}\n\n"
+        f"<i>Vui lòng kiểm tra camera hoặc khoang hành khách để xác nhận đồ vật.</i>"
+    )
+    return message
+
+
 class TelegramNotifier:
     """
     Dịch vụ gửi thông báo và cảnh báo tới Telegram Bot API.
@@ -541,131 +677,30 @@ class TelegramNotifier:
                 error_type="UNKNOWN_ERROR",
             )
 
+
     # ──────────────────────────────────────────────
     # FORMATTING CẢNH BÁO ĐỒ BỎ QUÊN CHUẨN
     # ──────────────────────────────────────────────
     @staticmethod
     def format_forgotten_item_message(
-        alert: Alert,
+        alert: Optional[Alert] = None,
         event: Optional[Event] = None,
         bus_or_camera_id: str = "",
         has_photo: bool = True,
         bus_license_plate: Optional[str] = None,
         bus_route: Optional[str] = None,
+        **kwargs,
     ) -> str:
-        """
-        Định dạng bản tin cảnh báo đồ bỏ quên gửi đến Telegram Bot:
-        🚨 LOST & FOUND AI BUS — CẢNH BÁO ĐỒ BỎ QUÊN
-
-        🚌 Biển số xe buýt: [Biển số đã cấu hình hoặc Chưa cập nhật]
-        🛣️ Tuyến xe buýt: [Tuyến đã cấu hình hoặc Chưa cập nhật]
-        💺 Ghế: [Mã ghế]
-        📦 Đồ vật: [Mô tả đồ vật]
-        🆔 Mã theo dõi: [Mã tracking ID]
-        🕒 Thời điểm: [Thời điểm phát hiện]
-        📋 Trạng thái: [Trạng thái logic]
-        📷 Ảnh chụp bằng chứng: [Đính kèm / Không khả dụng]
-
-        Vui lòng kiểm tra camera hoặc khoang hành khách để xác nhận đồ vật.
-        """
-        # 1. Biển số xe buýt
-        from src.utils.bus_info import get_bus_info, DEFAULT_BUS_ROUTE
-        def_plate, def_route = get_bus_info(auto_generate_if_missing=True)
-
-        plate = (
-            bus_license_plate
-            if (bus_license_plate is not None and str(bus_license_plate).strip())
-            else (os.environ.get("BUS_LICENSE_PLATE") or def_plate or BUS_LICENSE_PLATE or "")
+        """Đại diện ủy quyền trực tiếp tới hàm build_lost_item_telegram_caption dùng chung."""
+        return build_lost_item_telegram_caption(
+            alert=alert,
+            event=event,
+            bus_or_camera_id=bus_or_camera_id,
+            has_photo=has_photo,
+            bus_license_plate=bus_license_plate,
+            bus_route=bus_route,
+            **kwargs,
         )
-        plate_str = str(plate or "").strip()
-        plate_display = html.escape(plate_str) if plate_str else "Chưa cập nhật"
-
-        # 2. Tuyến xe buýt
-        route = (
-            bus_route
-            if (bus_route is not None and str(bus_route).strip())
-            else (os.environ.get("BUS_ROUTE") or def_route or BUS_ROUTE or DEFAULT_BUS_ROUTE)
-        )
-        route_str = str(route or "").strip()
-        if not route_str:
-            route_str = DEFAULT_BUS_ROUTE
-        route_display = html.escape(route_str)
-
-        # 3. Vị trí ghế
-        seat_raw = alert.seat_id or (event.seat_id if event else "")
-        if seat_raw and seat_raw.strip() and seat_raw.strip().lower() not in ("chưa rõ", "none", "", "unknown", "unknown_seat", "n/a"):
-            seat_display = html.escape(format_seat_label(seat_raw))
-            has_seat = True
-        else:
-            seat_display = "Chưa rõ vị trí ghế"
-            has_seat = False
-
-        # 4. Tên đồ vật (luôn là "Đồ vật")
-        item_class = ""
-        if event and event.class_name:
-            item_class = event.class_name
-        elif alert.object_id:
-            item_class = alert.object_id
-        label = get_user_facing_label(item_class) if item_class else "Đồ vật"
-        item_display = html.escape(label)
-
-        # 5. Mã theo dõi
-        track_id = ""
-        if event and event.last_track_id not in (-1, None):
-            track_id = f"T{event.last_track_id}"
-        elif event and event.track_id not in (-1, None):
-            track_id = f"T{event.track_id}"
-        elif alert.object_id:
-            track_id = alert.object_id
-        else:
-            track_id = "Chưa gán ID"
-        track_safe = html.escape(str(track_id))
-
-        # 6. Thời điểm
-        ts_str = alert.created_at or (event.timestamp if event else "")
-        if not ts_str:
-            ts_display = get_current_time().strftime("%H:%M:%S %d/%m/%Y")
-        else:
-            try:
-                dt = datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
-                if dt.tzinfo is not None:
-                    dt = dt.astimezone(APP_TIMEZONE)
-                ts_display = dt.strftime("%H:%M:%S %d/%m/%Y")
-            except Exception:
-                ts_display = str(ts_str)
-        ts_safe = html.escape(ts_display)
-
-        # 7. Trạng thái logic
-        status_val = (event.status if event else alert.status or "").lower()
-        if status_val == "suspected" and has_seat:
-            status_desc = "Xác nhận bởi logic AI (Ghế trống sau khi khách rời đi)"
-        elif status_val == "review_required":
-            status_desc = "Cần nhân viên kiểm tra (Vật thể biến mất bất thường khỏi ghế trống)"
-        elif not has_seat:
-            status_desc = "Ứng viên cần rà soát (Chưa liên kết vùng ghế cố định)"
-        else:
-            status_desc = "Nghi ngờ bỏ quên (Đang theo dõi vị trí)"
-        status_safe = html.escape(status_desc)
-
-        # 8. Ảnh chụp bằng chứng
-        if has_photo:
-            photo_status_line = "📷 <b>Ảnh chụp bằng chứng:</b> <i>Đính kèm bên dưới</i>"
-        else:
-            photo_status_line = "📷 <b>Ảnh chụp bằng chứng:</b> <i>Không khả dụng (Không có snapshot)</i>"
-
-        message = (
-            f"🚨 <b>LOST & FOUND AI BUS — CẢNH BÁO ĐỒ BỎ QUÊN</b>\n\n"
-            f"🚌 <b>Biển số xe buýt:</b> {plate_display}\n"
-            f"🛣️ <b>Tuyến xe buýt:</b> {route_display}\n"
-            f"💺 <b>Ghế:</b> {seat_display}\n"
-            f"📦 <b>Đồ vật:</b> {item_display}\n"
-            f"🆔 <b>Mã theo dõi:</b> <code>{track_safe}</code>\n"
-            f"🕒 <b>Thời điểm:</b> {ts_safe}\n"
-            f"📋 <b>Trạng thái:</b> {status_safe}\n"
-            f"{photo_status_line}\n\n"
-            f"<i>Vui lòng kiểm tra camera hoặc khoang hành khách để xác nhận đồ vật.</i>"
-        )
-        return message
 
     # ──────────────────────────────────────────────
     # ĐIỀU PHỐI CẢNH BÁO (DEDUPLICATION & NON-BLOCKING DISPATCH)

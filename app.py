@@ -56,6 +56,21 @@ from src.detection.class_mapper import format_seat_label, get_user_facing_label
 from src.utils.file_utils import format_file_size, format_duration
 from src.utils.logger import get_logger
 
+# Nạp lại các module nghiệp vụ nếu tiến trình Python/Streamlit chạy dài ngày để luôn bắt kịp code mới nhất
+import importlib
+for _mod_name in [
+    "src.utils.bus_info",
+    "src.notifications.telegram_notifier",
+    "src.notifications",
+    "src.services.alert_service",
+    "src.services.analysis_service",
+]:
+    if _mod_name in sys.modules:
+        try:
+            importlib.reload(sys.modules[_mod_name])
+        except Exception:
+            pass
+
 logger = get_logger(__name__)
 
 from src.video.camera_service import (
@@ -762,7 +777,7 @@ st.components.v1.html("""
 
 
 @st.cache_resource
-def _get_cached_service(_cache_tag: str = "v5.0_alert_lifecycle_sync") -> AnalysisService:
+def _get_cached_service(_cache_tag: str = "v6.0_bus_caption_sync_20261024") -> AnalysisService:
     service = AnalysisService()
     service.initialize()
     return service
@@ -775,9 +790,14 @@ def get_service() -> AnalysisService:
         import inspect
         sig_cam = inspect.signature(service.process_webcam_frame)
         sig_alerts = inspect.signature(service.get_recent_alerts)
-        if "show_masks" not in sig_cam.parameters or "active_only" not in sig_alerts.parameters:
+        sig_browser = inspect.signature(service.process_browser_camera_events)
+        if (
+            "show_masks" not in sig_cam.parameters
+            or "active_only" not in sig_alerts.parameters
+            or "bus_license_plate" not in sig_browser.parameters
+        ):
             st.cache_resource.clear()
-            service = _get_cached_service(_cache_tag=f"v5.0_fresh_{time.time()}")
+            service = _get_cached_service(_cache_tag=f"v6.0_fresh_{time.time()}")
         return service
     except Exception as e:
         st.cache_resource.clear()
@@ -1776,10 +1796,14 @@ def page_camera_monitor(service: AnalysisService):
                     suspected_items = cam_telemetry.get("suspected_items") or []
                     snapshot_base64 = cam_telemetry.get("snapshot_base64")
                     if suspected_items and service:
+                        from src.utils.bus_info import get_bus_info
+                        active_plate, active_route = get_bus_info(auto_generate_if_missing=True)
                         service.process_browser_camera_events(
                             suspected_items=suspected_items,
                             snapshot_base64=snapshot_base64,
-                            camera_name="Live Camera (Browser)",
+                            camera_name=f"Xe {active_plate} - {active_route}",
+                            bus_license_plate=active_plate,
+                            bus_route=active_route,
                         )
 
             with st.expander("📡 Trạng thái thông báo Telegram (Kênh tự động)", expanded=False):

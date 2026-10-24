@@ -7,10 +7,12 @@ from src.notifications.telegram_notifier import (
     TelegramNotifier,
     TelegramResponse,
     get_telegram_notifier,
+    build_lost_item_telegram_caption,
 )
 
 __all__ = [
     "TelegramNotifier",
     "TelegramResponse",
     "get_telegram_notifier",
+    "build_lost_item_telegram_caption",
 ]

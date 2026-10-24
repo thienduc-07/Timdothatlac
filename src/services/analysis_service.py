@@ -674,6 +674,8 @@ class AnalysisService:
         suspected_items: List[Dict[str, Any]],
         snapshot_base64: Optional[str] = None,
         camera_name: str = "Live Camera (Browser)",
+        bus_license_plate: Optional[str] = None,
+        bus_route: Optional[str] = None,
     ) -> List[Alert]:
         """
         Cầu nối sự kiện: Tiếp nhận danh sách đồ vật nghi bị bỏ quên từ Browser-Native Camera (WASM/WebGPU),
@@ -697,9 +699,15 @@ class AnalysisService:
         from config.settings import SNAPSHOTS_DIR, get_current_time, EventStatus
         from src.detection.class_mapper import get_user_facing_label
         from src.models import Event
+        from src.utils.bus_info import get_bus_info
+
+        # Đồng bộ thông tin biển số và tuyến xe chuẩn
+        def_plate, def_route = get_bus_info(auto_generate_if_missing=True)
+        active_plate = (bus_license_plate or def_plate or "").strip()
+        active_route = (bus_route or def_route or "Tuyến số 1").strip()
 
         logger.info(
-            f"[Browser Camera] Nhận được {len(suspected_items)} đồ vật nghi bị bỏ quên từ camera '{camera_name}'"
+            f"[Browser Camera] Nhận được {len(suspected_items)} đồ vật nghi bị bỏ quên từ camera '{camera_name}' (Xe: {active_plate} - {active_route})"
         )
 
         def _safe_decode_and_save_snapshot(b64_str: Optional[str], track_ident: Any) -> Optional[str]:
@@ -804,9 +812,15 @@ class AnalysisService:
                 except Exception as ex:
                     logger.warning(f"[Browser Camera] Lỗi khi lưu Event {evt_id}: {ex}")
 
+            tg_cfg = {
+                "bus_license_plate": active_plate,
+                "bus_route": active_route,
+            }
+
             alert = self._alert_service.process_event_for_alert(
                 event=evt,
                 current_time_sec=now_ts,
+                telegram_config=tg_cfg,
             )
             if alert:
                 logger.info(

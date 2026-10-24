@@ -75,3 +75,94 @@ def test_bus_info_clearing_plate_regenerates_new_demo_plate():
     assert p2 != "51B-11111"
     assert re.match(r"^\d{2}[A-Z]-\d{5}$", p2)
     assert r2 == "Tuyến số 1"
+
+
+def test_build_lost_item_telegram_caption_format():
+    """Kiểm tra hàm build_lost_item_telegram_caption tạo đúng cấu trúc yêu cầu và không có chuỗi Khu vực."""
+    from src.notifications.telegram_notifier import build_lost_item_telegram_caption
+    from src.models import Alert, Event
+
+    alert = Alert(
+        alert_id="ALT_TEST_1",
+        event_id="EVT_01",
+        seat_id="023",
+        object_id="item_01",
+        priority="HIGH",
+        status="PENDING",
+        created_at="2026-10-24T10:55:23",
+    )
+    event = Event(
+        event_id="EVT_01",
+        track_id=27,
+        last_track_id=27,
+        seat_id="023",
+        class_name="backpack",
+        status="suspected",
+        timestamp="2026-10-24T10:55:23",
+    )
+
+    caption = build_lost_item_telegram_caption(
+        alert=alert,
+        event=event,
+        has_photo=True,
+        bus_license_plate="51B-12345",
+        bus_route="Tuyến số 1",
+    )
+
+    assert "🚨 <b>LOST & FOUND AI BUS — CẢNH BÁO ĐỒ BỎ QUÊN</b>" in caption
+    assert "🚌 <b>Biển số xe buýt:</b> 51B-12345" in caption
+    assert "🛣️ <b>Tuyến xe buýt:</b> Tuyến số 1" in caption
+    assert "💺 <b>Ghế:</b> Ghế 023" in caption
+    assert "📦 <b>Đồ vật:</b> Đồ vật" in caption
+    assert "🆔 <b>Mã theo dõi:</b> <code>T27</code>" in caption
+    assert "🕒 <b>Thời điểm:</b> 10:55:23 24/10/2026" in caption
+    assert "📋 <b>Trạng thái:</b> Xác nhận bởi logic AI (Ghế trống sau khi khách rời đi)" in caption
+    assert "📷 <b>Ảnh chụp bằng chứng:</b> <i>Đính kèm bên dưới</i>" in caption
+    assert "<i>Vui lòng kiểm tra camera hoặc khoang hành khách để xác nhận đồ vật.</i>" in caption
+    assert "Khu vực:" not in caption
+    assert "Live Camera (Browser)" not in caption
+
+
+def test_live_camera_browser_events_use_unified_caption():
+    """Kiểm tra luồng Live Camera tiếp nhận sự kiện và gửi Telegram bằng đúng template thống nhất."""
+    from unittest.mock import MagicMock
+    from src.services.analysis_service import AnalysisService
+    from src.services.alert_service import AlertService
+
+    save_bus_info(plate="51B-12345", route="Tuyến số 1")
+
+    service = AnalysisService()
+    mock_notifier = MagicMock()
+    mock_notifier.bus_license_plate = "51B-12345"
+    mock_notifier.bus_route = "Tuyến số 1"
+    mock_notifier.is_configured.return_value = True
+    mock_notifier._enabled = True
+    mock_notifier.send_alert.return_value = MagicMock(success=True, status_code=200)
+
+    alert_service = AlertService()
+    service._alert_service = alert_service
+    service._repo = MagicMock()
+
+    with patch("src.services.alert_service.get_telegram_notifier", return_value=mock_notifier):
+        suspected_items = [
+            {
+                "track_id": "T2",
+                "display_id": "T2",
+                "class_name": "backpack",
+                "seat_id": "004",
+                "status": "SUSPECTED",
+                "confidence": 0.92,
+            }
+        ]
+        alerts = service.process_browser_camera_events(
+            suspected_items=suspected_items,
+            snapshot_base64=None,
+            camera_name="Live Camera (Browser)",
+        )
+        assert len(alerts) == 1
+        assert mock_notifier.send_alert.called
+
+        _, kwargs = mock_notifier.send_alert.call_args
+        assert kwargs.get("bus_license_plate") == "51B-12345"
+        assert kwargs.get("bus_route") == "Tuyến số 1"
+
