@@ -517,11 +517,19 @@ st.markdown(f"""
         transform: translateX(4px) !important;
     }}
 
+    /* Pressed state: tactile response */
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:active,
+    section[data-testid="stSidebar"] div[data-baseweb="radio"] label:active {{
+        transform: scale(0.98) !important;
+        transition-duration: 0.08s !important;
+    }}
+
     /* Keyboard focus state (WCAG accessible) */
     section[data-testid="stSidebar"] div[role="radiogroup"] label:focus-within,
     section[data-testid="stSidebar"] div[data-baseweb="radio"] label:focus-within {{
         outline: 2px solid #00E5FF !important;
         outline-offset: 2px !important;
+        box-shadow: 0 0 0 4px rgba(0, 229, 255, 0.25) !important;
     }}
 
     /* Active destination: Linear-style restrained cyan accent & ambient glow */
@@ -585,72 +593,355 @@ st.markdown(f"""
         transition: opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }}
 
-    /* ── Streamlit Buttons (React Bits Magnet & Modern SaaS) ── */
-    .stButton > button {{
-        background: linear-gradient(180deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%) !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        color: #F8FAFC !important;
+    /* ══════════════════════════════════════════════════════════════
+       DARK PREMIUM UI + NEON CYAN DESIGN SYSTEM FOR BUTTONS & TABS
+       ══════════════════════════════════════════════════════════════ */
+
+    /* ── Base Reset & Geometry for All Interactive Buttons ── */
+    .stButton > button,
+    .stDownloadButton > button,
+    [data-testid="stFileUploaderDropzone"] button,
+    section[data-testid="stFileUploaderDropzone"] button,
+    div[data-testid="stFormSubmitButton"] > button {{
+        position: relative !important;
+        box-sizing: border-box !important;
+        min-height: 42px !important;
+        height: auto !important;
+        padding: 0.58rem 1.35rem !important;
+        font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        font-size: 0.88rem !important;
         font-weight: 600 !important;
-        font-size: 0.86rem !important;
-        border-radius: 8px !important;
-        padding: 0.52rem 1.1rem !important;
-        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
-    }}
-    .stButton > button:hover {{
-        border-color: rgba(56, 189, 248, 0.45) !important;
-        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4), 0 0 16px rgba(56, 189, 248, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
-        transform: translateY(-1px) !important;
-        color: #FFFFFF !important;
-    }}
-    .stButton > button:active {{
-        transform: translateY(0px) !important;
-    }}
-    .stButton > button[kind="primary"],
-    .stButton > button[data-testid="baseButton-primary"] {{
-        background: linear-gradient(180deg, #0284C7 0%, #0369A1 100%) !important;
-        border: 1px solid rgba(56, 189, 248, 0.6) !important;
-        box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
-    }}
-    .stButton > button[kind="primary"]:hover,
-    .stButton > button[data-testid="baseButton-primary"]:hover {{
-        background: linear-gradient(180deg, #0EA5E9 0%, #0284C7 100%) !important;
-        box-shadow: 0 6px 20px rgba(2, 132, 199, 0.5), 0 0 16px rgba(56, 189, 248, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+        line-height: 1.4 !important;
+        letter-spacing: 0.2px !important;
+        border-radius: 9px !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        background: linear-gradient(180deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.9) 100%) !important;
+        backdrop-filter: blur(14px) !important;
+        -webkit-backdrop-filter: blur(14px) !important;
+        color: #E2E8F0 !important;
+        cursor: pointer !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 8px !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                    background 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                    border-color 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                    color 0.2s ease,
+                    box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        overflow: visible !important;
     }}
 
-    /* ── Tabs (React Bits Segmented Control) ── */
+    /* Đảm bảo nội dung chữ & icon bên trong button không bị clipping hay sát lề */
+    .stButton > button div[data-testid="stMarkdownContainer"],
+    .stDownloadButton > button div[data-testid="stMarkdownContainer"],
+    [data-testid="stFileUploaderDropzone"] button div[data-testid="stMarkdownContainer"],
+    .stButton > button p,
+    .stDownloadButton > button p,
+    [data-testid="stFileUploaderDropzone"] button p {{
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: 1.4 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 6px !important;
+        white-space: nowrap !important;
+        font-weight: inherit !important;
+        color: inherit !important;
+    }}
+
+    /* Hover state: Neon Cyan Glow & Subtle Lift */
+    .stButton > button:not(:disabled):hover,
+    .stDownloadButton > button:not(:disabled):hover,
+    [data-testid="stFileUploaderDropzone"] button:not(:disabled):hover,
+    div[data-testid="stFormSubmitButton"] > button:not(:disabled):hover {{
+        background: linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 1) 100%) !important;
+        border-color: rgba(56, 189, 248, 0.55) !important;
+        color: #00E5FF !important;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 16px rgba(0, 229, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+        transform: translateY(-1.5px) !important;
+    }}
+
+    /* Pressed / Click State: Snappy scale feedback (0.98) */
+    .stButton > button:not(:disabled):active,
+    .stDownloadButton > button:not(:disabled):active,
+    [data-testid="stFileUploaderDropzone"] button:not(:disabled):active,
+    div[data-testid="stFormSubmitButton"] > button:not(:disabled):active {{
+        transform: scale(0.98) !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+        transition-duration: 0.08s !important;
+    }}
+
+    /* Keyboard Focus: Clear Neon Cyan Ring */
+    .stButton > button:focus-visible,
+    .stDownloadButton > button:focus-visible,
+    [data-testid="stFileUploaderDropzone"] button:focus-visible,
+    div[data-testid="stFormSubmitButton"] > button:focus-visible {{
+        outline: 2px solid #00E5FF !important;
+        outline-offset: 2px !important;
+        box-shadow: 0 0 0 4px rgba(0, 229, 255, 0.28) !important;
+    }}
+    .stButton > button:focus:not(:focus-visible),
+    .stDownloadButton > button:focus:not(:focus-visible),
+    [data-testid="stFileUploaderDropzone"] button:focus:not(:focus-visible) {{
+        outline: none !important;
+    }}
+
+    /* ── Primary Action Buttons (Khởi chạy, Huấn luyện, Kích hoạt, Xuất file) ── */
+    .stButton > button[kind="primary"],
+    .stButton > button[data-testid="baseButton-primary"],
+    .stButton > button[data-testid="stBaseButton-primary"],
+    .stDownloadButton > button[kind="primary"],
+    div[data-testid="stFormSubmitButton"] > button[kind="primary"] {{
+        background: linear-gradient(135deg, rgba(14, 165, 233, 0.95) 0%, rgba(2, 132, 199, 0.95) 100%) !important;
+        border: 1px solid rgba(56, 189, 248, 0.65) !important;
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4), 0 0 16px rgba(0, 229, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+    }}
+    .stButton > button[kind="primary"]:not(:disabled):hover,
+    .stButton > button[data-testid="baseButton-primary"]:not(:disabled):hover,
+    .stButton > button[data-testid="stBaseButton-primary"]:not(:disabled):hover,
+    .stDownloadButton > button[kind="primary"]:not(:disabled):hover,
+    div[data-testid="stFormSubmitButton"] > button[kind="primary"]:not(:disabled):hover {{
+        background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%) !important;
+        border-color: #00E5FF !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 6px 22px rgba(2, 132, 199, 0.55), 0 0 22px rgba(0, 229, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+        transform: translateY(-1.5px) !important;
+    }}
+    .stButton > button[kind="primary"]:not(:disabled):active,
+    .stButton > button[data-testid="baseButton-primary"]:not(:disabled):active,
+    .stDownloadButton > button[kind="primary"]:not(:disabled):active {{
+        transform: scale(0.98) !important;
+    }}
+
+    /* ── Model Lifecycle & Activation Buttons (Khu vực Quản lý Model) ── */
+    div[class*="st-key-act_"] button {{
+        background: linear-gradient(135deg, rgba(14, 165, 233, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%) !important;
+        border: 1px solid rgba(56, 189, 248, 0.5) !important;
+        color: #38BDF8 !important;
+        font-weight: 600 !important;
+    }}
+    div[class*="st-key-act_"] button:not(:disabled):hover {{
+        background: linear-gradient(135deg, rgba(14, 165, 233, 0.35) 0%, rgba(16, 185, 129, 0.35) 100%) !important;
+        border-color: #00E5FF !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 4px 16px rgba(0, 229, 255, 0.35), 0 0 14px rgba(16, 185, 129, 0.25) !important;
+        transform: translateY(-1.5px) !important;
+    }}
+    div[class*="st-key-act_"] button:not(:disabled):active {{
+        transform: scale(0.98) !important;
+    }}
+
+    /* ── Danger & Destructive Buttons (Xóa vĩnh viễn, Báo sai, Loại bỏ) ── */
+    div[class*="st-key-del_btn"] button,
+    div[class*="st-key-fp_"] button,
+    div[class*="st-key-dism_"] button {{
+        background: linear-gradient(180deg, rgba(239, 68, 68, 0.16) 0%, rgba(185, 28, 28, 0.25) 100%) !important;
+        border: 1px solid rgba(239, 68, 68, 0.45) !important;
+        color: #FCA5A5 !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    }}
+    div[class*="st-key-del_btn"] button:not(:disabled):hover,
+    div[class*="st-key-fp_"] button:not(:disabled):hover,
+    div[class*="st-key-dism_"] button:not(:disabled):hover {{
+        background: linear-gradient(180deg, rgba(239, 68, 68, 0.32) 0%, rgba(185, 28, 28, 0.45) 100%) !important;
+        border-color: #EF4444 !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 6px 18px rgba(239, 68, 68, 0.45), 0 0 16px rgba(239, 68, 68, 0.25) !important;
+        transform: translateY(-1.5px) !important;
+    }}
+    div[class*="st-key-del_btn"] button:not(:disabled):active,
+    div[class*="st-key-fp_"] button:not(:disabled):active,
+    div[class*="st-key-dism_"] button:not(:disabled):active {{
+        transform: scale(0.98) !important;
+    }}
+    div[class*="st-key-del_btn"] button:focus-visible,
+    div[class*="st-key-fp_"] button:focus-visible,
+    div[class*="st-key-dism_"] button:focus-visible {{
+        outline: 2px solid #EF4444 !important;
+        outline-offset: 2px !important;
+        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.28) !important;
+    }}
+
+    /* ── Success & Confirmation Buttons (Xác nhận đúng, Đã lấy đồ) ── */
+    div[class*="st-key-conf_"] button,
+    div[class*="st-key-ret_"] button {{
+        background: linear-gradient(180deg, rgba(16, 185, 129, 0.16) 0%, rgba(5, 150, 105, 0.25) 100%) !important;
+        border: 1px solid rgba(16, 185, 129, 0.45) !important;
+        color: #6EE7B7 !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    }}
+    div[class*="st-key-conf_"] button:not(:disabled):hover,
+    div[class*="st-key-ret_"] button:not(:disabled):hover {{
+        background: linear-gradient(180deg, rgba(16, 185, 129, 0.32) 0%, rgba(5, 150, 105, 0.45) 100%) !important;
+        border-color: #10B981 !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 6px 18px rgba(16, 185, 129, 0.45), 0 0 16px rgba(16, 185, 129, 0.25) !important;
+        transform: translateY(-1.5px) !important;
+    }}
+    div[class*="st-key-conf_"] button:not(:disabled):active,
+    div[class*="st-key-ret_"] button:not(:disabled):active {{
+        transform: scale(0.98) !important;
+    }}
+    div[class*="st-key-conf_"] button:focus-visible,
+    div[class*="st-key-ret_"] button:focus-visible {{
+        outline: 2px solid #10B981 !important;
+        outline-offset: 2px !important;
+        box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.28) !important;
+    }}
+
+    /* ── Disabled State For All Buttons ── */
+    .stButton > button:disabled,
+    .stButton > button[disabled],
+    .stDownloadButton > button:disabled,
+    .stDownloadButton > button[disabled],
+    [data-testid="stFileUploaderDropzone"] button:disabled,
+    [data-testid="stFileUploaderDropzone"] button[disabled],
+    div[data-testid="stFormSubmitButton"] > button:disabled {{
+        opacity: 0.45 !important;
+        cursor: not-allowed !important;
+        pointer-events: none !important;
+        background: rgba(15, 23, 42, 0.5) !important;
+        border-color: rgba(255, 255, 255, 0.06) !important;
+        color: #64748B !important;
+        transform: none !important;
+        box-shadow: none !important;
+    }}
+
+    /* ── TABS: Dark Premium Segmented Control & Navigation Toolbar ── */
+    [data-testid="stTabs"] {{
+        position: relative !important;
+        margin-bottom: 1.2rem !important;
+    }}
+
+    /* Container bao bọc danh sách Tab */
     [data-testid="stTabs"] [data-baseweb="tab-list"] {{
-        background: rgba(15, 23, 42, 0.7);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 10px;
-        padding: 4px;
-        gap: 6px;
+        background: rgba(15, 23, 42, 0.75) !important;
+        backdrop-filter: blur(16px) !important;
+        -webkit-backdrop-filter: blur(16px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.09) !important;
+        border-radius: 12px !important;
+        padding: 6px !important;
+        gap: 6px !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+        display: flex !important;
+        align-items: center !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        scrollbar-width: thin !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.09) !important;
     }}
+
+    /* Ẩn hoàn toàn vạch highlight và border mặc định của BaseWeb gây trùng lặp/sát chữ */
+    [data-testid="stTabs"] [data-baseweb="tab-highlight"],
+    [data-testid="stTabs"] [data-baseweb="tab-border"] {{
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+    }}
+
+    /* Ẩn overlay che phủ tab scroll của Streamlit */
+    [data-testid="stTabs"] > div:first-child::after {{
+        display: none !important;
+    }}
+
+    /* Mỗi Tab Item: Sửa triệt để lỗi sát khung */
     [data-testid="stTabs"] [data-baseweb="tab"] {{
-        border-radius: 7px !important;
-        padding: 8px 16px !important;
-        font-size: 0.86rem !important;
+        position: relative !important;
+        box-sizing: border-box !important;
+        height: auto !important;
+        min-height: 44px !important;
+        padding: 9px 20px !important;
+        border-radius: 8px !important;
+        font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        font-size: 0.88rem !important;
         font-weight: 500 !important;
+        letter-spacing: 0.2px !important;
         color: #94A3B8 !important;
-        border: none !important;
-        transition: all 0.2s ease !important;
+        border: 1px solid transparent !important;
         background: transparent !important;
+        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                    background 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                    border-color 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                    color 0.2s ease,
+                    box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        cursor: pointer !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 8px !important;
+        white-space: nowrap !important;
+        overflow: visible !important;
     }}
-    [data-testid="stTabs"] [data-baseweb="tab"]:hover {{
+
+    /* Đảm bảo text & icon của Tab không bao giờ bị đè, clipped hay sát border */
+    [data-testid="stTabs"] [data-baseweb="tab"] > div,
+    [data-testid="stTabs"] [data-baseweb="tab"] [data-testid="stMarkdownContainer"],
+    [data-testid="stTabs"] [data-baseweb="tab"] p {{
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: 1.4 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 8px !important;
+        white-space: nowrap !important;
+        font-size: 0.88rem !important;
+        font-weight: inherit !important;
+        color: inherit !important;
+    }}
+
+    /* Tab Hover State */
+    [data-testid="stTabs"] [data-baseweb="tab"]:not([aria-selected="true"]):hover {{
         color: #F8FAFC !important;
-        background: rgba(255, 255, 255, 0.04) !important;
+        background: rgba(0, 229, 255, 0.08) !important;
+        border-color: rgba(56, 189, 248, 0.25) !important;
+        transform: translateY(-1.5px) !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
     }}
-    [data-testid="stTabs"] [aria-selected="true"] {{
-        background: rgba(30, 41, 59, 0.85) !important;
+
+    /* Tab Active / Selected State: Neon Cyan Gradient & Ambient Glow */
+    [data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] {{
+        background: linear-gradient(180deg, rgba(14, 165, 233, 0.18) 0%, rgba(15, 23, 42, 0.9) 100%) !important;
         color: #00E5FF !important;
         font-weight: 600 !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 12px rgba(0, 229, 255, 0.15) !important;
-        border: 1px solid rgba(56, 189, 248, 0.3) !important;
+        border: 1px solid rgba(0, 229, 255, 0.45) !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 16px rgba(0, 229, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+        transform: none !important;
     }}
-    [data-testid="stTabs"] [data-baseweb="tab-highlight"] {{
-        display: none !important;
+
+    /* Vạch sáng Neon Cyan tinh tế ở đáy Tab active - có khoảng đệm an toàn, KHÔNG đè chữ */
+    [data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"]::after {{
+        content: '' !important;
+        position: absolute !important;
+        bottom: 2px !important;
+        left: 14px !important;
+        right: 14px !important;
+        height: 2px !important;
+        background: linear-gradient(90deg, transparent, #00E5FF, transparent) !important;
+        border-radius: 2px !important;
+        box-shadow: 0 0 8px #00E5FF, 0 0 12px rgba(0, 229, 255, 0.6) !important;
+        pointer-events: none !important;
+    }}
+
+    /* Tab Click / Pressed State */
+    [data-testid="stTabs"] [data-baseweb="tab"]:active {{
+        transform: scale(0.98) !important;
+        transition-duration: 0.08s !important;
+    }}
+
+    /* Tab Keyboard Focus: Focus-visible Ring */
+    [data-testid="stTabs"] [data-baseweb="tab"]:focus-visible {{
+        outline: 2px solid #00E5FF !important;
+        outline-offset: 2px !important;
+        box-shadow: 0 0 0 4px rgba(0, 229, 255, 0.28) !important;
+    }}
+    [data-testid="stTabs"] [data-baseweb="tab"]:focus:not(:focus-visible) {{
+        outline: none !important;
     }}
 
     /* ── Inputs, Selects & Expanders ── */
