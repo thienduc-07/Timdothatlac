@@ -318,21 +318,49 @@ st.markdown(f"""
         }}
     }}
 
+    .metric-panel {{
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        min-height: 125px !important;
+        height: 100% !important;
+        box-sizing: border-box !important;
+    }}
+    [data-testid="stHorizontalBlock"]:has(.metric-panel) {{
+        align-items: stretch !important;
+    }}
+    [data-testid="stHorizontalBlock"]:has(.metric-panel) [data-testid="column"] {{
+        display: flex !important;
+        flex-direction: column !important;
+    }}
+    [data-testid="stHorizontalBlock"]:has(.metric-panel) [data-testid="column"] > div {{
+        flex: 1 1 auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+        height: 100% !important;
+    }}
+
     .metric-panel h3 {{
         margin: 0;
-        font-size: 1.65rem;
+        font-size: 1.6rem;
         font-weight: 700;
         color: #F8FAFC;
         letter-spacing: -0.02em;
         font-variant-numeric: tabular-nums;
+        line-height: 1.2;
     }}
     .metric-panel p {{
-        margin: 0 0 4px 0;
-        font-size: 0.8rem;
-        color: #94A3B8;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
+        margin: 0 0 6px 0 !important;
+        font-size: 0.78rem !important;
+        color: #94A3B8 !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.35px !important;
+        min-height: 2.2em !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        line-height: 1.25 !important;
     }}
 
     /* Top Navigation Header Bar */
@@ -607,11 +635,12 @@ st.markdown(f"""
         box-sizing: border-box !important;
         min-height: 42px !important;
         height: auto !important;
-        padding: 0.58rem 1.35rem !important;
+        max-width: 100% !important;
+        padding: 0.52rem 0.8rem !important;
         font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
-        font-size: 0.88rem !important;
+        font-size: 0.86rem !important;
         font-weight: 600 !important;
-        line-height: 1.4 !important;
+        line-height: 1.3 !important;
         letter-spacing: 0.2px !important;
         border-radius: 9px !important;
         border: 1px solid rgba(255, 255, 255, 0.12) !important;
@@ -623,17 +652,18 @@ st.markdown(f"""
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        gap: 8px !important;
+        gap: 6px !important;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
         transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
                     background 0.22s cubic-bezier(0.16, 1, 0.3, 1),
                     border-color 0.22s cubic-bezier(0.16, 1, 0.3, 1),
                     color 0.2s ease,
                     box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
-        overflow: visible !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
     }}
 
-    /* Đảm bảo nội dung chữ & icon bên trong button không bị clipping hay sát lề */
+    /* Đảm bảo nội dung chữ & icon bên trong button không bị clipping hay sát lề, tự động co giãn không tràn */
     .stButton > button div[data-testid="stMarkdownContainer"],
     .stDownloadButton > button div[data-testid="stMarkdownContainer"],
     [data-testid="stFileUploaderDropzone"] button div[data-testid="stMarkdownContainer"],
@@ -642,14 +672,17 @@ st.markdown(f"""
     [data-testid="stFileUploaderDropzone"] button p {{
         margin: 0 !important;
         padding: 0 !important;
-        line-height: 1.4 !important;
+        line-height: 1.25 !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
         gap: 6px !important;
-        white-space: nowrap !important;
+        white-space: normal !important;
+        text-align: center !important;
+        word-break: normal !important;
         font-weight: inherit !important;
         color: inherit !important;
+        max-width: 100% !important;
     }}
 
     /* Hover state: Neon Cyan Glow & Subtle Lift */
@@ -1504,28 +1537,37 @@ def page_dashboard(service: AnalysisService):
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(f"""
-        <div class="metric-panel">
+        <div class="metric-panel" title="Chi tiết ghế: 👤 Có người ngồi | 🟢 Ghế trống (sẵn sàng đón khách) | ⚪ Chưa xác định">
             <p>🪑 GHẾ ĐÃ ĐỊNH DANH</p>
-            <h3>{seat_count} <span style="font-size: 0.85rem; font-weight: 500; color: #94A3B8;">(👤 {occ_count} | 🟢 {vac_count} | ⚪ {amb_count})</span></h3>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+                <h3>{seat_count}</h3>
+                <div style="font-size: 0.78rem; font-weight: 500; color: #94A3B8; display: flex; align-items: center; gap: 5px;">
+                    <span title="Ghế có người ngồi">👤 {occ_count}</span>
+                    <span style="color: rgba(255,255,255,0.2);">|</span>
+                    <span style="color: #34D399; font-weight: 600;" title="Ghế trống (sẵn sàng đón khách)">🟢 {vac_count} trống</span>
+                    <span style="color: rgba(255,255,255,0.2);">|</span>
+                    <span title="Chưa xác định trạng thái">⚪ {amb_count}</span>
+                </div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
     with c2:
         st.markdown(f"""
-        <div class="metric-panel">
+        <div class="metric-panel" title="Tổng số cảnh báo đồ vật bỏ quên đang chờ kiểm tra và giải quyết">
             <p>⚠️ CẢNH BÁO CHỜ XỬ LÝ</p>
             <h3 style="color: {'#F87171' if alert_count > 0 else '#34D399'}; text-shadow: 0 0 16px {'rgba(239, 68, 68, 0.3)' if alert_count > 0 else 'rgba(16, 185, 129, 0.3)'};">{alert_count}</h3>
         </div>
         """, unsafe_allow_html=True)
     with c3:
         st.markdown(f"""
-        <div class="metric-panel">
+        <div class="metric-panel" title="Tổng số sự kiện phát hiện đồ vật / ghế đã ghi nhận">
             <p>👁️ SỰ KIỆN GHI NHẬN</p>
             <h3 style="color: #38BDF8; text-shadow: 0 0 16px rgba(56, 189, 248, 0.25);">{stats.get('total_events', 0)}</h3>
         </div>
         """, unsafe_allow_html=True)
     with c4:
         st.markdown(f"""
-        <div class="metric-panel">
+        <div class="metric-panel" title="Tổng số phiên chạy phân tích video hoặc camera">
             <p>🎬 PHIÊN PHÂN TÍCH</p>
             <h3 style="color: #A78BFA; text-shadow: 0 0 16px rgba(167, 139, 250, 0.25);">{stats.get('total_analyses', 0)}</h3>
         </div>
@@ -1537,15 +1579,15 @@ def page_dashboard(service: AnalysisService):
         st.markdown("#### ⚡ Thao tác nhanh")
         sc1, sc2, sc3 = st.columns(3)
         with sc1:
-            if st.button("🎥 Chạy Giám sát Camera", use_container_width=True):
+            if st.button("🎥 Giám sát Camera", use_container_width=True, help="Mở giao diện giám sát camera trực tiếp"):
                 st.session_state["nav_to"] = "Giám sát Camera"
                 st.rerun()
         with sc2:
-            if st.button("⚠️ Mở Alert Center", use_container_width=True):
+            if st.button("⚠️ Mở Alert Center", use_container_width=True, help="Mở Trung tâm cảnh báo đồ thất lạc"):
                 st.session_state["nav_to"] = "Trung tâm Cảnh báo"
                 st.rerun()
         with sc3:
-            if st.button("🪑 Sơ đồ Ghế (ROI)", use_container_width=True):
+            if st.button("🪑 Sơ đồ Ghế (ROI)", use_container_width=True, help="Mở giao diện quản lý và định danh ghế"):
                 st.session_state["nav_to"] = "Quản lý Ghế"
                 st.rerun()
 
