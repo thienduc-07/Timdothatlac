@@ -10,8 +10,9 @@ gatherUsageStats = false
 
 [theme]
 base = "dark"
-primaryColor = "#00E5FF"
-backgroundColor = "#0F172A"
-secondaryBackgroundColor = "#1E293B"
+primaryColor = "#00F0FF"
+backgroundColor = "#050811"
+secondaryBackgroundColor = "#0C1222"
 textColor = "#F8FAFC"
 font = "sans serif"
+

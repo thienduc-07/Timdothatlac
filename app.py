@@ -127,29 +127,75 @@ from src.notifications.telegram_notifier import get_telegram_notifier, TelegramN
 # Cấu hình giao diện Streamlit
 # ──────────────────────────────────────────────
 st.set_page_config(
-    page_title="Lost & Found AI - Bus Surveillance",
+    page_title="Lost & Found AI - Bus Vision Platform",
     page_icon="🚌",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ──────────────────────────────────────────────
-# CSS Giao diện Dark Navy chuyên nghiệp & Hỗ trợ tiếng Việt đầy đủ
-# ──────────────────────────────────────────────
 st.markdown(f"""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
     @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
 
+    /* ── DESIGN SYSTEM TOKENS ── */
+    :root {{
+        --bg-deep: #050811;
+        --bg-canvas: #080D1A;
+        --bg-surface: rgba(12, 19, 36, 0.76);
+        --bg-surface-elevated: rgba(18, 28, 52, 0.85);
+        --bg-card: rgba(13, 21, 39, 0.65);
+        --bg-card-hover: rgba(20, 32, 60, 0.82);
+
+        --border-subtle: rgba(255, 255, 255, 0.07);
+        --border-medium: rgba(255, 255, 255, 0.12);
+        --border-cyan: rgba(0, 240, 255, 0.38);
+        --border-cyan-glow: rgba(0, 240, 255, 0.2);
+        --border-emerald: rgba(5, 242, 146, 0.4);
+        --border-amber: rgba(245, 158, 11, 0.4);
+        --border-crimson: rgba(255, 51, 102, 0.45);
+
+        --cyan-electric: #00F0FF;
+        --cyan-soft: #38BDF8;
+        --emerald-neon: #05F292;
+        --amber-warning: #F59E0B;
+        --crimson-alert: #FF3366;
+        --indigo-telemetry: #818CF8;
+        --violet-ai: #A78BFA;
+
+        --text-primary: #F8FAFC;
+        --text-secondary: #94A3B8;
+        --text-muted: #64748B;
+
+        --font-sans: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        --font-display: 'Outfit', 'Be Vietnam Pro', 'Inter', sans-serif;
+        --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+
+        --color-seat: {COLOR_SEAT_HEX};
+        --color-person: {COLOR_PERSON_HEX};
+        --color-object: {COLOR_OBJECT_HEX};
+        --color-alert: {COLOR_ALERT_HEX};
+    }}
+
+    /* ── BASE TYPOGRAPHY ── */
     html, body, .stApp {{
-        font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-family: var(--font-sans);
+        color: var(--text-primary);
+        letter-spacing: -0.01em;
     }}
 
-    .stMarkdown, .stText, h1, h2, h3, h4, h5, h6, p, label, button, input, select, textarea {{
-        font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    .stMarkdown, .stText, p, label, button, input, select, textarea {{
+        font-family: var(--font-sans);
     }}
 
-    /* Đảm bảo giữ nguyên font icon Material Symbols cho mọi icon trong Streamlit */
+    h1, h2, h3, h4, h5, h6 {{
+        font-family: var(--font-display);
+        letter-spacing: -0.02em;
+        font-weight: 700;
+        color: var(--text-primary);
+    }}
+
+    /* Material Symbols preservation */
     [data-testid*="Icon"],
     [data-testid*="icon"],
     [data-testid="stExpanderToggleIcon"],
@@ -173,25 +219,74 @@ st.markdown(f"""
         -webkit-font-smoothing: antialiased !important;
     }}
 
-    /* ── React Bits AI SaaS Theme Variables ── */
-    :root {{
-        --bg-space: #070A12;
-        --bg-surface: rgba(15, 23, 42, 0.72);
-        --bg-card: rgba(15, 23, 42, 0.65);
-        --border-subtle: rgba(255, 255, 255, 0.08);
-        --border-glow: rgba(56, 189, 248, 0.4);
-        --text-primary: #F8FAFC;
-        --text-secondary: #94A3B8;
-        --text-muted: #64748B;
-        --cyan-accent: #00E5FF;
-        --cyan-glow: rgba(0, 229, 255, 0.18);
-        --color-seat: {COLOR_SEAT_HEX};
-        --color-person: {COLOR_PERSON_HEX};
-        --color-object: {COLOR_OBJECT_HEX};
-        --color-alert: {COLOR_ALERT_HEX};
+    /* ── MANDATORY RULE A: HIDE SCROLLBARS EVERYWHERE ──
+       Preserve 100% full mouse wheel, trackpad, touch, keyboard scrolling on all views */
+    * {{
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+    }}
+    *::-webkit-scrollbar,
+    html::-webkit-scrollbar,
+    body::-webkit-scrollbar,
+    .stApp::-webkit-scrollbar,
+    div[data-testid="stAppViewContainer"]::-webkit-scrollbar,
+    section[data-testid="stSidebar"]::-webkit-scrollbar,
+    div[data-testid="stSidebarContent"]::-webkit-scrollbar,
+    .main::-webkit-scrollbar,
+    .block-container::-webkit-scrollbar,
+    div[data-testid="stVerticalBlock"]::-webkit-scrollbar,
+    div[data-testid="stHorizontalBlock"]::-webkit-scrollbar,
+    [data-testid="stTabs"] [data-baseweb="tab-list"]::-webkit-scrollbar,
+    div[data-baseweb="select"] ul::-webkit-scrollbar,
+    div[data-testid="stDataFrame"]::-webkit-scrollbar,
+    div[data-testid="stTable"]::-webkit-scrollbar {{
+        display: none !important;
+        width: 0px !important;
+        height: 0px !important;
+        background: transparent !important;
     }}
 
-    /* Khắc phục lỗi Streamlit làm tối (dim/opacity reduction) giao diện website khi camera chạy */
+    /* ── MANDATORY RULE B: RESTRICT UNWANTED TEXT SELECTION ON UI CHROME ──
+       Disallow accidental highlighting of buttons, navigation, headers, metrics, chrome;
+       STRICTLY PRESERVE text selection for inputs, textareas, code blocks, tables, copyable fields */
+    html, body, .stApp,
+    section[data-testid="stSidebar"],
+    .header-bar,
+    .metric-panel,
+    .spotlight-card,
+    .badge,
+    .legend-box,
+    button,
+    nav,
+    header,
+    [data-testid="stHeader"],
+    [data-testid="stToolbar"],
+    [data-testid="stDecoration"],
+    [data-testid="stTabs"] [data-baseweb="tab"] {{
+        -webkit-user-select: none !important;
+        -moz-user-select: none !important;
+        -ms-user-select: none !important;
+        user-select: none !important;
+    }}
+
+    input, textarea,
+    input[type="text"], input[type="password"], input[type="number"],
+    [contenteditable="true"],
+    [data-baseweb="input"] input,
+    [data-baseweb="textarea"] textarea,
+    pre, code, .stCodeBlock,
+    .selectable, .selectable-text,
+    [data-testid="stDataFrame"], [data-testid="stTable"],
+    table, td, th,
+    div[data-testid="stMarkdownContainer"] pre,
+    div[data-testid="stMarkdownContainer"] code {{
+        -webkit-user-select: text !important;
+        -moz-user-select: text !important;
+        -ms-user-select: text !important;
+        user-select: text !important;
+    }}
+
+    /* Streamlit Stale & Dim fix: never fade out during camera processing */
     div[data-testid="stAppViewContainer"],
     .stApp,
     .main,
@@ -205,46 +300,51 @@ st.markdown(f"""
         filter: none !important;
     }}
 
-    /* React Bits Background: Squares & Subtle Cyber Grid */
+    /* ── APP CANVAS & CYBER-OBSIDIAN BACKGROUND ── */
     .stApp,
     div[data-testid="stAppViewContainer"] {{
-        background-color: #070A12 !important;
+        background-color: var(--bg-deep) !important;
         background-image:
-            radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.08) 0px, transparent 45%),
-            radial-gradient(at 100% 0%, rgba(99, 102, 241, 0.06) 0px, transparent 45%),
-            radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.04) 0px, transparent 55%),
-            linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-            linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px) !important;
-        background-size: 100% 100%, 100% 100%, 100% 100%, 36px 36px, 36px 36px !important;
+            radial-gradient(at 0% 0%, rgba(0, 240, 255, 0.05) 0px, transparent 40%),
+            radial-gradient(at 100% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 40%),
+            radial-gradient(at 50% 100%, rgba(5, 242, 146, 0.03) 0px, transparent 50%),
+            linear-gradient(to right, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255, 255, 255, 0.018) 1px, transparent 1px) !important;
+        background-size: 100% 100%, 100% 100%, 100% 100%, 40px 40px, 40px 40px !important;
         background-attachment: fixed !important;
-        color: #F8FAFC !important;
+        color: var(--text-primary) !important;
     }}
 
-    @keyframes page-enter {{
-        0% {{
-            opacity: 0;
-            transform: translateY(4px);
-        }}
-        100% {{
-            opacity: 1;
-            transform: translateY(0);
-        }}
+    /* Hide standard Streamlit header clutter */
+    [data-testid="stHeader"] {{
+        background: transparent !important;
+    }}
+    [data-testid="stToolbar"] {{
+        right: 1.5rem !important;
+    }}
+    [data-testid="stDecoration"] {{
+        display: none !important;
     }}
 
+    /* Main Container Padding & Transition */
+    @keyframes page-mount {{
+        0% {{ opacity: 0; transform: translateY(6px); }}
+        100% {{ opacity: 1; transform: translateY(0); }}
+    }}
     .main .block-container {{
         padding-top: 1.2rem;
-        padding-bottom: 2rem;
-        max-width: 1350px;
-        animation: page-enter 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        padding-bottom: 2.5rem;
+        max-width: 1400px;
+        animation: page-mount 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }}
 
-    /* ── React Bits Text Animations (ShinyText & BlurText) ── */
+    /* ── TEXT SHINE & ACCENT ANIMATIONS ── */
     @keyframes shiny-text {{
         0% {{ background-position: -200% 0; }}
         100% {{ background-position: 200% 0; }}
     }}
     .shiny-text {{
-        background: linear-gradient(120deg, rgba(255,255,255,0.7) 20%, #FFFFFF 50%, rgba(255,255,255,0.7) 80%);
+        background: linear-gradient(120deg, rgba(255,255,255,0.7) 15%, #FFFFFF 50%, rgba(255,255,255,0.7) 85%);
         background-size: 200% auto;
         color: transparent !important;
         -webkit-background-clip: text !important;
@@ -253,7 +353,7 @@ st.markdown(f"""
         display: inline-block;
     }}
     .shiny-cyan {{
-        background: linear-gradient(120deg, #38BDF8 20%, #E0F2FE 50%, #38BDF8 80%);
+        background: linear-gradient(120deg, #00F0FF 20%, #E0F2FE 50%, #00F0FF 80%);
         background-size: 200% auto;
         color: transparent !important;
         -webkit-background-clip: text !important;
@@ -262,34 +362,26 @@ st.markdown(f"""
         display: inline-block;
     }}
 
-    @keyframes blur-in {{
-        0% {{ filter: blur(5px); opacity: 0; transform: translateY(-3px); }}
-        100% {{ filter: blur(0); opacity: 1; transform: translateY(0); }}
-    }}
-    .blur-text {{
-        animation: blur-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }}
-
-    /* ── React Bits SpotlightCard & Metric Panels ── */
+    /* ── SPOTLIGHT CARD & BENTO PANELS ── */
     .spotlight-card,
     .metric-panel {{
         position: relative;
-        background: rgba(15, 23, 42, 0.72) !important;
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        border-radius: 12px !important;
-        padding: 16px 20px !important;
-        color: #F8FAFC !important;
+        background: var(--bg-surface) !important;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--border-subtle) !important;
+        border-radius: 14px !important;
+        padding: 18px 22px !important;
+        color: var(--text-primary) !important;
         margin-bottom: 14px;
         overflow: hidden;
-        box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.35);
-        transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease !important;
+        box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        transition: border-color 0.24s ease, box-shadow 0.24s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }}
     .spotlight-card:hover,
     .metric-panel:hover {{
-        border-color: rgba(56, 189, 248, 0.35) !important;
-        box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5), 0 0 20px -3px rgba(56, 189, 248, 0.15) !important;
+        border-color: rgba(0, 240, 255, 0.38) !important;
+        box-shadow: 0 12px 36px -4px rgba(0, 0, 0, 0.6), 0 0 24px -4px rgba(0, 240, 255, 0.15) !important;
         transform: translateY(-2px);
     }}
     .spotlight-card::before,
@@ -298,14 +390,15 @@ st.markdown(f"""
         position: absolute;
         top: var(--spotlight-y, 50%);
         left: var(--spotlight-x, 50%);
-        width: 260px;
-        height: 260px;
-        background: radial-gradient(circle, rgba(56, 189, 248, 0.12) 0%, transparent 70%);
+        width: 320px;
+        height: 320px;
+        background: radial-gradient(circle, rgba(0, 240, 255, 0.14) 0%, transparent 70%);
         transform: translate(-50%, -50%);
         pointer-events: none;
         opacity: 0;
         transition: opacity 0.3s ease;
         border-radius: 50%;
+        z-index: 1;
     }}
     .spotlight-card:hover::before,
     .metric-panel:hover::before {{
@@ -318,11 +411,12 @@ st.markdown(f"""
         }}
     }}
 
+    /* Bento Metric Panel Geometry */
     .metric-panel {{
         display: flex !important;
         flex-direction: column !important;
         justify-content: space-between !important;
-        min-height: 110px !important;
+        min-height: 125px !important;
         height: 100% !important;
         box-sizing: border-box !important;
     }}
@@ -344,94 +438,96 @@ st.markdown(f"""
 
     .metric-panel h3 {{
         margin: 0;
-        font-size: 1.6rem;
-        font-weight: 700;
+        font-size: 2.1rem;
+        font-weight: 800;
         color: #F8FAFC;
-        letter-spacing: -0.02em;
+        letter-spacing: -0.03em;
+        font-family: var(--font-display);
         font-variant-numeric: tabular-nums;
-        line-height: 1.2;
+        line-height: 1.15;
     }}
     .metric-panel p {{
-        margin: 0 0 6px 0 !important;
-        font-size: 0.78rem !important;
-        color: #94A3B8 !important;
-        font-weight: 600 !important;
+        margin: 0 0 8px 0 !important;
+        font-size: 0.74rem !important;
+        color: var(--text-secondary) !important;
+        font-weight: 700 !important;
         text-transform: uppercase !important;
-        letter-spacing: 0.35px !important;
-        min-height: 2.2em !important;
+        letter-spacing: 0.8px !important;
+        font-family: var(--font-mono);
         display: flex !important;
         align-items: center !important;
-        gap: 6px !important;
-        line-height: 1.25 !important;
+        gap: 7px !important;
     }}
 
-    /* Top Navigation Header Bar */
+    /* ── HEADER COMMAND BAR ── */
     .header-bar {{
-        background: rgba(15, 23, 42, 0.75);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 12px;
-        padding: 14px 22px;
-        margin-bottom: 18px;
+        background: var(--bg-surface) !important;
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        border: 1px solid var(--border-subtle);
+        border-radius: 14px;
+        padding: 16px 24px;
+        margin-bottom: 20px;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.4);
+        box-shadow: 0 10px 36px -6px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
     }}
     .header-title {{
-        font-size: 1.4rem;
-        font-weight: 700;
-        color: #F8FAFC;
+        font-size: 1.45rem;
+        font-weight: 800;
+        font-family: var(--font-display);
+        color: var(--text-primary);
         display: flex;
         align-items: center;
         gap: 12px;
-        letter-spacing: -0.01em;
+        letter-spacing: -0.02em;
     }}
     .header-subtitle {{
-        font-size: 0.86rem;
-        color: #94A3B8;
-        margin-top: 3px;
+        font-size: 0.88rem;
+        color: var(--text-secondary);
+        margin-top: 4px;
         font-weight: 400;
     }}
 
-    /* Status Badges */
+    /* ── HIGH-TECH STATUS BADGES ── */
     .badge {{
         display: inline-flex;
         align-items: center;
-        gap: 6px;
-        padding: 5px 12px;
+        gap: 7px;
+        padding: 5px 13px;
         border-radius: 20px;
-        font-size: 0.76rem;
-        font-weight: 600;
-        letter-spacing: 0.5px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        letter-spacing: 0.6px;
         text-transform: uppercase;
         backdrop-filter: blur(8px);
         transition: all 0.2s ease;
     }}
     .badge-live {{
-        background: rgba(16, 185, 129, 0.12);
-        color: #34D399;
-        border: 1px solid rgba(16, 185, 129, 0.35);
-        box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+        background: rgba(5, 242, 146, 0.12);
+        color: #05F292;
+        border: 1px solid rgba(5, 242, 146, 0.4);
+        box-shadow: 0 0 16px rgba(5, 242, 146, 0.2);
     }}
     .badge-processing {{
-        background: rgba(14, 165, 233, 0.12);
-        color: #38BDF8;
-        border: 1px solid rgba(14, 165, 233, 0.35);
-        box-shadow: 0 0 12px rgba(14, 165, 233, 0.15);
+        background: rgba(0, 240, 255, 0.12);
+        color: #00F0FF;
+        border: 1px solid rgba(0, 240, 255, 0.4);
+        box-shadow: 0 0 16px rgba(0, 240, 255, 0.2);
     }}
     .badge-demo {{
         background: rgba(245, 158, 11, 0.12);
         color: #FBBF24;
-        border: 1px solid rgba(245, 158, 11, 0.35);
-        box-shadow: 0 0 12px rgba(245, 158, 11, 0.15);
+        border: 1px solid rgba(245, 158, 11, 0.4);
+        box-shadow: 0 0 16px rgba(245, 158, 11, 0.18);
     }}
     .badge-alert {{
-        background: rgba(239, 68, 68, 0.15);
-        color: #F87171;
-        border: 1px solid rgba(239, 68, 68, 0.4);
-        box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+        background: rgba(255, 51, 102, 0.16);
+        color: #FF3366;
+        border: 1px solid rgba(255, 51, 102, 0.5);
+        box-shadow: 0 0 16px rgba(255, 51, 102, 0.25);
     }}
 
     .pulse-dot {{
@@ -444,26 +540,26 @@ st.markdown(f"""
         display: inline-block;
     }}
     @keyframes pulse-dot {{
-        0% {{ opacity: 0.4; transform: scale(0.9); }}
-        50% {{ opacity: 1; transform: scale(1.15); }}
-        100% {{ opacity: 0.4; transform: scale(0.9); }}
+        0% {{ opacity: 0.35; transform: scale(0.85); }}
+        50% {{ opacity: 1; transform: scale(1.2); }}
+        100% {{ opacity: 0.35; transform: scale(0.85); }}
     }}
 
-    /* Legend Box */
+    /* ── LEGEND BAR ── */
     .legend-box {{
-        background: rgba(15, 23, 42, 0.65);
-        backdrop-filter: blur(14px);
-        -webkit-backdrop-filter: blur(14px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 10px;
-        padding: 10px 18px;
-        margin-bottom: 16px;
-        font-size: 0.82rem;
+        background: var(--bg-surface);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid var(--border-subtle);
+        border-radius: 11px;
+        padding: 10px 20px;
+        margin-bottom: 18px;
+        font-size: 0.8rem;
         display: flex;
         align-items: center;
-        gap: 20px;
+        gap: 22px;
         flex-wrap: wrap;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3);
     }}
     .legend-item {{
         display: flex;
@@ -477,18 +573,18 @@ st.markdown(f"""
         box-shadow: 0 0 8px currentColor;
     }}
 
-    /* ── Streamlit Sidebar (Linear / Vercel Mission Control) ── */
+    /* ── STREAMLIT SIDEBAR (MISSION CONTROL / PALANTIR GRADE) ── */
     section[data-testid="stSidebar"] {{
-        background-color: #070A12 !important;
+        background-color: #050811 !important;
         background-image:
-            radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.08) 0%, transparent 60%),
-            linear-gradient(180deg, rgba(15, 23, 42, 0.7) 0%, #070A12 100%) !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
-        box-shadow: 4px 0 28px rgba(0, 0, 0, 0.6) !important;
+            radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.06) 0%, transparent 60%),
+            linear-gradient(180deg, rgba(12, 19, 36, 0.85) 0%, #050811 100%) !important;
+        border-right: 1px solid var(--border-subtle) !important;
+        box-shadow: 4px 0 32px rgba(0, 0, 0, 0.7) !important;
         transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), width 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }}
 
-    /* ── Hide st.radio widget label so "Hệ thống" / radio header never renders as a menu item ── */
+    /* Hide st.radio widget label in sidebar */
     section[data-testid="stSidebar"] [data-testid="stWidgetLabel"],
     section[data-testid="stSidebar"] [data-testid="stRadio"] > [data-testid="stWidgetLabel"],
     section[data-testid="stSidebar"] [data-testid="stRadio"] > label {{
@@ -499,7 +595,7 @@ st.markdown(f"""
         padding: 0 !important;
     }}
 
-    /* ── Hide native radio circle indicator across all Streamlit / BaseWeb DOM variations ── */
+    /* Hide native radio circle indicator */
     section[data-testid="stSidebar"] [data-testid="stRadio"] label > div:first-child,
     section[data-testid="stSidebar"] [data-testid="stRadio"] div[data-baseweb="radio"] > div:first-child,
     section[data-testid="stSidebar"] [data-testid="stRadio"] input[type="radio"],
@@ -509,7 +605,6 @@ st.markdown(f"""
         display: none !important;
     }}
 
-    /* Reset BaseWeb radio item container */
     section[data-testid="stSidebar"] [data-testid="stRadio"] div[data-baseweb="radio"],
     section[data-testid="stSidebar"] div[role="radiogroup"] div[data-baseweb="radio"] {{
         margin: 0 !important;
@@ -518,7 +613,7 @@ st.markdown(f"""
         box-sizing: border-box !important;
     }}
 
-    /* Navigation Item: Premium Pill Card (Restored from commit 3d144bc/0dae436: smooth, no flickering delays) */
+    /* Navigation Item: Precision Pill Card */
     section[data-testid="stSidebar"] div[role="radiogroup"] label,
     section[data-testid="stSidebar"] [data-testid="stRadioGroup"] label,
     section[data-testid="stSidebar"] div[data-baseweb="radio"] label {{
@@ -527,11 +622,11 @@ st.markdown(f"""
         position: relative !important;
         width: 100% !important;
         box-sizing: border-box !important;
-        background: rgba(15, 23, 42, 0.45) !important;
-        border: 1px solid rgba(255, 255, 255, 0.06) !important;
-        border-radius: 8px !important;
-        padding: 9px 13px !important;
-        margin-bottom: 5px !important;
+        background: rgba(12, 19, 36, 0.5) !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        border-radius: 9px !important;
+        padding: 10px 14px !important;
+        margin-bottom: 6px !important;
         transition: background 0.2s cubic-bezier(0.16, 1, 0.3, 1),
                     border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
                     transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
@@ -539,40 +634,40 @@ st.markdown(f"""
         cursor: pointer !important;
     }}
 
-    /* Hover state: tactile slide & cyan border */
+    /* Navigation Item: Hover state */
     section[data-testid="stSidebar"] div[role="radiogroup"] label:not(:has(input:checked)):hover,
     section[data-testid="stSidebar"] div[data-baseweb="radio"] label:not(:has(input:checked)):hover {{
-        background: rgba(30, 41, 59, 0.6) !important;
-        border-color: rgba(56, 189, 248, 0.3) !important;
+        background: rgba(22, 34, 60, 0.7) !important;
+        border-color: rgba(0, 240, 255, 0.32) !important;
         transform: translateX(4px) !important;
     }}
 
-    /* Pressed state: tactile response */
+    /* Navigation Item: Active/Pressed */
     section[data-testid="stSidebar"] div[role="radiogroup"] label:active,
     section[data-testid="stSidebar"] div[data-baseweb="radio"] label:active {{
         transform: scale(0.98) !important;
         transition-duration: 0.08s !important;
     }}
 
-    /* Keyboard focus state (WCAG accessible) */
+    /* Navigation Item: Focus state */
     section[data-testid="stSidebar"] div[role="radiogroup"] label:focus-within,
     section[data-testid="stSidebar"] div[data-baseweb="radio"] label:focus-within {{
-        outline: 2px solid #00E5FF !important;
+        outline: 2px solid var(--cyan-electric) !important;
         outline-offset: 2px !important;
-        box-shadow: 0 0 0 4px rgba(0, 229, 255, 0.25) !important;
+        box-shadow: 0 0 0 4px rgba(0, 240, 255, 0.22) !important;
     }}
 
-    /* Active destination: Linear-style restrained cyan accent & ambient glow */
+    /* Navigation Item: Selected destination with electric neon pill accent */
     section[data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"],
     section[data-testid="stSidebar"] div[role="radiogroup"] label[aria-checked="true"],
     section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked),
     section[data-testid="stSidebar"] div[role="radiogroup"] div[data-checked="true"] label,
     section[data-testid="stSidebar"] div[data-baseweb="radio"] label:has(input:checked),
     section[data-testid="stSidebar"] div[data-baseweb="radio"][data-checked="true"] label {{
-        background: linear-gradient(90deg, rgba(14, 165, 233, 0.16) 0%, rgba(15, 23, 42, 0.75) 100%) !important;
-        border-color: rgba(56, 189, 248, 0.55) !important;
-        border-left: 3px solid #00E5FF !important;
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), 0 0 16px rgba(0, 229, 255, 0.1) !important;
+        background: linear-gradient(90deg, rgba(0, 240, 255, 0.16) 0%, rgba(12, 19, 36, 0.85) 100%) !important;
+        border-color: rgba(0, 240, 255, 0.6) !important;
+        border-left: 3px solid var(--cyan-electric) !important;
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4), 0 0 20px rgba(0, 240, 255, 0.15) !important;
     }}
 
     section[data-testid="stSidebar"] div[role="radiogroup"] label p,
@@ -580,54 +675,41 @@ st.markdown(f"""
         margin: 0 !important;
         font-size: 0.92rem !important;
         color: #E2E8F0 !important;
-        letter-spacing: 0.2px !important;
+        letter-spacing: 0.15px !important;
+        font-weight: 500 !important;
     }}
     section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p,
     section[data-testid="stSidebar"] div[role="radiogroup"] div[data-checked="true"] p,
     section[data-testid="stSidebar"] div[data-baseweb="radio"] label:has(input:checked) p,
     section[data-testid="stSidebar"] div[data-baseweb="radio"][data-checked="true"] p {{
-        color: #38BDF8 !important;
-        font-weight: 600 !important;
+        color: var(--cyan-electric) !important;
+        font-weight: 700 !important;
     }}
 
-    /* Touch device optimization */
-    @media (hover: none) {{
-        section[data-testid="stSidebar"] div[role="radiogroup"] label:not(:has(input:checked)):hover,
-        section[data-testid="stSidebar"] div[data-baseweb="radio"] label:not(:has(input:checked)):hover {{
-            transform: none !important;
-        }}
-    }}
-
-    /* Sidebar collapse/expand buttons */
+    /* Sidebar collapse / expand triggers */
     button[data-testid="stSidebarCollapseButton"],
     button[data-testid="collapsedControl"] {{
-        background: rgba(15, 23, 42, 0.85) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-radius: 8px !important;
-        color: #94A3B8 !important;
+        background: rgba(12, 19, 36, 0.9) !important;
+        border: 1px solid var(--border-subtle) !important;
+        border-radius: 9px !important;
+        color: var(--text-secondary) !important;
         transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }}
     button[data-testid="stSidebarCollapseButton"]:hover,
     button[data-testid="collapsedControl"]:hover {{
-        background: rgba(30, 41, 59, 0.95) !important;
-        border-color: rgba(56, 189, 248, 0.4) !important;
-        color: #00E5FF !important;
-        box-shadow: 0 0 12px rgba(0, 229, 255, 0.2) !important;
+        background: rgba(22, 34, 60, 0.95) !important;
+        border-color: var(--border-cyan) !important;
+        color: var(--cyan-electric) !important;
+        box-shadow: 0 0 16px rgba(0, 240, 255, 0.25) !important;
     }}
 
-    /* Backdrop overlay for mobile drawer */
     div[data-testid="stSidebarBackdrop"] {{
-        background: rgba(7, 10, 18, 0.75) !important;
-        backdrop-filter: blur(8px) !important;
-        -webkit-backdrop-filter: blur(8px) !important;
-        transition: opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        background: rgba(5, 8, 17, 0.8) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
     }}
 
-    /* ══════════════════════════════════════════════════════════════
-       DARK PREMIUM UI + NEON CYAN DESIGN SYSTEM FOR BUTTONS & TABS
-       ══════════════════════════════════════════════════════════════ */
-
-    /* ── Base Reset & Geometry for All Interactive Buttons ── */
+    /* ── BUTTON SYSTEM ── */
     .stButton,
     .stButton .stTooltipIcon,
     .stButton .stTooltipHoverTarget {{
@@ -648,24 +730,24 @@ st.markdown(f"""
         height: auto !important;
         width: 100% !important;
         max-width: 100% !important;
-        padding: 0.52rem 0.8rem !important;
-        font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        padding: 0.54rem 0.88rem !important;
+        font-family: var(--font-sans) !important;
         font-size: 0.86rem !important;
         font-weight: 600 !important;
         line-height: 1.3 !important;
-        letter-spacing: 0.2px !important;
+        letter-spacing: 0.25px !important;
         border-radius: 9px !important;
         border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        background: linear-gradient(180deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.9) 100%) !important;
-        backdrop-filter: blur(14px) !important;
-        -webkit-backdrop-filter: blur(14px) !important;
+        background: linear-gradient(180deg, rgba(26, 38, 64, 0.8) 0%, rgba(12, 19, 36, 0.95) 100%) !important;
+        backdrop-filter: blur(16px) !important;
+        -webkit-backdrop-filter: blur(16px) !important;
         color: #E2E8F0 !important;
         cursor: pointer !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        gap: 6px !important;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+        gap: 7px !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.09) !important;
         transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
                     background 0.22s cubic-bezier(0.16, 1, 0.3, 1),
                     border-color 0.22s cubic-bezier(0.16, 1, 0.3, 1),
@@ -675,7 +757,6 @@ st.markdown(f"""
         text-overflow: ellipsis !important;
     }}
 
-    /* Đảm bảo nội dung chữ & icon bên trong button không bị clipping hay sát lề, tự động co giãn không tràn */
     .stButton div[data-testid="stMarkdownContainer"],
     .stDownloadButton div[data-testid="stMarkdownContainer"],
     [data-testid="stFileUploaderDropzone"] button div[data-testid="stMarkdownContainer"],
@@ -697,7 +778,7 @@ st.markdown(f"""
         max-width: 100% !important;
     }}
 
-    /* Hover state: Neon Cyan Glow & Subtle Lift */
+    /* Standard Button Hover */
     .stButton button:not(:disabled):hover,
     .stButton > button:not(:disabled):hover,
     .stDownloadButton button:not(:disabled):hover,
@@ -705,14 +786,14 @@ st.markdown(f"""
     [data-testid="stFileUploaderDropzone"] button:not(:disabled):hover,
     div[data-testid="stFormSubmitButton"] button:not(:disabled):hover,
     div[data-testid="stFormSubmitButton"] > button:not(:disabled):hover {{
-        background: linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 1) 100%) !important;
-        border-color: rgba(56, 189, 248, 0.55) !important;
-        color: #00E5FF !important;
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 16px rgba(0, 229, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+        background: linear-gradient(180deg, rgba(32, 48, 80, 0.95) 0%, rgba(14, 22, 42, 1) 100%) !important;
+        border-color: rgba(0, 240, 255, 0.5) !important;
+        color: var(--cyan-electric) !important;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), 0 0 18px rgba(0, 240, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
         transform: translateY(-1.5px) !important;
     }}
 
-    /* Pressed / Click State: Snappy scale feedback (0.98) */
+    /* Button Click Feedback */
     .stButton button:not(:disabled):active,
     .stButton > button:not(:disabled):active,
     .stDownloadButton button:not(:disabled):active,
@@ -721,11 +802,11 @@ st.markdown(f"""
     div[data-testid="stFormSubmitButton"] button:not(:disabled):active,
     div[data-testid="stFormSubmitButton"] > button:not(:disabled):active {{
         transform: scale(0.98) !important;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
         transition-duration: 0.08s !important;
     }}
 
-    /* Keyboard Focus: Clear Neon Cyan Ring */
+    /* Keyboard Focus: Electric Cyan Ring */
     .stButton button:focus-visible,
     .stButton > button:focus-visible,
     .stDownloadButton button:focus-visible,
@@ -733,19 +814,16 @@ st.markdown(f"""
     [data-testid="stFileUploaderDropzone"] button:focus-visible,
     div[data-testid="stFormSubmitButton"] button:focus-visible,
     div[data-testid="stFormSubmitButton"] > button:focus-visible {{
-        outline: 2px solid #00E5FF !important;
+        outline: 2px solid var(--cyan-electric) !important;
         outline-offset: 2px !important;
-        box-shadow: 0 0 0 4px rgba(0, 229, 255, 0.28) !important;
+        box-shadow: 0 0 0 4px rgba(0, 240, 255, 0.3) !important;
     }}
     .stButton button:focus:not(:focus-visible),
-    .stButton > button:focus:not(:focus-visible),
-    .stDownloadButton button:focus:not(:focus-visible),
-    .stDownloadButton > button:focus:not(:focus-visible),
-    [data-testid="stFileUploaderDropzone"] button:focus:not(:focus-visible) {{
+    .stButton > button:focus:not(:focus-visible) {{
         outline: none !important;
     }}
 
-    /* ── Primary Action Buttons (Khởi chạy, Huấn luyện, Kích hoạt, Xuất file) ── */
+    /* Primary Action Buttons */
     .stButton button[kind="primary"],
     .stButton > button[kind="primary"],
     .stButton button[data-testid="baseButton-primary"],
@@ -756,11 +834,11 @@ st.markdown(f"""
     .stDownloadButton > button[kind="primary"],
     div[data-testid="stFormSubmitButton"] button[kind="primary"],
     div[data-testid="stFormSubmitButton"] > button[kind="primary"] {{
-        background: linear-gradient(135deg, rgba(14, 165, 233, 0.95) 0%, rgba(2, 132, 199, 0.95) 100%) !important;
-        border: 1px solid rgba(56, 189, 248, 0.65) !important;
+        background: linear-gradient(135deg, rgba(0, 180, 216, 0.95) 0%, rgba(2, 132, 199, 0.95) 100%) !important;
+        border: 1px solid rgba(0, 240, 255, 0.65) !important;
         color: #FFFFFF !important;
         font-weight: 700 !important;
-        box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4), 0 0 16px rgba(0, 229, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+        box-shadow: 0 4px 16px rgba(2, 132, 199, 0.45), 0 0 18px rgba(0, 240, 255, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.28) !important;
     }}
     .stButton button[kind="primary"]:not(:disabled):hover,
     .stButton > button[kind="primary"]:not(:disabled):hover,
@@ -772,170 +850,110 @@ st.markdown(f"""
     .stDownloadButton > button[kind="primary"]:not(:disabled):hover,
     div[data-testid="stFormSubmitButton"] button[kind="primary"]:not(:disabled):hover,
     div[data-testid="stFormSubmitButton"] > button[kind="primary"]:not(:disabled):hover {{
-        background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%) !important;
-        border-color: #00E5FF !important;
+        background: linear-gradient(135deg, #00C2E8 0%, #0284C7 100%) !important;
+        border-color: var(--cyan-electric) !important;
         color: #FFFFFF !important;
-        box-shadow: 0 6px 22px rgba(2, 132, 199, 0.55), 0 0 22px rgba(0, 229, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+        box-shadow: 0 6px 24px rgba(2, 132, 199, 0.6), 0 0 24px rgba(0, 240, 255, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
         transform: translateY(-1.5px) !important;
     }}
-    .stButton button[kind="primary"]:not(:disabled):active,
-    .stButton > button[kind="primary"]:not(:disabled):active,
-    .stButton button[data-testid="baseButton-primary"]:not(:disabled):active,
-    .stButton > button[data-testid="baseButton-primary"]:not(:disabled):active,
-    .stDownloadButton button[kind="primary"]:not(:disabled):active,
-    .stDownloadButton > button[kind="primary"]:not(:disabled):active {{
-        transform: scale(0.98) !important;
-    }}
 
-    /* ── Model Lifecycle & Activation Buttons (Khu vực Quản lý Model) ── */
-    div[class*="st-key-act_"] button {{
-        background: linear-gradient(135deg, rgba(14, 165, 233, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%) !important;
-        border: 1px solid rgba(56, 189, 248, 0.5) !important;
-        color: #38BDF8 !important;
-        font-weight: 600 !important;
-    }}
-    div[class*="st-key-act_"] button:not(:disabled):hover {{
-        background: linear-gradient(135deg, rgba(14, 165, 233, 0.35) 0%, rgba(16, 185, 129, 0.35) 100%) !important;
-        border-color: #00E5FF !important;
-        color: #FFFFFF !important;
-        box-shadow: 0 4px 16px rgba(0, 229, 255, 0.35), 0 0 14px rgba(16, 185, 129, 0.25) !important;
-        transform: translateY(-1.5px) !important;
-    }}
-    div[class*="st-key-act_"] button:not(:disabled):active {{
-        transform: scale(0.98) !important;
-    }}
-
-    /* ── Danger & Destructive Buttons (Xóa vĩnh viễn, Báo sai, Loại bỏ) ── */
+    /* Danger Buttons (Xóa, Báo sai, Loại bỏ) */
     div[class*="st-key-del_btn"] button,
     div[class*="st-key-fp_"] button,
     div[class*="st-key-dism_"] button {{
-        background: linear-gradient(180deg, rgba(239, 68, 68, 0.16) 0%, rgba(185, 28, 28, 0.25) 100%) !important;
-        border: 1px solid rgba(239, 68, 68, 0.45) !important;
-        color: #FCA5A5 !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+        background: linear-gradient(180deg, rgba(255, 51, 102, 0.16) 0%, rgba(185, 28, 28, 0.26) 100%) !important;
+        border: 1px solid rgba(255, 51, 102, 0.45) !important;
+        color: #FFA5B9 !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
     }}
     div[class*="st-key-del_btn"] button:not(:disabled):hover,
     div[class*="st-key-fp_"] button:not(:disabled):hover,
     div[class*="st-key-dism_"] button:not(:disabled):hover {{
-        background: linear-gradient(180deg, rgba(239, 68, 68, 0.32) 0%, rgba(185, 28, 28, 0.45) 100%) !important;
-        border-color: #EF4444 !important;
+        background: linear-gradient(180deg, rgba(255, 51, 102, 0.35) 0%, rgba(185, 28, 28, 0.5) 100%) !important;
+        border-color: var(--crimson-alert) !important;
         color: #FFFFFF !important;
-        box-shadow: 0 6px 18px rgba(239, 68, 68, 0.45), 0 0 16px rgba(239, 68, 68, 0.25) !important;
+        box-shadow: 0 6px 20px rgba(255, 51, 102, 0.45), 0 0 18px rgba(255, 51, 102, 0.3) !important;
         transform: translateY(-1.5px) !important;
     }}
-    div[class*="st-key-del_btn"] button:not(:disabled):active,
-    div[class*="st-key-fp_"] button:not(:disabled):active,
-    div[class*="st-key-dism_"] button:not(:disabled):active {{
-        transform: scale(0.98) !important;
-    }}
-    div[class*="st-key-del_btn"] button:focus-visible,
-    div[class*="st-key-fp_"] button:focus-visible,
-    div[class*="st-key-dism_"] button:focus-visible {{
-        outline: 2px solid #EF4444 !important;
-        outline-offset: 2px !important;
-        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.28) !important;
-    }}
 
-    /* ── Success & Confirmation Buttons (Xác nhận đúng, Đã lấy đồ) ── */
+    /* Success Buttons (Xác nhận đúng, Đã lấy đồ) */
     div[class*="st-key-conf_"] button,
     div[class*="st-key-ret_"] button {{
-        background: linear-gradient(180deg, rgba(16, 185, 129, 0.16) 0%, rgba(5, 150, 105, 0.25) 100%) !important;
-        border: 1px solid rgba(16, 185, 129, 0.45) !important;
+        background: linear-gradient(180deg, rgba(5, 242, 146, 0.16) 0%, rgba(5, 150, 105, 0.26) 100%) !important;
+        border: 1px solid rgba(5, 242, 146, 0.45) !important;
         color: #6EE7B7 !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
     }}
     div[class*="st-key-conf_"] button:not(:disabled):hover,
     div[class*="st-key-ret_"] button:not(:disabled):hover {{
-        background: linear-gradient(180deg, rgba(16, 185, 129, 0.32) 0%, rgba(5, 150, 105, 0.45) 100%) !important;
-        border-color: #10B981 !important;
+        background: linear-gradient(180deg, rgba(5, 242, 146, 0.35) 0%, rgba(5, 150, 105, 0.5) 100%) !important;
+        border-color: var(--emerald-neon) !important;
         color: #FFFFFF !important;
-        box-shadow: 0 6px 18px rgba(16, 185, 129, 0.45), 0 0 16px rgba(16, 185, 129, 0.25) !important;
+        box-shadow: 0 6px 20px rgba(5, 242, 146, 0.45), 0 0 18px rgba(5, 242, 146, 0.3) !important;
         transform: translateY(-1.5px) !important;
     }}
-    div[class*="st-key-conf_"] button:not(:disabled):active,
-    div[class*="st-key-ret_"] button:not(:disabled):active {{
-        transform: scale(0.98) !important;
-    }}
-    div[class*="st-key-conf_"] button:focus-visible,
-    div[class*="st-key-ret_"] button:focus-visible {{
-        outline: 2px solid #10B981 !important;
-        outline-offset: 2px !important;
-        box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.28) !important;
-    }}
 
-    /* ── Disabled State For All Buttons ── */
+    /* Disabled State */
     .stButton button:disabled,
     .stButton button[disabled],
     .stButton > button:disabled,
     .stButton > button[disabled],
     .stDownloadButton button:disabled,
     .stDownloadButton button[disabled],
-    .stDownloadButton > button:disabled,
-    .stDownloadButton > button[disabled],
-    [data-testid="stFileUploaderDropzone"] button:disabled,
-    [data-testid="stFileUploaderDropzone"] button[disabled],
     div[data-testid="stFormSubmitButton"] button:disabled,
     div[data-testid="stFormSubmitButton"] > button:disabled {{
-        opacity: 0.45 !important;
+        opacity: 0.42 !important;
         cursor: not-allowed !important;
         pointer-events: none !important;
-        background: rgba(15, 23, 42, 0.5) !important;
-        border-color: rgba(255, 255, 255, 0.06) !important;
-        color: #64748B !important;
+        background: rgba(12, 19, 36, 0.5) !important;
+        border-color: rgba(255, 255, 255, 0.05) !important;
+        color: var(--text-muted) !important;
         transform: none !important;
         box-shadow: none !important;
     }}
 
-    /* ── TABS: Dark Premium Segmented Control & Navigation Toolbar ── */
+    /* ── TABS: DARK PRECISION SEGMENTED CONTROL ── */
     [data-testid="stTabs"] {{
         position: relative !important;
-        margin-bottom: 1.2rem !important;
+        margin-bottom: 1.4rem !important;
     }}
-
-    /* Container bao bọc danh sách Tab */
     [data-testid="stTabs"] [data-baseweb="tab-list"] {{
-        background: rgba(15, 23, 42, 0.75) !important;
-        backdrop-filter: blur(16px) !important;
-        -webkit-backdrop-filter: blur(16px) !important;
-        border: 1px solid rgba(255, 255, 255, 0.09) !important;
+        background: var(--bg-surface) !important;
+        backdrop-filter: blur(20px) !important;
+        -webkit-backdrop-filter: blur(20px) !important;
+        border: 1px solid var(--border-subtle) !important;
         border-radius: 12px !important;
         padding: 6px !important;
         gap: 6px !important;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
         display: flex !important;
         align-items: center !important;
         overflow-x: auto !important;
         overflow-y: hidden !important;
-        scrollbar-width: thin !important;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.09) !important;
+        border-bottom: 1px solid var(--border-subtle) !important;
     }}
-
-    /* Ẩn hoàn toàn vạch highlight và border mặc định của BaseWeb gây trùng lặp/sát chữ */
     [data-testid="stTabs"] [data-baseweb="tab-highlight"],
     [data-testid="stTabs"] [data-baseweb="tab-border"] {{
         display: none !important;
         visibility: hidden !important;
         height: 0 !important;
     }}
-
-    /* Ẩn overlay che phủ tab scroll của Streamlit */
     [data-testid="stTabs"] > div:first-child::after {{
         display: none !important;
     }}
 
-    /* Mỗi Tab Item: Sửa triệt để lỗi sát khung */
     [data-testid="stTabs"] [data-baseweb="tab"] {{
         position: relative !important;
         box-sizing: border-box !important;
         height: auto !important;
         min-height: 44px !important;
-        padding: 9px 20px !important;
-        border-radius: 8px !important;
-        font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        padding: 10px 22px !important;
+        border-radius: 9px !important;
+        font-family: var(--font-sans) !important;
         font-size: 0.88rem !important;
         font-weight: 500 !important;
         letter-spacing: 0.2px !important;
-        color: #94A3B8 !important;
+        color: var(--text-secondary) !important;
         border: 1px solid transparent !important;
         background: transparent !important;
         transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
@@ -949,112 +967,151 @@ st.markdown(f"""
         justify-content: center !important;
         gap: 8px !important;
         white-space: nowrap !important;
-        overflow: visible !important;
     }}
-
-    /* Đảm bảo text & icon của Tab không bao giờ bị đè, clipped hay sát border */
-    [data-testid="stTabs"] [data-baseweb="tab"] > div,
-    [data-testid="stTabs"] [data-baseweb="tab"] [data-testid="stMarkdownContainer"],
-    [data-testid="stTabs"] [data-baseweb="tab"] p {{
-        margin: 0 !important;
-        padding: 0 !important;
-        line-height: 1.4 !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        gap: 8px !important;
-        white-space: nowrap !important;
-        font-size: 0.88rem !important;
-        font-weight: inherit !important;
-        color: inherit !important;
-    }}
-
-    /* Tab Hover State */
     [data-testid="stTabs"] [data-baseweb="tab"]:not([aria-selected="true"]):hover {{
-        color: #F8FAFC !important;
-        background: rgba(0, 229, 255, 0.08) !important;
-        border-color: rgba(56, 189, 248, 0.25) !important;
+        color: var(--text-primary) !important;
+        background: rgba(0, 240, 255, 0.08) !important;
+        border-color: rgba(0, 240, 255, 0.24) !important;
         transform: translateY(-1.5px) !important;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
     }}
-
-    /* Tab Active / Selected State: Neon Cyan Gradient & Ambient Glow */
     [data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] {{
-        background: linear-gradient(180deg, rgba(14, 165, 233, 0.18) 0%, rgba(15, 23, 42, 0.9) 100%) !important;
-        color: #00E5FF !important;
-        font-weight: 600 !important;
-        border: 1px solid rgba(0, 229, 255, 0.45) !important;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 16px rgba(0, 229, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
-        transform: none !important;
+        background: linear-gradient(180deg, rgba(0, 240, 255, 0.18) 0%, rgba(12, 19, 36, 0.95) 100%) !important;
+        color: var(--cyan-electric) !important;
+        font-weight: 700 !important;
+        border: 1px solid rgba(0, 240, 255, 0.5) !important;
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45), 0 0 18px rgba(0, 240, 255, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
     }}
-
-    /* Vạch sáng Neon Cyan tinh tế ở đáy Tab active - có khoảng đệm an toàn, KHÔNG đè chữ */
     [data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"]::after {{
         content: '' !important;
         position: absolute !important;
         bottom: 2px !important;
-        left: 14px !important;
-        right: 14px !important;
+        left: 16px !important;
+        right: 16px !important;
         height: 2px !important;
-        background: linear-gradient(90deg, transparent, #00E5FF, transparent) !important;
+        background: linear-gradient(90deg, transparent, var(--cyan-electric), transparent) !important;
         border-radius: 2px !important;
-        box-shadow: 0 0 8px #00E5FF, 0 0 12px rgba(0, 229, 255, 0.6) !important;
+        box-shadow: 0 0 10px var(--cyan-electric), 0 0 14px rgba(0, 240, 255, 0.7) !important;
         pointer-events: none !important;
     }}
 
-    /* Tab Click / Pressed State */
-    [data-testid="stTabs"] [data-baseweb="tab"]:active {{
-        transform: scale(0.98) !important;
-        transition-duration: 0.08s !important;
+    /* ── INPUTS, SELECTS & EXPANDERS ── */
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="textarea"] > div,
+    div[data-baseweb="select"] > div {{
+        background-color: rgba(12, 19, 36, 0.85) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        border-radius: 9px !important;
+        color: var(--text-primary) !important;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+    }}
+    div[data-baseweb="input"] > div:focus-within,
+    div[data-baseweb="textarea"] > div:focus-within,
+    div[data-baseweb="select"] > div:focus-within {{
+        border-color: var(--cyan-electric) !important;
+        box-shadow: 0 0 16px rgba(0, 240, 255, 0.25) !important;
+    }}
+    input, textarea {{
+        color: var(--text-primary) !important;
     }}
 
-    /* Tab Keyboard Focus: Focus-visible Ring */
-    [data-testid="stTabs"] [data-baseweb="tab"]:focus-visible {{
-        outline: 2px solid #00E5FF !important;
-        outline-offset: 2px !important;
-        box-shadow: 0 0 0 4px rgba(0, 229, 255, 0.28) !important;
-    }}
-    [data-testid="stTabs"] [data-baseweb="tab"]:focus:not(:focus-visible) {{
-        outline: none !important;
-    }}
-
-    /* ── Inputs, Selects & Expanders ── */
     .streamlit-expanderHeader {{
-        background: rgba(15, 23, 42, 0.6) !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        border-radius: 8px !important;
+        background: rgba(12, 19, 36, 0.65) !important;
+        border: 1px solid var(--border-subtle) !important;
+        border-radius: 9px !important;
         transition: all 0.2s ease !important;
     }}
     .streamlit-expanderHeader:hover {{
-        border-color: rgba(56, 189, 248, 0.3) !important;
+        border-color: rgba(0, 240, 255, 0.35) !important;
     }}
-    div[data-baseweb="select"] > div {{
-        background-color: rgba(15, 23, 42, 0.8) !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        border-radius: 8px !important;
-    }}
-    div[data-baseweb="select"] > div:focus-within {{
-        border-color: #00E5FF !important;
-        box-shadow: 0 0 12px rgba(0, 229, 255, 0.2) !important;
+    div[data-testid="stExpanderDetails"] {{
+        border: 1px solid var(--border-subtle) !important;
+        border-top: none !important;
+        border-bottom-left-radius: 9px !important;
+        border-bottom-right-radius: 9px !important;
+        background: rgba(8, 13, 26, 0.6) !important;
     }}
 
-    /* ── Custom Dark Scrollbar ── */
-    ::-webkit-scrollbar {{
-        width: 7px;
-        height: 7px;
-    }}
-    ::-webkit-scrollbar-track {{
-        background: #070A12;
-    }}
-    ::-webkit-scrollbar-thumb {{
-        background: #1E293B;
-        border-radius: 4px;
-    }}
-    ::-webkit-scrollbar-thumb:hover {{
-        background: #334155;
+    /* ── DATAFRAME & TABLE STYLING ── */
+    div[data-testid="stDataFrame"],
+    div[data-testid="stTable"] {{
+        border-radius: 10px !important;
+        overflow: hidden !important;
+        border: 1px solid var(--border-subtle) !important;
+        background: var(--bg-surface) !important;
     }}
 
-    /* ── Accessibility: Prefers-reduced-motion ── */
+    /* ── CYBER HUD TELEMETRY STRIP ── */
+    .hud-telemetry-bar {{
+        background: rgba(8, 14, 28, 0.88);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(0, 240, 255, 0.25);
+        border-radius: 10px;
+        padding: 9px 16px;
+        margin: 10px 0 14px 0;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        font-family: var(--font-mono);
+        font-size: 0.82rem;
+        color: #94A3B8;
+    }}
+    .hud-telemetry-cell {{
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }}
+    .hud-telemetry-val {{
+        color: #F8FAFC;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+    }}
+
+    /* ── CYBER EVIDENCE FRAME ── */
+    .evidence-frame {{
+        position: relative;
+        border: 1px solid rgba(0, 240, 255, 0.3);
+        border-radius: 9px;
+        overflow: hidden;
+        background: rgba(5, 8, 17, 0.9);
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+    }}
+
+    /* ── EMPTY STATE CYBER ── */
+    .empty-state-cyber {{
+        background: var(--bg-surface);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px dashed rgba(0, 240, 255, 0.28);
+        border-radius: 14px;
+        padding: 38px 24px;
+        text-align: center;
+        margin: 16px 0;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    }}
+    .empty-state-icon {{
+        font-size: 2.6rem;
+        margin-bottom: 12px;
+        filter: drop-shadow(0 0 16px rgba(0, 240, 255, 0.4));
+    }}
+    .empty-state-title {{
+        font-family: var(--font-display);
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #F8FAFC;
+        margin-bottom: 6px;
+    }}
+    .empty-state-desc {{
+        color: #94A3B8;
+        font-size: 0.86rem;
+        max-width: 520px;
+        margin: 0 auto;
+        line-height: 1.5;
+    }}
+
+    /* ── ACCESSIBILITY (prefers-reduced-motion) ── */
     @media (prefers-reduced-motion: reduce) {{
         *, *::before, *::after {{
             animation-duration: 0.01ms !important;
@@ -1062,9 +1119,6 @@ st.markdown(f"""
             transition-duration: 0.01ms !important;
         }}
     }}
-
-    /* Audio Chime Hook */
-    .audio-btn {{ display: none; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1104,7 +1158,6 @@ st.components.v1.html("""
             if (!pDoc || pDoc._navInteractionsInitialized) return;
             pDoc._navInteractionsInitialized = true;
 
-            // 1. Phím Escape để đóng Navigation Drawer
             pDoc.addEventListener('keydown', function(e) {
                 if (e.key === 'Escape' || e.key === 'Esc') {
                     const sidebar = pDoc.querySelector('section[data-testid="stSidebar"]');
@@ -1120,7 +1173,6 @@ st.components.v1.html("""
                 }
             });
 
-            // 2. Nhấp vào Backdrop mờ (mobile/tablet) để thu gọn menu
             pDoc.addEventListener('click', function(e) {
                 const backdrop = e.target && e.target.closest && e.target.closest('div[data-testid="stSidebarBackdrop"]');
                 if (backdrop) {
@@ -1137,7 +1189,6 @@ st.components.v1.html("""
     setTimeout(setupSpotlight, 600);
     setTimeout(setupNavKeyboardAndBackdrop, 600);
 })();
-</script>
 """, height=0, width=0)
 
 
@@ -1273,16 +1324,19 @@ def format_timestamp_display(ts_str: Optional[str]) -> str:
 
 
 def render_header(title: str, subtitle: str, mode: str = SystemMode.DEMO, alert_count: int = 0):
-    """Render thanh header chuẩn hóa trên đầu mỗi trang với đồng hồ múi giờ Việt Nam (GMT+7)."""
+    """Render thanh header điều hành chuẩn hóa trên đầu mỗi trang với đồng hồ múi giờ Việt Nam (GMT+7)."""
     col1, col2 = st.columns([3, 1])
     with col1:
         st.markdown(f"""
-        <div class="blur-text" style="margin-bottom: 8px;">
+        <div style="margin-bottom: 8px;">
             <div class="header-title">
-                <span style="font-size: 1.5rem; filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.4));">🚌</span>
-                <span class="shiny-text">{title}</span>
+                <span style="font-size: 1.6rem; filter: drop-shadow(0 0 14px rgba(0, 240, 255, 0.5)); display: inline-flex; align-items: center; justify-content: center;">🚌</span>
+                <span class="shiny-text" style="font-size: 1.45rem;">{title}</span>
             </div>
-            <div class="header-subtitle">{subtitle}</div>
+            <div class="header-subtitle" style="display: flex; align-items: center; gap: 8px;">
+                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #00F0FF; box-shadow: 0 0 8px #00F0FF;"></span>
+                <span>{subtitle}</span>
+            </div>
         </div>
         """, unsafe_allow_html=True)
     with col2:
@@ -1302,10 +1356,11 @@ def render_header(title: str, subtitle: str, mode: str = SystemMode.DEMO, alert_
 
         st.markdown(f"""
         <div style="text-align: right; padding-top: 4px;">
-            <div>{mode_badge}{alert_badge}</div>
-            <div style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #94A3B8; margin-top: 6px; background: rgba(15, 23, 42, 0.6); padding: 3px 10px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.06);">
-                <span>⏱️</span>
-                <span id="header-live-clock" style="font-variant-numeric: tabular-nums; font-weight: 600; color: #E2E8F0;" title="Múi giờ Việt Nam (GMT+7)">{now_str}</span>
+            <div style="display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 6px;">{mode_badge}{alert_badge}</div>
+            <div style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.8rem; color: #94A3B8; margin-top: 8px; background: rgba(12, 19, 36, 0.7); padding: 4px 12px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
+                <span style="font-size: 0.9rem;">⏱️</span>
+                <span style="color: #64748B; font-size: 0.72rem; font-family: var(--font-mono); font-weight: 600;">GMT+7</span>
+                <span id="header-live-clock" style="font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; color: #00F0FF; letter-spacing: 0.5px;" title="Múi giờ Việt Nam (GMT+7)">{now_str}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1338,7 +1393,7 @@ def render_header(title: str, subtitle: str, mode: str = SystemMode.DEMO, alert_
     })();
     </script>
     """, height=0, width=0)
-    st.markdown("<div style='height: 1px; background: linear-gradient(90deg, rgba(56, 189, 248, 0.4) 0%, rgba(255, 255, 255, 0.08) 50%, transparent 100%); margin: 4px 0 18px 0;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 1px; background: linear-gradient(90deg, rgba(0, 240, 255, 0.5) 0%, rgba(99, 102, 241, 0.3) 40%, rgba(255, 255, 255, 0.05) 100%); margin: 4px 0 20px 0;'></div>", unsafe_allow_html=True)
 
 
 def play_audio_alert():
@@ -1362,25 +1417,25 @@ def play_audio_alert():
 
 
 def render_legend():
-    """Hiển thị bảng màu chuẩn hóa cho 3 nhóm đối tượng."""
+    """Hiển thị bảng màu chuẩn hóa cho 3 nhóm đối tượng theo phong cách Cyber HUD."""
     st.markdown(f"""
     <div class="legend-box">
-        <span style="font-weight: 600; color: #94A3B8; letter-spacing: 0.5px;">CHÚ GIẢI MÀU:</span>
+        <span style="font-weight: 700; color: #94A3B8; letter-spacing: 0.8px; font-size: 0.74rem; font-family: var(--font-mono); text-transform: uppercase;">CHÚ GIẢI THỰC THỂ:</span>
         <div class="legend-item">
-            <div class="legend-color" style="background: {COLOR_SEAT_HEX}; box-shadow: 0 0 8px {COLOR_SEAT_HEX};"></div>
-            <span><b style="color: #F8FAFC;">GHẾ (Seats):</b> S01, S02... (Cyan / Blue)</span>
+            <div class="legend-color" style="background: {COLOR_SEAT_HEX}; box-shadow: 0 0 10px {COLOR_SEAT_HEX};"></div>
+            <span><b style="color: #F8FAFC;">GHẾ (Seats):</b> S01, S02... (Cyan)</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: {COLOR_PERSON_HEX}; box-shadow: 0 0 8px {COLOR_PERSON_HEX};"></div>
-            <span><b style="color: #F8FAFC;">NGƯỜI (Persons):</b> P01, P12... (Green)</span>
+            <div class="legend-color" style="background: {COLOR_PERSON_HEX}; box-shadow: 0 0 10px {COLOR_PERSON_HEX};"></div>
+            <span><b style="color: #F8FAFC;">NGƯỜI (Persons):</b> P01, P12... (Emerald)</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: {COLOR_OBJECT_HEX}; box-shadow: 0 0 8px {COLOR_OBJECT_HEX};"></div>
+            <div class="legend-color" style="background: {COLOR_OBJECT_HEX}; box-shadow: 0 0 10px {COLOR_OBJECT_HEX};"></div>
             <span><b style="color: #F8FAFC;">ĐỒ VẬT (Objects):</b> O01, O31... (Amber)</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: {COLOR_ALERT_HEX}; box-shadow: 0 0 8px {COLOR_ALERT_HEX};"></div>
-            <span><b style="color: #F8FAFC;">CẢNH BÁO BỎ QUÊN:</b> ⚠ Nghi ngờ (Red)</span>
+            <div class="legend-color" style="background: {COLOR_ALERT_HEX}; box-shadow: 0 0 10px {COLOR_ALERT_HEX};"></div>
+            <span><b style="color: #FF3366;">CẢNH BÁO BỎ QUÊN:</b> ⚠ Nghi ngờ (Crimson)</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -1401,17 +1456,18 @@ def main():
     # ── Sidebar Navigation ──
     with st.sidebar:
         st.markdown("""
-        <div style="padding: 4px 0 14px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07); margin-bottom: 14px;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, rgba(14, 165, 233, 0.25) 0%, rgba(99, 102, 241, 0.25) 100%); border: 1px solid rgba(56, 189, 248, 0.4); display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 0 12px rgba(14, 165, 233, 0.25);">
+        <div style="padding: 6px 0 16px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(135deg, rgba(0, 240, 255, 0.25) 0%, rgba(99, 102, 241, 0.25) 100%); border: 1px solid rgba(0, 240, 255, 0.5); display: flex; align-items: center; justify-content: center; font-size: 19px; box-shadow: 0 0 16px rgba(0, 240, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);">
                     🚌
                 </div>
                 <div>
-                    <div style="font-size: 0.95rem; font-weight: 700; color: #F8FAFC; letter-spacing: -0.02em; line-height: 1.2;">
+                    <div style="font-size: 1.05rem; font-weight: 800; color: #F8FAFC; letter-spacing: -0.02em; line-height: 1.15; font-family: var(--font-display);">
                         LOST & FOUND AI
                     </div>
-                    <div style="font-size: 0.72rem; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600;">
-                        Bus Vision Platform
+                    <div style="font-size: 0.68rem; color: #00F0FF; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; font-family: var(--font-mono); margin-top: 2px; display: flex; align-items: center; gap: 5px;">
+                        <span style="display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #05F292; box-shadow: 0 0 6px #05F292;"></span>
+                        TRANSIT INTELLIGENCE
                     </div>
                 </div>
             </div>
@@ -1446,8 +1502,8 @@ def main():
             label_visibility="collapsed",
         )
 
-        st.markdown("<div style='height: 1px; background: rgba(255, 255, 255, 0.07); margin: 16px 0 12px 0;'></div>", unsafe_allow_html=True)
-        st.markdown("<div style='font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #64748B; margin-bottom: 8px;'>HỆ THỐNG & TRẠNG THÁI</div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 1px; background: rgba(255, 255, 255, 0.08); margin: 18px 0 14px 0;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #64748B; font-family: var(--font-mono); margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;'><span>HỆ THỐNG & TELEMETRY</span><span style='color: #05F292; font-size: 0.62rem;'>● ONLINE</span></div>", unsafe_allow_html=True)
 
         # System Health & Status Indicators
         model_info = service.get_model_info()
@@ -1464,28 +1520,28 @@ def main():
             except Exception:
                 is_tg_cfg = False
 
-        model_badge = f"<span style='color: #34D399;'>●</span> {model_name}" if is_model_loaded else "<span style='color: #EF4444;'>●</span> Chưa tải"
-        seat_badge = f"<span style='color: #38BDF8;'>●</span> {seat_count} ghế" if seat_count > 0 else "<span style='color: #F59E0B;'>●</span> Chưa tạo"
-        alert_badge = f"<span style='color: #EF4444;'>●</span> {unresolved_alerts} mới" if unresolved_alerts > 0 else "<span style='color: #34D399;'>●</span> 0 sự cố"
-        tg_badge = "<span style='color: #34D399;'>●</span> Sẵn sàng" if is_tg_cfg else "<span style='color: #64748B;'>●</span> Chưa nối"
+        model_badge = f"<span style='color: #05F292;'>●</span> {model_name}" if is_model_loaded else "<span style='color: #FF3366;'>●</span> Chưa nạp"
+        seat_badge = f"<span style='color: #00F0FF;'>●</span> {seat_count} ghế" if seat_count > 0 else "<span style='color: #FBBF24;'>●</span> Chưa tạo"
+        alert_badge = f"<span style='color: #FF3366;'>●</span> {unresolved_alerts} mới" if unresolved_alerts > 0 else "<span style='color: #05F292;'>●</span> 0 sự cố"
+        tg_badge = "<span style='color: #05F292;'>●</span> Sẵn sàng" if is_tg_cfg else "<span style='color: #64748B;'>●</span> Chưa nối"
 
         st.markdown(f"""
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.75rem; color: #94A3B8;">
-            <div style="background: rgba(15, 23, 42, 0.6); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">
-                <div style="color: #64748B; font-size: 0.68rem;">MODEL AI</div>
-                <div style="font-weight: 600; color: #E2E8F0; margin-top: 2px;">{model_badge}</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 7px; font-size: 0.74rem; color: #94A3B8;">
+            <div style="background: rgba(12, 19, 36, 0.65); padding: 7px 11px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.06); box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);">
+                <div style="color: #64748B; font-size: 0.66rem; font-family: var(--font-mono); font-weight: 700; text-transform: uppercase;">MODEL AI</div>
+                <div style="font-weight: 700; color: #F8FAFC; margin-top: 3px; font-family: var(--font-mono);">{model_badge}</div>
             </div>
-            <div style="background: rgba(15, 23, 42, 0.6); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">
-                <div style="color: #64748B; font-size: 0.68rem;">SƠ ĐỒ GHẾ</div>
-                <div style="font-weight: 600; color: #E2E8F0; margin-top: 2px;">{seat_badge}</div>
+            <div style="background: rgba(12, 19, 36, 0.65); padding: 7px 11px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.06); box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);">
+                <div style="color: #64748B; font-size: 0.66rem; font-family: var(--font-mono); font-weight: 700; text-transform: uppercase;">SƠ ĐỒ GHẾ</div>
+                <div style="font-weight: 700; color: #F8FAFC; margin-top: 3px; font-family: var(--font-mono);">{seat_badge}</div>
             </div>
-            <div style="background: rgba(15, 23, 42, 0.6); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">
-                <div style="color: #64748B; font-size: 0.68rem;">CẢNH BÁO</div>
-                <div style="font-weight: 600; color: #E2E8F0; margin-top: 2px;">{alert_badge}</div>
+            <div style="background: rgba(12, 19, 36, 0.65); padding: 7px 11px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.06); box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);">
+                <div style="color: #64748B; font-size: 0.66rem; font-family: var(--font-mono); font-weight: 700; text-transform: uppercase;">CẢNH BÁO</div>
+                <div style="font-weight: 700; color: #F8FAFC; margin-top: 3px; font-family: var(--font-mono);">{alert_badge}</div>
             </div>
-            <div style="background: rgba(15, 23, 42, 0.6); padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">
-                <div style="color: #64748B; font-size: 0.68rem;">TELEGRAM</div>
-                <div style="font-weight: 600; color: #E2E8F0; margin-top: 2px;">{tg_badge}</div>
+            <div style="background: rgba(12, 19, 36, 0.65); padding: 7px 11px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.06); box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);">
+                <div style="color: #64748B; font-size: 0.66rem; font-family: var(--font-mono); font-weight: 700; text-transform: uppercase;">TELEGRAM</div>
+                <div style="font-weight: 700; color: #F8FAFC; margin-top: 3px; font-family: var(--font-mono);">{tg_badge}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1512,7 +1568,7 @@ def main():
 
 
 # ══════════════════════════════════════════════
-# TRANG 1: TỔNG QUAN (DASHBOARD)
+# TRANG 1: TỔNG QUAN (COMMAND CENTER)
 # ══════════════════════════════════════════════
 def page_dashboard(service: AnalysisService):
     alert_count = service.get_unresolved_alert_count()
@@ -1535,16 +1591,16 @@ def page_dashboard(service: AnalysisService):
     method_val = active_method.value if hasattr(active_method, "value") else str(active_method)
 
     if method_val == "MODEL_DETECTION":
-        method_badge = '<span class="badge" style="background: #065F46; color: #34D399; border: 1px solid #10B981;">AI MODEL DETECTION (Custom Deep Learning)</span>'
+        method_badge = '<span class="badge" style="background: rgba(5, 242, 146, 0.14); color: #05F292; border: 1px solid rgba(5, 242, 146, 0.45);"><span class="pulse-dot"></span> AI MODEL DETECTION</span>'
         method_desc = "Ghế được nhận diện trực tiếp từ hình ảnh bằng mô hình Computer Vision chuyên biệt."
     elif method_val == "GEOMETRY_FALLBACK":
-        method_badge = '<span class="badge" style="background: #78350F; color: #FBBF24; border: 1px solid #F59E0B;">GEOMETRY FALLBACK (Dự phòng kiểm thử, KHÔNG PHẢI AI)</span>'
+        method_badge = '<span class="badge" style="background: rgba(245, 158, 11, 0.14); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.45);"><span class="pulse-dot"></span> GEOMETRY FALLBACK (Dự phòng kiểm thử)</span>'
         method_desc = "Tọa độ ghế được sinh từ lưới hình học dự phòng để kiểm thử luồng. Không phải kết quả nhận diện của AI."
     elif method_val == "MANUAL_CONFIGURATION":
-        method_badge = '<span class="badge" style="background: #1E3A8A; color: #60A5FA; border: 1px solid #3B82F6;">MANUAL CONFIGURATION</span>'
+        method_badge = '<span class="badge" style="background: rgba(0, 240, 255, 0.14); color: #00F0FF; border: 1px solid rgba(0, 240, 255, 0.45);"><span class="pulse-dot"></span> MANUAL CONFIGURATION</span>'
         method_desc = "Sơ đồ ghế do người quản trị thiết lập thủ công."
     else:
-        method_badge = '<span class="badge" style="background: #374151; color: #9CA3AF; border: 1px solid #6B7280;">CHƯA CẤU HÌNH</span>'
+        method_badge = '<span class="badge" style="background: rgba(100, 116, 139, 0.18); color: #94A3B8; border: 1px solid rgba(100, 116, 139, 0.35);">CHƯA CẤU HÌNH</span>'
         method_desc = "Chưa có cấu hình sơ đồ ghế xe buýt."
 
     # Model & Detector info
@@ -1556,52 +1612,56 @@ def page_dashboard(service: AnalysisService):
     classes_str = ", ".join(classes_supported[:8]) + ("..." if len(classes_supported) > 8 else "")
     has_custom_weights = CUSTOM_SEGMENTATION_WEIGHTS_PATH.exists()
 
-    seg_badge = '<span class="badge" style="background: #0284C7; color: #E0F2FE; border: 1px solid #38BDF8;">TASK: SEGMENTATION (Polygon Masks)</span>' if is_seg else '<span class="badge" style="background: #334155; color: #94A3B8;">TASK: DETECTION (BBox)</span>'
+    seg_badge = '<span class="badge" style="background: rgba(0, 240, 255, 0.14); color: #00F0FF; border: 1px solid rgba(0, 240, 255, 0.45);">TASK: SEGMENTATION (Polygon Masks)</span>' if is_seg else '<span class="badge" style="background: rgba(100, 116, 139, 0.2); color: #94A3B8;">TASK: DETECTION (BBox)</span>'
 
     st.markdown(f"""
-    <div class="spotlight-card" style="margin-bottom: 18px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+    <div class="spotlight-card" style="margin-bottom: 20px; border-left: 4px solid #00F0FF !important;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
             <div>
-                <span style="font-size: 0.8rem; color: #94A3B8; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Cơ chế nhận diện ghế hiện tại:</span>
-                <span style="margin-left: 8px;">{method_badge}</span>
-                <div style="font-size: 0.85rem; color: #CBD5E1; margin-top: 6px;">{method_desc}</div>
+                <div style="font-size: 0.72rem; color: #94A3B8; text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px; font-family: var(--font-mono);">CƠ CHẾ NHẬN DIỆN GHẾ HIỆN TẠI</div>
+                <div style="margin-top: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">{method_badge}</div>
+                <div style="font-size: 0.85rem; color: #CBD5E1; margin-top: 8px;">{method_desc}</div>
             </div>
-            <div style="text-align: right; font-size: 0.82rem; color: #94A3B8; background: rgba(10, 15, 28, 0.5); padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05);">
-                <div>🧠 Model chính: <b style="color: #F8FAFC;">{model_name}</b> {seg_badge}</div>
-                <div style="margin-top: 2px;">Lớp nhận diện: <span style="color: #38BDF8; font-weight: 500;">{classes_str if classes_str else 'seat, person, item'}</span></div>
+            <div style="text-align: right; font-size: 0.82rem; color: #94A3B8; background: rgba(8, 13, 26, 0.7); padding: 10px 16px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.06); box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
+                <div>🧠 Model chính: <b style="color: #F8FAFC; font-family: var(--font-mono); font-size: 0.9rem;">{model_name}</b> {seg_badge}</div>
+                <div style="margin-top: 4px;">Lớp nhận diện: <span style="color: #00F0FF; font-weight: 600; font-family: var(--font-mono);">{classes_str if classes_str else 'seat, person, item'}</span></div>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # 4 Metric Panels (React Bits SpotlightCard Effect)
+    # 4 Metric Panels (Bento-style Telemetry HUD)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(f"""
         <div class="metric-panel" title="Tổng số vị trí ghế đã được định danh trên sơ đồ xe buýt">
             <p>🪑 GHẾ ĐÃ ĐỊNH DANH</p>
             <h3>{seat_count}</h3>
+            <div style="font-size: 0.72rem; color: #64748B; font-family: var(--font-mono); margin-top: 4px;">SƠ ĐỒ TRẦN XE BUÝT</div>
         </div>
         """, unsafe_allow_html=True)
     with c2:
         st.markdown(f"""
         <div class="metric-panel" title="Tổng số cảnh báo đồ vật bỏ quên đang chờ kiểm tra và giải quyết">
             <p>⚠️ CẢNH BÁO CHỜ XỬ LÝ</p>
-            <h3 style="color: {'#F87171' if alert_count > 0 else '#34D399'}; text-shadow: 0 0 16px {'rgba(239, 68, 68, 0.3)' if alert_count > 0 else 'rgba(16, 185, 129, 0.3)'};">{alert_count}</h3>
+            <h3 style="color: {'#FF3366' if alert_count > 0 else '#05F292'}; text-shadow: 0 0 20px {'rgba(255, 51, 102, 0.35)' if alert_count > 0 else 'rgba(5, 242, 146, 0.35)'};">{alert_count}</h3>
+            <div style="font-size: 0.72rem; color: {'#FF3366' if alert_count > 0 else '#05F292'}; font-family: var(--font-mono); margin-top: 4px;">{'TRIAGE YÊU CẦU' if alert_count > 0 else 'HỆ THỐNG AN TOÀN'}</div>
         </div>
         """, unsafe_allow_html=True)
     with c3:
         st.markdown(f"""
         <div class="metric-panel" title="Tổng số sự kiện phát hiện đồ vật / ghế đã ghi nhận">
             <p>👁️ SỰ KIỆN GHI NHẬN</p>
-            <h3 style="color: #38BDF8; text-shadow: 0 0 16px rgba(56, 189, 248, 0.25);">{stats.get('total_events', 0)}</h3>
+            <h3 style="color: #00F0FF; text-shadow: 0 0 20px rgba(0, 240, 255, 0.3);">{stats.get('total_events', 0)}</h3>
+            <div style="font-size: 0.72rem; color: #64748B; font-family: var(--font-mono); margin-top: 4px;">TELEMETRY STREAM</div>
         </div>
         """, unsafe_allow_html=True)
     with c4:
         st.markdown(f"""
         <div class="metric-panel" title="Tổng số phiên chạy phân tích video hoặc camera">
             <p>🎬 PHIÊN PHÂN TÍCH</p>
-            <h3 style="color: #A78BFA; text-shadow: 0 0 16px rgba(167, 139, 250, 0.25);">{stats.get('total_analyses', 0)}</h3>
+            <h3 style="color: #A78BFA; text-shadow: 0 0 20px rgba(167, 139, 250, 0.3);">{stats.get('total_analyses', 0)}</h3>
+            <div style="font-size: 0.72rem; color: #64748B; font-family: var(--font-mono); margin-top: 4px;">PIPELINE AUDIT</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1623,7 +1683,7 @@ def page_dashboard(service: AnalysisService):
                 st.session_state["nav_to"] = "Quản lý Ghế"
                 st.rerun()
 
-        st.markdown("#### 🔔 Cảnh báo Mới nhất")
+        st.markdown("#### 🔔 Luồng Cảnh báo Mới nhất")
         raw_alerts = safe_get_recent_alerts(service, limit=10, active_only=True)
         # Loại bỏ các cảnh báo thử nghiệm cũ (TEST_*) hoặc đã bị loại bỏ
         recent_alerts = [
@@ -1634,47 +1694,60 @@ def page_dashboard(service: AnalysisService):
         ][:5]
         if recent_alerts:
             for alt in recent_alerts:
-                p_color = "#EF4444" if alt["priority"] == "HIGH" else "#F59E0B"
+                p_color = "#FF3366" if alt["priority"] == "HIGH" else "#F59E0B"
                 st.markdown(f"""
-                <div class="spotlight-card" style="border-left: 4px solid {p_color} !important; padding: 12px 16px !important; margin-bottom: 10px;">
+                <div class="spotlight-card" style="border-left: 4px solid {p_color} !important; padding: 14px 18px !important; margin-bottom: 11px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span style="font-weight: 700; color: #F8FAFC; font-size: 0.95rem;">
-                            🔔 {alt['alert_id']} • Ghế <b style="color: #38BDF8;">{alt['seat_id']}</b> <span style="font-size: 0.82rem; color: #94A3B8;">({alt['object_id']})</span>
+                            🔔 <span style="font-family: var(--font-mono);">{alt['alert_id']}</span> • Ghế <b style="color: #00F0FF; font-family: var(--font-mono);">{alt['seat_id']}</b> <span style="font-size: 0.82rem; color: #94A3B8; font-family: var(--font-mono);">({alt['object_id']})</span>
                         </span>
-                        <span style="font-size: 0.78rem; color: #94A3B8; background: rgba(15, 23, 42, 0.6); padding: 2px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); font-variant-numeric: tabular-nums;">
+                        <span style="font-size: 0.74rem; color: #94A3B8; background: rgba(8, 13, 26, 0.7); padding: 3px 9px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); font-family: var(--font-mono); font-variant-numeric: tabular-nums;">
                             {format_timestamp_display(alt.get('created_at', ''))}
                         </span>
                     </div>
-                    <div style="font-size: 0.86rem; color: #CBD5E1; margin-top: 6px; line-height: 1.4;">{alt['reason']}</div>
+                    <div style="font-size: 0.86rem; color: #CBD5E1; margin-top: 8px; line-height: 1.45;">{alt['reason']}</div>
                 </div>
                 """, unsafe_allow_html=True)
         else:
-            st.info("✅ Hiện tại không có cảnh báo bỏ quên nào chưa xử lý.")
+            st.markdown("""
+            <div class="spotlight-card" style="text-align: center; padding: 24px 20px !important; border-left: 4px solid #05F292 !important;">
+                <div style="font-size: 1.8rem; margin-bottom: 6px;">✅</div>
+                <div style="font-weight: 700; color: #F8FAFC; font-size: 0.95rem;">Không có cảnh báo chưa xử lý</div>
+                <div style="font-size: 0.82rem; color: #94A3B8; margin-top: 4px;">Mọi khoang xe và vị trí ghế đều an toàn trong thời gian thực.</div>
+            </div>
+            """, unsafe_allow_html=True)
 
     with col_right:
-        st.markdown("#### 🪑 Trạng thái Ghế thời gian thực")
+        st.markdown("#### 🪑 Ma trận Trạng thái Ghế xe buýt")
         if seat_count > 0:
             statuses = service.seat_manager.get_all_statuses()
             for s in service.get_seats():
                 st_info = statuses.get(s.seat_id)
                 st_state = st_info.state if st_info else SeatState.UNKNOWN
                 if st_state == SeatState.OCCUPIED:
-                    s_badge = '<span class="badge" style="background: rgba(30, 58, 138, 0.25); color: #60A5FA; border: 1px solid rgba(96, 165, 250, 0.4);"><span class="pulse-dot"></span> CÓ NGƯỜI</span>'
+                    s_badge = '<span class="badge" style="background: rgba(30, 58, 138, 0.3); color: #60A5FA; border: 1px solid rgba(96, 165, 250, 0.45);"><span class="pulse-dot"></span> CÓ NGƯỜI</span>'
                 elif st_state == SeatState.VACANT:
-                    s_badge = '<span class="badge" style="background: rgba(6, 95, 70, 0.25); color: #34D399; border: 1px solid rgba(52, 211, 153, 0.4);"><span class="pulse-dot"></span> TRỐNG</span>'
+                    s_badge = '<span class="badge" style="background: rgba(5, 242, 146, 0.12); color: #05F292; border: 1px solid rgba(5, 242, 146, 0.4);"><span class="pulse-dot"></span> TRỐNG</span>'
                 elif st_state == SeatState.AMBIGUOUS:
-                    s_badge = '<span class="badge" style="background: rgba(120, 53, 15, 0.25); color: #FBBF24; border: 1px solid rgba(251, 191, 36, 0.4);"><span class="pulse-dot"></span> TRANH CHẤP</span>'
+                    s_badge = '<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.45);"><span class="pulse-dot"></span> TRANH CHẤP</span>'
                 else:
-                    s_badge = '<span class="badge" style="background: rgba(55, 65, 81, 0.25); color: #9CA3AF; border: 1px solid rgba(156, 163, 175, 0.4);">CHƯA RÕ</span>'
+                    s_badge = '<span class="badge" style="background: rgba(100, 116, 139, 0.2); color: #9CA3AF; border: 1px solid rgba(156, 163, 175, 0.35);">CHƯA RÕ</span>'
 
                 st.markdown(f"""
-                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.6); padding: 9px 14px; border-radius: 8px; margin-bottom: 7px; border: 1px solid rgba(255, 255, 255, 0.06); transition: border-color 0.2s ease;">
-                    <span><b style="color: #F8FAFC;">{s.seat_id}</b> <span style="font-size: 0.84rem; color: #94A3B8;">{f'({s.description})' if s.description else ''}</span></span>
+                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(12, 19, 36, 0.65); padding: 10px 15px; border-radius: 9px; margin-bottom: 7px; border: 1px solid rgba(255, 255, 255, 0.06); transition: border-color 0.2s ease, transform 0.15s ease;">
+                    <span><b style="color: #F8FAFC; font-family: var(--font-mono);">{s.seat_id}</b> <span style="font-size: 0.82rem; color: #94A3B8;">{f'({s.description})' if s.description else ''}</span></span>
                     {s_badge}
                 </div>
                 """, unsafe_allow_html=True)
         else:
-            st.warning("Chưa thiết lập vùng ghế.")
+            st.markdown("""
+            <div class="spotlight-card" style="text-align: center; padding: 24px 20px !important;">
+                <div style="font-size: 1.6rem; margin-bottom: 6px;">🪑</div>
+                <div style="font-weight: 600; color: #94A3B8; font-size: 0.9rem;">Chưa thiết lập vùng ghế xe buýt.</div>
+                <div style="font-size: 0.8rem; color: #64748B; margin-top: 4px;">Vui lòng chuyển qua trang <b>Quản lý Ghế</b> để quét và tạo sơ đồ ghế.</div>
+            </div>
+            """, unsafe_allow_html=True)
+
 
 
 def _run_browser_camera_analysis(
@@ -2103,12 +2176,17 @@ def page_camera_monitor(service: AnalysisService):
                 occ_seats = sum(1 for s in statuses.values() if s.state == SeatState.OCCUPIED)
                 vac_seats = sum(1 for s in statuses.values() if s.state == SeatState.VACANT)
 
+                sus_cnt = summary.get("suspected", 0)
+                sus_color = "#FF3366" if sus_cnt > 0 else "#05F292"
                 metric_view.markdown(
-                    f"🪑 **Ghế:** `{total_seats}` (👤 Có người: `{occ_seats}` | 🟢 Trống: `{vac_seats}`) | "
-                    f"🎒 **Đồ theo dõi:** `{len(events)}` | "
-                    f"⚠️ **Nghi ngờ:** `{summary.get('suspected', 0)}` | "
-                    f"🛡️ **Che khuất:** `{summary.get('occluded', 0)}` | "
-                    f"⏱️ **FPS:** `{calc_fps:.1f}` (`{latency_ms:.1f}ms`)"
+                    f"""<div class="hud-telemetry-bar">
+                        <span class="hud-telemetry-cell">🪑 Ghế: <span class="hud-telemetry-val" style="color: #00F0FF;">{total_seats}</span> (👤 {occ_seats} | 🟢 {vac_seats})</span>
+                        <span class="hud-telemetry-cell">🎒 Theo dõi: <span class="hud-telemetry-val">{len(events)}</span></span>
+                        <span class="hud-telemetry-cell">⚠️ Nghi ngờ: <span class="hud-telemetry-val" style="color: {sus_color};">{sus_cnt}</span></span>
+                        <span class="hud-telemetry-cell">🛡️ Che khuất: <span class="hud-telemetry-val">{summary.get('occluded', 0)}</span></span>
+                        <span class="hud-telemetry-cell" style="margin-left: auto;">⏱️ <span class="hud-telemetry-val" style="color: #00F0FF;">{calc_fps:.1f} FPS</span> ({latency_ms:.1f}ms)</span>
+                    </div>""",
+                    unsafe_allow_html=True
                 )
 
                 if summary.get("suspected", 0) > 0 and not alert_fired and auto_alert:
@@ -2247,11 +2325,16 @@ def page_camera_monitor(service: AnalysisService):
                                         lat_ms = (time.time() - t0) * 1000.0
                                         rgb_frame = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
                                         local_frame_view.image(rgb_frame, channels="RGB", use_container_width=True)
+                                        local_sus = summary.get('suspected', 0)
+                                        local_sus_col = "#FF3366" if local_sus > 0 else "#05F292"
                                         local_metric_view.markdown(
-                                            f"⏱️ **FPS Đọc Camera:** `{reader.fps:.1f}` | "
-                                            f"🧠 **Độ trễ AI:** `{lat_ms:.1f}ms` | "
-                                            f"🎒 **Sự kiện:** `{len(events)}` | "
-                                            f"⚠️ **Nghi ngờ:** `{summary.get('suspected', 0)}`"
+                                            f"""<div class="hud-telemetry-bar">
+                                                <span class="hud-telemetry-cell">⏱️ Camera FPS: <span class="hud-telemetry-val" style="color: #00F0FF;">{reader.fps:.1f}</span></span>
+                                                <span class="hud-telemetry-cell">🧠 AI Latency: <span class="hud-telemetry-val" style="color: #38BDF8;">{lat_ms:.1f}ms</span></span>
+                                                <span class="hud-telemetry-cell">🎒 Sự kiện: <span class="hud-telemetry-val">{len(events)}</span></span>
+                                                <span class="hud-telemetry-cell">⚠️ Nghi ngờ: <span class="hud-telemetry-val" style="color: {local_sus_col};">{local_sus}</span></span>
+                                            </div>""",
+                                            unsafe_allow_html=True
                                         )
                                     time.sleep(0.03)
                             finally:
@@ -2350,9 +2433,21 @@ def page_alert_center(service: AnalysisService):
 
     if not alerts:
         if active_only:
-            st.success("🎉 Hiện không có cảnh báo nào đang chờ xử lý. Tất cả vị trí ghế đều bình thường!")
+            st.markdown("""
+            <div class="empty-state-cyber">
+                <div class="empty-state-icon">🛡️</div>
+                <div class="empty-state-title">KHOANG HÀNH KHÁCH AN TOÀN — KHÔNG CÓ CẢNH BÁO TỒN ĐỌNG</div>
+                <div class="empty-state-desc">Tất cả các vị trí ghế ngồi trên xe buýt hiện đang trong trạng thái bình thường hoặc đã được xác minh hoàn tất. Hệ thống AI đang tiếp tục giám sát theo thời gian thực.</div>
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            st.info("Hiện không có cảnh báo nào phù hợp với bộ lọc đã chọn.")
+            st.markdown(f"""
+            <div class="empty-state-cyber">
+                <div class="empty-state-icon">🔍</div>
+                <div class="empty-state-title">KHÔNG TÌM THẤY BẢN GHI PHÙ HỢP</div>
+                <div class="empty-state-desc">Không có cảnh báo nào trùng khớp với bộ lọc trạng thái <b>{filter_status}</b>. Hãy chuyển bộ lọc sang "Toàn bộ lịch sử" để xem các sự kiện trước đó.</div>
+            </div>
+            """, unsafe_allow_html=True)
     else:
         for alt in alerts:
             with st.container():
@@ -2739,15 +2834,35 @@ def page_dataset(service: AnalysisService):
     )
 
     dstats = service.get_dataset_stats()
-    m1, m2, m3, m4 = st.columns(4)
-    with m1:
-        st.metric("Tổng số ảnh", dstats.get("total_images", 0))
-    with m2:
-        st.metric("Đã gán nhãn", dstats.get("labeled_images", 0))
-    with m3:
-        st.metric("Tập Train", dstats.get("splits", {}).get("train", 0))
-    with m4:
-        st.metric("Tập Val / Test", f"{dstats.get('splits', {}).get('val', 0)} / {dstats.get('splits', {}).get('test', 0)}")
+    total_imgs = dstats.get("total_images", 0)
+    labeled_imgs = dstats.get("labeled_images", 0)
+    train_split = dstats.get("splits", {}).get("train", 0)
+    val_test_split = f"{dstats.get('splits', {}).get('val', 0)} / {dstats.get('splits', {}).get('test', 0)}"
+
+    st.markdown(f"""
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 22px;">
+        <div class="bento-stat">
+            <div class="bento-stat-label">🖼️ TỔNG SỐ ẢNH DATASET</div>
+            <div class="bento-stat-val" style="color: #00F0FF;">{total_imgs}</div>
+            <div class="bento-stat-sub">Kho ảnh raw & trích xuất</div>
+        </div>
+        <div class="bento-stat">
+            <div class="bento-stat-label">🏷️ ĐÃ GÁN NHÃN BBOX</div>
+            <div class="bento-stat-val" style="color: #05F292;">{labeled_imgs}</div>
+            <div class="bento-stat-sub">Sẵn sàng huấn luyện YOLO</div>
+        </div>
+        <div class="bento-stat">
+            <div class="bento-stat-label">🏋️ TẬP TRAIN</div>
+            <div class="bento-stat-val" style="color: #38BDF8;">{train_split}</div>
+            <div class="bento-stat-sub">Phân vùng huấn luyện chính</div>
+        </div>
+        <div class="bento-stat">
+            <div class="bento-stat-label">🧪 TẬP VAL / TEST</div>
+            <div class="bento-stat-val" style="color: #FBBF24;">{val_test_split}</div>
+            <div class="bento-stat-sub">Kiểm định mAP & Độ khái quát</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     tab_upload, tab_extract, tab_annotate, tab_export, tab_roboflow = st.tabs([
         "📤 Tải lên ảnh mới", "🎞️ Trích xuất frame từ Video", "🏷️ Gán nhãn Bounding Box", "📦 Xuất chuẩn YOLO (.zip)", "☁️ Roboflow Cloud Dataset"
@@ -2957,17 +3072,31 @@ def page_model_management(service: AnalysisService):
     active_m = service.get_active_model()
 
     if active_m:
+        m_map50 = active_m.get('metrics', {}).get('map50', 'N/A')
+        m_prec = active_m.get('metrics', {}).get('precision', 'N/A')
+        m_rec = active_m.get('metrics', {}).get('recall', 'N/A')
         st.markdown(f"""
-        <div class="spotlight-card" style="border-left: 4px solid #10B981 !important; margin-bottom: 18px;">
-            <div style="font-size: 1.15rem; font-weight: 700; color: #F8FAFC;">
-                ⭐ <span class="shiny-text">MODEL ĐANG HOẠT ĐỘNG:</span> {active_m['model_id']} <span style="color: #38BDF8;">({active_m['version']})</span>
+        <div class="spotlight-card" style="border-left: 4px solid #05F292 !important; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.35rem;">🏆</span>
+                    <div>
+                        <div style="font-size: 1.15rem; font-weight: 700; color: #F8FAFC; letter-spacing: -0.01em;">
+                            CHAMPION MODEL: <span class="shiny-text">{active_m['model_id']}</span>
+                        </div>
+                        <div style="font-size: 0.8rem; color: #94A3B8; font-family: var(--font-mono);">
+                            Version: <b style="color: #00F0FF;">{active_m['version']}</b> | Dataset: <b>{active_m['dataset_version']}</b>
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <span class="badge" style="background: rgba(0, 240, 255, 0.12); color: #00F0FF; border: 1px solid rgba(0, 240, 255, 0.35);">mAP50: {m_map50}</span>
+                    <span class="badge" style="background: rgba(5, 242, 146, 0.12); color: #05F292; border: 1px solid rgba(5, 242, 146, 0.35);">Precision: {m_prec}</span>
+                    <span class="badge" style="background: rgba(245, 158, 11, 0.12); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.35);">Recall: {m_rec}</span>
+                    <span class="badge badge-live"><span class="pulse-dot"></span> ACTIVE INFERENCE</span>
+                </div>
             </div>
-            <div style="color: #94A3B8; font-size: 0.85rem; margin-top: 6px;">
-                Tập dữ liệu: {active_m['dataset_version']} | mAP50: <b style="color: #38BDF8;">{active_m.get('metrics', {}).get('map50', 'N/A')}</b> |
-                Precision: <b style="color: #34D399;">{active_m.get('metrics', {}).get('precision', 'N/A')}</b> |
-                Recall: <b style="color: #FBBF24;">{active_m.get('metrics', {}).get('recall', 'N/A')}</b>
-            </div>
-            <div style="color: #CBD5E1; font-size: 0.85rem; margin-top: 4px;">{active_m.get('notes', '')}</div>
+            {f'<div style="color: #CBD5E1; font-size: 0.86rem; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06);">{active_m.get("notes", "")}</div>' if active_m.get("notes") else ''}
         </div>
         """, unsafe_allow_html=True)
 
@@ -3576,8 +3705,21 @@ def page_history(service: AnalysisService):
 
     analyses = service.get_all_analyses()
     if not analyses:
-        st.info("Chưa có lịch sử phân tích nào.")
+        st.markdown("""
+        <div class="empty-state-cyber">
+            <div class="empty-state-icon">📋</div>
+            <div class="empty-state-title">CHƯA CÓ LỊCH SỬ PHÂN TÍCH</div>
+            <div class="empty-state-desc">Chưa có phiên xử lý video hoặc kiểm thử webcam nào được hoàn tất trong cơ sở dữ liệu. Hãy khởi chạy phân tích từ menu "Giám sát Camera" hoặc chạy Demo mô phỏng.</div>
+        </div>
+        """, unsafe_allow_html=True)
     else:
+        st.markdown(f"""
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <span style="font-size: 0.88rem; color: #94A3B8; font-family: var(--font-mono);">
+                TỔNG SỐ PHIÊN GHI NHẬN: <b style="color: #00F0FF;">{len(analyses)}</b> PHIÊN
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
         st.dataframe(pd.DataFrame(analyses), use_container_width=True)
 
 
