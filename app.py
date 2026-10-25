@@ -661,11 +661,22 @@ st.markdown(f"""
         transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), width 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }}
     @media (min-width: 769px) {{
-        section[data-testid="stSidebar"],
-        [data-testid="stSidebar"] {{
+        section[data-testid="stSidebar"][aria-expanded="true"],
+        [data-testid="stSidebar"][aria-expanded="true"] {{
             width: 270px !important;
             min-width: 270px !important;
             max-width: 270px !important;
+            flex-shrink: 0 !important;
+        }}
+        section[data-testid="stSidebar"][aria-expanded="false"],
+        [data-testid="stSidebar"][aria-expanded="false"] {{
+            width: 0px !important;
+            min-width: 0px !important;
+            max-width: 0px !important;
+            margin: 0px !important;
+            padding: 0px !important;
+            transform: translateX(-100%) !important;
+            overflow: hidden !important;
             flex-shrink: 0 !important;
         }}
         [data-testid="stSidebarContent"],
@@ -879,17 +890,72 @@ st.markdown(f"""
         font-weight: 700 !important;
     }}
 
-    /* Sidebar collapse / expand triggers */
-    button[data-testid="stSidebarCollapseButton"],
-    button[data-testid="collapsedControl"] {{
-        background: rgba(12, 19, 36, 0.9) !important;
-        border: 1px solid var(--border-subtle) !important;
+    /* ── SIDEBAR EXPAND TRIGGER (PINNED NEAR TOP-LEFT CORNER WHEN COLLAPSED) ── */
+    button[data-testid="stExpandSidebarButton"],
+    [data-testid="collapsedControl"],
+    [data-testid="collapsedControl"] button,
+    button[data-testid="collapsedControl"],
+    button[aria-label="Expand sidebar"] {{
+        position: fixed !important;
+        top: 14px !important;
+        left: 16px !important;
+        z-index: 999999 !important;
+        width: 36px !important;
+        height: 36px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background: rgba(12, 19, 36, 0.92) !important;
+        backdrop-filter: blur(16px) !important;
+        -webkit-backdrop-filter: blur(16px) !important;
+        border: 1px solid var(--border-cyan) !important;
         border-radius: 9px !important;
-        color: var(--text-secondary) !important;
+        color: var(--cyan-electric) !important;
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6), 0 0 16px rgba(0, 240, 255, 0.25) !important;
+        cursor: pointer !important;
+        margin: 0 !important;
+        padding: 0 !important;
         transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }}
-    button[data-testid="stSidebarCollapseButton"]:hover,
-    button[data-testid="collapsedControl"]:hover {{
+    button[data-testid="stExpandSidebarButton"]:hover,
+    [data-testid="collapsedControl"]:hover,
+    [data-testid="collapsedControl"] button:hover,
+    button[data-testid="collapsedControl"]:hover,
+    button[aria-label="Expand sidebar"]:hover {{
+        background: rgba(22, 34, 60, 0.98) !important;
+        border-color: #00F0FF !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.7), 0 0 24px rgba(0, 240, 255, 0.5) !important;
+        transform: scale(1.06) !important;
+    }}
+    button[data-testid="stExpandSidebarButton"] span,
+    button[data-testid="stExpandSidebarButton"] svg,
+    [data-testid="collapsedControl"] span,
+    [data-testid="collapsedControl"] svg {{
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: inherit !important;
+    }}
+
+    /* ── SIDEBAR COLLAPSE TRIGGER (INSIDE SIDEBAR HEADER WHEN EXPANDED) ── */
+    section[data-testid="stSidebar"] button[data-testid="stSidebarCollapseButton"],
+    section[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"],
+    section[data-testid="stSidebar"] button[aria-label="Close sidebar"] {{
+        background: rgba(12, 19, 36, 0.9) !important;
+        border: 1px solid var(--border-subtle) !important;
+        border-radius: 8px !important;
+        color: var(--text-secondary) !important;
+        width: 32px !important;
+        height: 32px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }}
+    section[data-testid="stSidebar"] button[data-testid="stSidebarCollapseButton"]:hover,
+    section[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]:hover,
+    section[data-testid="stSidebar"] button[aria-label="Close sidebar"]:hover {{
         background: rgba(22, 34, 60, 0.95) !important;
         border-color: var(--border-cyan) !important;
         color: var(--cyan-electric) !important;
