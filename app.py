@@ -364,7 +364,8 @@ st.markdown(f"""
 
     /* ── SPOTLIGHT CARD & BENTO PANELS ── */
     .spotlight-card,
-    .metric-panel {{
+    .metric-panel,
+    .bento-stat {{
         position: relative;
         background: var(--bg-surface) !important;
         backdrop-filter: blur(20px);
@@ -375,65 +376,115 @@ st.markdown(f"""
         color: var(--text-primary) !important;
         margin-bottom: 14px;
         overflow: hidden;
+        box-sizing: border-box !important;
+        min-width: 0 !important;
+        width: 100% !important;
         box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
         transition: border-color 0.24s ease, box-shadow 0.24s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }}
     .spotlight-card:hover,
-    .metric-panel:hover {{
+    .metric-panel:hover,
+    .bento-stat:hover {{
         border-color: rgba(0, 240, 255, 0.38) !important;
         box-shadow: 0 12px 36px -4px rgba(0, 0, 0, 0.6), 0 0 24px -4px rgba(0, 240, 255, 0.15) !important;
         transform: translateY(-2px);
     }}
     .spotlight-card::before,
-    .metric-panel::before {{
+    .metric-panel::before,
+    .bento-stat::before {{
         content: '';
         position: absolute;
         top: var(--spotlight-y, 50%);
         left: var(--spotlight-x, 50%);
-        width: 320px;
-        height: 320px;
-        background: radial-gradient(circle, rgba(0, 240, 255, 0.14) 0%, transparent 70%);
+        width: 380px;
+        height: 380px;
+        background: radial-gradient(circle, rgba(0, 240, 255, 0.16) 0%, rgba(0, 240, 255, 0.04) 40%, transparent 70%);
         transform: translate(-50%, -50%);
         pointer-events: none;
-        opacity: 0;
-        transition: opacity 0.3s ease;
+        opacity: var(--spotlight-opacity, 0);
+        transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         border-radius: 50%;
         z-index: 1;
     }}
     .spotlight-card:hover::before,
-    .metric-panel:hover::before {{
-        opacity: 1;
+    .metric-panel:hover::before,
+    .bento-stat:hover::before {{
+        opacity: var(--spotlight-opacity, 1);
     }}
     @media (hover: none) {{
         .spotlight-card::before,
-        .metric-panel::before {{
+        .metric-panel::before,
+        .bento-stat::before {{
             display: none !important;
         }}
     }}
 
-    /* Bento Metric Panel Geometry */
-    .metric-panel {{
+    /* Bento Metric Panel & Bento Stat Geometry (Strict Equal Height & Alignment) */
+    .metric-panel,
+    .bento-stat {{
         display: flex !important;
         flex-direction: column !important;
         justify-content: space-between !important;
         min-height: 125px !important;
         height: 100% !important;
         box-sizing: border-box !important;
-    }}
-    [data-testid="stHorizontalBlock"]:has(.metric-panel) {{
-        align-items: stretch !important;
-    }}
-    [data-testid="stHorizontalBlock"]:has(.metric-panel) [data-testid="stColumn"],
-    [data-testid="stHorizontalBlock"]:has(.metric-panel) [data-testid="column"] {{
-        display: flex !important;
-        flex-direction: column !important;
-    }}
-    [data-testid="stHorizontalBlock"]:has(.metric-panel) [data-testid="stColumn"] > div,
-    [data-testid="stHorizontalBlock"]:has(.metric-panel) [data-testid="column"] > div {{
         flex: 1 1 auto !important;
+    }}
+
+    /* Standardize Streamlit Horizontal Blocks (Equal Height Columns in Row) */
+    [data-testid="stHorizontalBlock"],
+    div[data-testid="stHorizontalBlock"] {{
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: stretch !important;
+        gap: 14px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }}
+
+    [data-testid="stHorizontalBlock"] > [data-testid="column"],
+    [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {{
         display: flex !important;
         flex-direction: column !important;
+        flex: 1 1 0% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }}
+
+    [data-testid="stHorizontalBlock"] > [data-testid="column"] > div,
+    [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] > div,
+    [data-testid="stHorizontalBlock"] > [data-testid="column"] div[data-testid="stVerticalBlock"],
+    [data-testid="stHorizontalBlock"] > [data-testid="column"] div[data-testid="stElementContainer"],
+    [data-testid="stHorizontalBlock"] > [data-testid="column"] div[data-testid="stMarkdownContainer"] {{
         height: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }}
+
+    .bento-stat-label {{
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        color: #94A3B8;
+        text-transform: uppercase;
+        font-family: var(--font-mono);
+        margin-bottom: 8px;
+    }}
+    .bento-stat-val {{
+        font-family: var(--font-mono);
+        font-size: 1.85rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+        margin-bottom: 6px;
+    }}
+    .bento-stat-sub {{
+        font-size: 0.74rem;
+        color: #64748B;
+        font-family: var(--font-mono);
     }}
 
     .metric-panel h3 {{
@@ -585,9 +636,9 @@ st.markdown(f"""
     }}
 
     /* Hide st.radio widget label in sidebar */
-    section[data-testid="stSidebar"] [data-testid="stWidgetLabel"],
-    section[data-testid="stSidebar"] [data-testid="stRadio"] > [data-testid="stWidgetLabel"],
-    section[data-testid="stSidebar"] [data-testid="stRadio"] > label {{
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"],
+    [data-testid="stSidebar"] [data-testid="stRadio"] > [data-testid="stWidgetLabel"],
+    [data-testid="stSidebar"] [data-testid="stRadio"] > label {{
         display: none !important;
         visibility: hidden !important;
         height: 0 !important;
@@ -595,38 +646,86 @@ st.markdown(f"""
         padding: 0 !important;
     }}
 
-    /* Hide native radio circle indicator */
-    section[data-testid="stSidebar"] [data-testid="stRadio"] label > div:first-child,
-    section[data-testid="stSidebar"] [data-testid="stRadio"] div[data-baseweb="radio"] > div:first-child,
-    section[data-testid="stSidebar"] [data-testid="stRadio"] input[type="radio"],
-    section[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child,
-    section[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"],
-    section[data-testid="stSidebar"] div[data-baseweb="radio"] > label > div:first-child {{
+    /* ── Hide native radio circle indicator & input across all Streamlit / BaseWeb DOM variations ── */
+    [data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child:not(:last-child):not(:has(p)):not(:has([data-testid="stMarkdownContainer"])),
+    [data-testid="stSidebar"] [data-testid="stRadio"] label > div:first-child:not(:last-child):not(:has(p)):not(:has([data-testid="stMarkdownContainer"])),
+    [data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child:not(:last-child):not(:has(p)):not(:has([data-testid="stMarkdownContainer"])),
+    [data-testid="stSidebar"] div[data-baseweb="radio"] label > div:first-child:not(:last-child):not(:has(p)):not(:has([data-testid="stMarkdownContainer"])),
+    [data-testid="stSidebar"] div[data-baseweb="radio"] > label > div:first-child:not(:last-child):not(:has(p)):not(:has([data-testid="stMarkdownContainer"])),
+    [data-testid="stSidebar"] [data-testid="stRadio"] label > div[aria-hidden="true"],
+    [data-testid="stSidebar"] div[role="radiogroup"] label > div[aria-hidden="true"],
+    [data-testid="stSidebar"] label[data-baseweb="radio"] > div[aria-hidden="true"] {{
         display: none !important;
-    }}
-
-    section[data-testid="stSidebar"] [data-testid="stRadio"] div[data-baseweb="radio"],
-    section[data-testid="stSidebar"] div[role="radiogroup"] div[data-baseweb="radio"] {{
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
         margin: 0 !important;
         padding: 0 !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }}
+
+    [data-testid="stSidebar"] [data-testid="stRadio"] input[type="radio"],
+    [data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"],
+    [data-testid="stSidebar"] label[data-baseweb="radio"] input[type="radio"],
+    [data-testid="stSidebar"] div[data-baseweb="radio"] input[type="radio"] {{
+        position: absolute !important;
+        opacity: 0 !important;
+        width: 0 !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        pointer-events: none !important;
+    }}
+
+    /* ── STRETCH RADIO CONTAINER & ALL ITEMS TO 100% UNIFORM FULL WIDTH ── */
+    [data-testid="stSidebar"] [data-testid="stRadio"],
+    [data-testid="stSidebar"] [data-testid="stRadio"] > div,
+    [data-testid="stSidebar"] div[role="radiogroup"],
+    [data-testid="stSidebar"] [data-testid="stRadioGroup"],
+    [data-testid="stSidebar"] div[data-baseweb="radiogroup"] {{
         width: 100% !important;
+        max-width: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        justify-content: stretch !important;
+        gap: 6px !important;
+    }}
+
+    [data-testid="stSidebar"] [data-testid="stRadio"] div[data-baseweb="radio"],
+    [data-testid="stSidebar"] div[role="radiogroup"] div[data-baseweb="radio"],
+    [data-testid="stSidebar"] div[role="radiogroup"] > div {{
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 100% !important;
+        display: flex !important;
+        flex: 1 1 100% !important;
+        align-items: stretch !important;
+        margin: 0 !important;
+        padding: 0 !important;
         box-sizing: border-box !important;
     }}
 
     /* Navigation Item: Precision Pill Card */
-    section[data-testid="stSidebar"] div[role="radiogroup"] label,
-    section[data-testid="stSidebar"] [data-testid="stRadioGroup"] label,
-    section[data-testid="stSidebar"] div[data-baseweb="radio"] label {{
+    [data-testid="stSidebar"] label[data-baseweb="radio"],
+    [data-testid="stSidebar"] [data-testid="stRadio"] label,
+    [data-testid="stSidebar"] div[role="radiogroup"] label,
+    [data-testid="stSidebar"] [data-testid="stRadioGroup"] label,
+    [data-testid="stSidebar"] div[data-baseweb="radio"] label {{
         display: flex !important;
         align-items: center !important;
         position: relative !important;
         width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+        flex: 1 1 100% !important;
         box-sizing: border-box !important;
         background: rgba(12, 19, 36, 0.5) !important;
         border: 1px solid rgba(255, 255, 255, 0.05) !important;
         border-radius: 9px !important;
         padding: 10px 14px !important;
-        margin-bottom: 6px !important;
+        margin: 0 0 6px 0 !important;
         transition: background 0.2s cubic-bezier(0.16, 1, 0.3, 1),
                     border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
                     transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
@@ -634,54 +733,88 @@ st.markdown(f"""
         cursor: pointer !important;
     }}
 
+    /* Explicitly protect & guarantee text container visibility */
+    [data-testid="stSidebar"] label[data-baseweb="radio"] > div:last-child,
+    [data-testid="stSidebar"] [data-testid="stRadio"] label > div:last-child,
+    [data-testid="stSidebar"] div[role="radiogroup"] label > div:last-child,
+    [data-testid="stSidebar"] label[data-baseweb="radio"] [data-testid="stMarkdownContainer"],
+    [data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stMarkdownContainer"],
+    [data-testid="stSidebar"] div[role="radiogroup"] [data-testid="stMarkdownContainer"] {{
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        height: auto !important;
+        min-height: 20px !important;
+        width: 100% !important;
+        align-items: center !important;
+        flex: 1 1 auto !important;
+    }}
+
+    [data-testid="stSidebar"] label[data-baseweb="radio"] p,
+    [data-testid="stSidebar"] [data-testid="stRadio"] label p,
+    [data-testid="stSidebar"] div[role="radiogroup"] label p,
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {{
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        height: auto !important;
+        margin: 0 !important;
+        font-size: 0.92rem !important;
+        color: #E2E8F0 !important;
+        letter-spacing: 0.15px !important;
+        font-weight: 500 !important;
+        width: 100% !important;
+        white-space: nowrap !important;
+        line-height: 1.4 !important;
+    }}
+
     /* Navigation Item: Hover state */
-    section[data-testid="stSidebar"] div[role="radiogroup"] label:not(:has(input:checked)):hover,
-    section[data-testid="stSidebar"] div[data-baseweb="radio"] label:not(:has(input:checked)):hover {{
+    [data-testid="stSidebar"] div[role="radiogroup"] label:not(:has(input:checked)):hover,
+    [data-testid="stSidebar"] div[data-baseweb="radio"] label:not(:has(input:checked)):hover,
+    [data-testid="stSidebar"] [data-testid="stRadio"] label:not(:has(input:checked)):hover {{
         background: rgba(22, 34, 60, 0.7) !important;
         border-color: rgba(0, 240, 255, 0.32) !important;
         transform: translateX(4px) !important;
     }}
 
     /* Navigation Item: Active/Pressed */
-    section[data-testid="stSidebar"] div[role="radiogroup"] label:active,
-    section[data-testid="stSidebar"] div[data-baseweb="radio"] label:active {{
+    [data-testid="stSidebar"] div[role="radiogroup"] label:active,
+    [data-testid="stSidebar"] div[data-baseweb="radio"] label:active,
+    [data-testid="stSidebar"] [data-testid="stRadio"] label:active {{
         transform: scale(0.98) !important;
         transition-duration: 0.08s !important;
     }}
 
     /* Navigation Item: Focus state */
-    section[data-testid="stSidebar"] div[role="radiogroup"] label:focus-within,
-    section[data-testid="stSidebar"] div[data-baseweb="radio"] label:focus-within {{
+    [data-testid="stSidebar"] div[role="radiogroup"] label:focus-within,
+    [data-testid="stSidebar"] div[data-baseweb="radio"] label:focus-within,
+    [data-testid="stSidebar"] [data-testid="stRadio"] label:focus-within {{
         outline: 2px solid var(--cyan-electric) !important;
         outline-offset: 2px !important;
         box-shadow: 0 0 0 4px rgba(0, 240, 255, 0.22) !important;
     }}
 
     /* Navigation Item: Selected destination with electric neon pill accent */
-    section[data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"],
-    section[data-testid="stSidebar"] div[role="radiogroup"] label[aria-checked="true"],
-    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked),
-    section[data-testid="stSidebar"] div[role="radiogroup"] div[data-checked="true"] label,
-    section[data-testid="stSidebar"] div[data-baseweb="radio"] label:has(input:checked),
-    section[data-testid="stSidebar"] div[data-baseweb="radio"][data-checked="true"] label {{
+    [data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"],
+    [data-testid="stSidebar"] div[role="radiogroup"] label[aria-checked="true"],
+    [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked),
+    [data-testid="stSidebar"] div[role="radiogroup"] div[data-checked="true"] label,
+    [data-testid="stSidebar"] div[data-baseweb="radio"] label:has(input:checked),
+    [data-testid="stSidebar"] div[data-baseweb="radio"][data-checked="true"] label,
+    [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked),
+    [data-testid="stSidebar"] [data-testid="stRadio"] div[data-checked="true"] label {{
         background: linear-gradient(90deg, rgba(0, 240, 255, 0.16) 0%, rgba(12, 19, 36, 0.85) 100%) !important;
         border-color: rgba(0, 240, 255, 0.6) !important;
         border-left: 3px solid var(--cyan-electric) !important;
         box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4), 0 0 20px rgba(0, 240, 255, 0.15) !important;
     }}
 
-    section[data-testid="stSidebar"] div[role="radiogroup"] label p,
-    section[data-testid="stSidebar"] div[data-baseweb="radio"] label p {{
-        margin: 0 !important;
-        font-size: 0.92rem !important;
-        color: #E2E8F0 !important;
-        letter-spacing: 0.15px !important;
-        font-weight: 500 !important;
-    }}
-    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p,
-    section[data-testid="stSidebar"] div[role="radiogroup"] div[data-checked="true"] p,
-    section[data-testid="stSidebar"] div[data-baseweb="radio"] label:has(input:checked) p,
-    section[data-testid="stSidebar"] div[data-baseweb="radio"][data-checked="true"] p {{
+    [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p,
+    [data-testid="stSidebar"] div[role="radiogroup"] div[data-checked="true"] p,
+    [data-testid="stSidebar"] div[data-baseweb="radio"] label:has(input:checked) p,
+    [data-testid="stSidebar"] div[data-baseweb="radio"][data-checked="true"] p,
+    [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) p,
+    [data-testid="stSidebar"] [data-testid="stRadio"] div[data-checked="true"] p {{
         color: var(--cyan-electric) !important;
         font-weight: 700 !important;
     }}
@@ -1126,41 +1259,62 @@ st.markdown(f"""
 st.components.v1.html("""
 <script>
 (function() {
-    function setupSpotlight() {
+    function setupSpotlightEngine() {
         try {
-            const pDoc = window.parent.document;
-            if (!pDoc || pDoc._spotlightInitialized) return;
-            pDoc._spotlightInitialized = true;
+            const pWin = window.parent;
+            if (!pWin || !pWin.document) return;
+            const pDoc = pWin.document;
 
-            let ticking = false;
-            pDoc.addEventListener('mousemove', function(e) {
-                if (!ticking) {
-                    window.requestAnimationFrame(function() {
-                        const cards = pDoc.querySelectorAll('.spotlight-card, .metric-panel');
-                        for (let i = 0; i < cards.length; i++) {
-                            const rect = cards[i].getBoundingClientRect();
-                            const x = e.clientX - rect.left;
-                            const y = e.clientY - rect.top;
-                            cards[i].style.setProperty('--spotlight-x', x + 'px');
-                            cards[i].style.setProperty('--spotlight-y', y + 'px');
-                        }
-                        ticking = false;
-                    });
-                    ticking = true;
+            if (pWin.__lostFoundSpotlightAttached) return;
+            pWin.__lostFoundSpotlightAttached = true;
+
+            let activeCard = null;
+
+            pDoc.addEventListener('pointermove', onMove, { passive: true });
+            pDoc.addEventListener('mousemove', onMove, { passive: true });
+
+            function onMove(e) {
+                const card = e.target && e.target.closest && e.target.closest('.spotlight-card, .metric-panel, .bento-stat');
+                if (card) {
+                    if (activeCard && activeCard !== card) {
+                        activeCard.style.setProperty('--spotlight-opacity', '0');
+                    }
+                    activeCard = card;
+                    const rect = card.getBoundingClientRect();
+                    const x = Math.round(e.clientX - rect.left);
+                    const y = Math.round(e.clientY - rect.top);
+                    card.style.setProperty('--spotlight-x', x + 'px');
+                    card.style.setProperty('--spotlight-y', y + 'px');
+                    card.style.setProperty('--spotlight-opacity', '1');
+                } else if (activeCard) {
+                    activeCard.style.setProperty('--spotlight-opacity', '0');
+                    activeCard = null;
                 }
-            }, { passive: true });
+            }
+
+            pDoc.addEventListener('pointerout', onOut, { passive: true });
+            pDoc.addEventListener('mouseleave', onOut, { passive: true });
+
+            function onOut(e) {
+                if (activeCard && (!e.relatedTarget || !activeCard.contains(e.relatedTarget))) {
+                    activeCard.style.setProperty('--spotlight-opacity', '0');
+                    activeCard = null;
+                }
+            }
         } catch(e) {}
     }
 
     function setupNavKeyboardAndBackdrop() {
         try {
-            const pDoc = window.parent.document;
-            if (!pDoc || pDoc._navInteractionsInitialized) return;
-            pDoc._navInteractionsInitialized = true;
+            const pWin = window.parent;
+            if (!pWin || !pWin.document) return;
+            const pDoc = pWin.document;
+            if (pWin.__lostFoundNavAttached) return;
+            pWin.__lostFoundNavAttached = true;
 
             pDoc.addEventListener('keydown', function(e) {
                 if (e.key === 'Escape' || e.key === 'Esc') {
-                    const sidebar = pDoc.querySelector('section[data-testid="stSidebar"]');
+                    const sidebar = pDoc.querySelector('[data-testid="stSidebar"]');
                     if (sidebar) {
                         const isExpanded = sidebar.getAttribute('aria-expanded') !== 'false' && sidebar.clientWidth > 50;
                         if (isExpanded) {
@@ -1184,11 +1338,12 @@ st.components.v1.html("""
         } catch(e) {}
     }
 
-    setupSpotlight();
+    setupSpotlightEngine();
     setupNavKeyboardAndBackdrop();
-    setTimeout(setupSpotlight, 600);
-    setTimeout(setupNavKeyboardAndBackdrop, 600);
+    setTimeout(setupSpotlightEngine, 300);
+    setTimeout(setupNavKeyboardAndBackdrop, 300);
 })();
+</script>
 """, height=0, width=0)
 
 
