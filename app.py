@@ -420,7 +420,19 @@ st.markdown(f"""
     }}
 
     /* Bento Metric Panel & Bento Stat Geometry (Strict Equal Height & Alignment) */
-    .metric-panel,
+    .metric-panel {{
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        height: 136px !important;
+        min-height: 136px !important;
+        max-height: 136px !important;
+        padding: 14px 16px !important;
+        box-sizing: border-box !important;
+        flex: 1 1 auto !important;
+        overflow: hidden !important;
+    }}
+
     .bento-stat {{
         display: flex !important;
         flex-direction: column !important;
@@ -488,8 +500,8 @@ st.markdown(f"""
     }}
 
     .metric-panel h3 {{
-        margin: 0;
-        font-size: 2.1rem;
+        margin: 2px 0 !important;
+        font-size: 1.95rem !important;
         font-weight: 800;
         color: #F8FAFC;
         letter-spacing: -0.03em;
@@ -498,16 +510,29 @@ st.markdown(f"""
         line-height: 1.15;
     }}
     .metric-panel p {{
-        margin: 0 0 8px 0 !important;
-        font-size: 0.74rem !important;
+        margin: 0 !important;
+        font-size: 0.70rem !important;
         color: var(--text-secondary) !important;
         font-weight: 700 !important;
         text-transform: uppercase !important;
-        letter-spacing: 0.8px !important;
+        letter-spacing: 0.25px !important;
         font-family: var(--font-mono);
         display: flex !important;
         align-items: center !important;
-        gap: 7px !important;
+        gap: 6px !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        line-height: 1.25 !important;
+    }}
+    .metric-panel > div:last-child {{
+        margin: 0 !important;
+        font-size: 0.70rem !important;
+        font-family: var(--font-mono);
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        line-height: 1.2 !important;
     }}
 
     /* ── HEADER COMMAND BAR ── */
@@ -625,7 +650,8 @@ st.markdown(f"""
     }}
 
     /* ── STREAMLIT SIDEBAR (MISSION CONTROL / PALANTIR GRADE) ── */
-    section[data-testid="stSidebar"] {{
+    section[data-testid="stSidebar"],
+    [data-testid="stSidebar"] {{
         background-color: #050811 !important;
         background-image:
             radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.06) 0%, transparent 60%),
@@ -633,6 +659,24 @@ st.markdown(f"""
         border-right: 1px solid var(--border-subtle) !important;
         box-shadow: 4px 0 32px rgba(0, 0, 0, 0.7) !important;
         transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), width 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }}
+    @media (min-width: 769px) {{
+        section[data-testid="stSidebar"],
+        [data-testid="stSidebar"] {{
+            width: 270px !important;
+            min-width: 270px !important;
+            max-width: 270px !important;
+            flex-shrink: 0 !important;
+        }}
+        [data-testid="stSidebarContent"],
+        div[data-testid="stSidebarUserContent"] {{
+            width: 100% !important;
+            max-width: 270px !important;
+            box-sizing: border-box !important;
+            padding-left: 14px !important;
+            padding-right: 14px !important;
+            overflow-x: hidden !important;
+        }}
     }}
 
     /* Hide st.radio widget label in sidebar */
@@ -647,11 +691,11 @@ st.markdown(f"""
     }}
 
     /* ── Hide native radio circle indicator & input across all Streamlit / BaseWeb DOM variations ── */
-    [data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child:not(:last-child):not(:has(p)):not(:has([data-testid="stMarkdownContainer"])),
-    [data-testid="stSidebar"] [data-testid="stRadio"] label > div:first-child:not(:last-child):not(:has(p)):not(:has([data-testid="stMarkdownContainer"])),
-    [data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child:not(:last-child):not(:has(p)):not(:has([data-testid="stMarkdownContainer"])),
-    [data-testid="stSidebar"] div[data-baseweb="radio"] label > div:first-child:not(:last-child):not(:has(p)):not(:has([data-testid="stMarkdownContainer"])),
-    [data-testid="stSidebar"] div[data-baseweb="radio"] > label > div:first-child:not(:last-child):not(:has(p)):not(:has([data-testid="stMarkdownContainer"])),
+    [data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child,
+    [data-testid="stSidebar"] [data-testid="stRadio"] label > div:first-child,
+    [data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child,
+    [data-testid="stSidebar"] div[data-baseweb="radio"] label > div:first-child,
+    [data-testid="stSidebar"] div[data-baseweb="radio"] > label > div:first-child,
     [data-testid="stSidebar"] [data-testid="stRadio"] label > div[aria-hidden="true"],
     [data-testid="stSidebar"] div[role="radiogroup"] label > div[aria-hidden="true"],
     [data-testid="stSidebar"] label[data-baseweb="radio"] > div[aria-hidden="true"] {{
@@ -724,7 +768,7 @@ st.markdown(f"""
         background: rgba(12, 19, 36, 0.5) !important;
         border: 1px solid rgba(255, 255, 255, 0.05) !important;
         border-radius: 9px !important;
-        padding: 10px 14px !important;
+        padding: 9px 12px !important;
         margin: 0 0 6px 0 !important;
         transition: background 0.2s cubic-bezier(0.16, 1, 0.3, 1),
                     border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
@@ -737,9 +781,9 @@ st.markdown(f"""
     [data-testid="stSidebar"] label[data-baseweb="radio"] > div:last-child,
     [data-testid="stSidebar"] [data-testid="stRadio"] label > div:last-child,
     [data-testid="stSidebar"] div[role="radiogroup"] label > div:last-child,
+    [data-testid="stSidebar"] div[data-baseweb="radio"] label > div:last-child,
     [data-testid="stSidebar"] label[data-baseweb="radio"] [data-testid="stMarkdownContainer"],
-    [data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stMarkdownContainer"],
-    [data-testid="stSidebar"] div[role="radiogroup"] [data-testid="stMarkdownContainer"] {{
+    [data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stMarkdownContainer"] {{
         display: flex !important;
         visibility: visible !important;
         opacity: 1 !important;
@@ -753,6 +797,22 @@ st.markdown(f"""
     [data-testid="stSidebar"] label[data-baseweb="radio"] p,
     [data-testid="stSidebar"] [data-testid="stRadio"] label p,
     [data-testid="stSidebar"] div[role="radiogroup"] label p,
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {{
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        height: auto !important;
+        margin: 0 !important;
+        font-size: 0.90rem !important;
+        color: #E2E8F0 !important;
+        letter-spacing: 0.15px !important;
+        font-weight: 500 !important;
+        width: 100% !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        line-height: 1.4 !important;
+    }}
     [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {{
         display: block !important;
         visibility: visible !important;
