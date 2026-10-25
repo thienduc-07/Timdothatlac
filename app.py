@@ -219,6 +219,85 @@ st.markdown(f"""
         -webkit-font-smoothing: antialiased !important;
     }}
 
+    /* ── ADVANCED OVERSCROLL LOCK (4-DIRECTION LOCK) ──
+       Eliminate rubber-band elastic bouncing and white gaps across all 4 directions (top, bottom, left, right)
+       on trackpads, mice, and mobile touch displays, while strictly preserving legitimate internal scrolling. */
+    html,
+    body,
+    #root,
+    .stApp,
+    div[data-testid="stAppViewContainer"],
+    section[data-testid="stSidebar"],
+    [data-testid="stSidebarContent"],
+    .main,
+    [data-testid="stMain"],
+    [data-testid="stMainBlockContainer"],
+    .block-container {{
+        overscroll-behavior: none !important;
+        overscroll-behavior-x: none !important;
+        overscroll-behavior-y: none !important;
+        overscroll-behavior-inline: none !important;
+        overscroll-behavior-block: none !important;
+    }}
+
+    /* Viewport-level horizontal stabilization */
+    html,
+    body {{
+        overflow-x: hidden !important;
+        width: 100% !important;
+        max-width: 100vw !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }}
+
+    .stApp,
+    div[data-testid="stAppViewContainer"] {{
+        overflow-x: hidden !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+    }}
+
+    /* Main view container: vertical scroll allowed, horizontal overscroll locked */
+    [data-testid="stMain"] {{
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }}
+
+    /* Sidebar container: zero horizontal leak, vertical scroll allowed */
+    section[data-testid="stSidebar"] {{
+        overflow-x: hidden !important;
+        box-sizing: border-box !important;
+    }}
+    [data-testid="stSidebarContent"],
+    div[data-testid="stSidebarUserContent"] {{
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        box-sizing: border-box !important;
+    }}
+
+    /* Preserve internal scrolling for legitimate scrollable surfaces (tables, modals, code blocks) */
+    div[data-testid="stDataFrame"],
+    div[data-testid="stTable"],
+    .table-container,
+    .scrollable-content,
+    [data-testid="stTabs"] [role="tabpanel"],
+    div[data-testid="stCodeBlock"],
+    pre,
+    div[role="dialog"],
+    div[data-testid="stModal"] {{
+        overscroll-behavior: contain !important;
+        overscroll-behavior-x: contain !important;
+        overscroll-behavior-y: contain !important;
+    }}
+    div[data-testid="stDataFrame"],
+    div[data-testid="stTable"],
+    .table-container {{
+        overflow-x: auto !important;
+    }}
+
     /* ── MANDATORY RULE A: HIDE SCROLLBARS EVERYWHERE ──
        Preserve 100% full mouse wheel, trackpad, touch, keyboard scrolling on all views */
     * {{
@@ -968,6 +1047,242 @@ st.markdown(f"""
         -webkit-backdrop-filter: blur(10px) !important;
     }}
 
+    /* ── RELOAD PROTECTION & PREMIUM QUANTUM REFRESH SYSTEM ── */
+    /* Button in-flight loading & anti-spam state */
+    button.btn-reloading,
+    button[aria-busy="true"] {{
+        pointer-events: none !important;
+        cursor: wait !important;
+        opacity: 0.88 !important;
+        position: relative !important;
+        overflow: hidden !important;
+        border-color: var(--cyan-electric) !important;
+        box-shadow: 0 0 20px rgba(0, 240, 255, 0.45) !important;
+    }}
+    button.btn-reloading .sync-icon,
+    button[aria-busy="true"] .sync-icon {{
+        display: inline-block !important;
+        animation: quantum-spin 0.9s cubic-bezier(0.16, 1, 0.3, 1) infinite !important;
+    }}
+
+    @keyframes quantum-spin {{
+        0% {{ transform: rotate(0deg); }}
+        100% {{ transform: rotate(360deg); }}
+    }}
+    @keyframes quantum-spin-reverse {{
+        0% {{ transform: rotate(360deg); }}
+        100% {{ transform: rotate(0deg); }}
+    }}
+
+    /* Laser perimeter beam during in-flight reload */
+    button.btn-reloading::after {{
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: conic-gradient(from 0deg, transparent 0deg, rgba(0, 240, 255, 0.6) 60deg, transparent 120deg);
+        animation: quantum-spin 1.4s linear infinite;
+        pointer-events: none;
+        z-index: 1;
+        opacity: 0.7;
+    }}
+
+    /* Header Quantum Sync Button */
+    .quantum-sync-btn {{
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        background: rgba(12, 19, 36, 0.75) !important;
+        border: 1px solid rgba(0, 240, 255, 0.3) !important;
+        border-radius: 18px !important;
+        padding: 4px 10px !important;
+        color: #00F0FF !important;
+        font-family: var(--font-mono) !important;
+        font-size: 0.72rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.5px !important;
+        cursor: pointer !important;
+        transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+        user-select: none !important;
+        line-height: 1 !important;
+    }}
+    .quantum-sync-btn:hover {{
+        background: rgba(22, 34, 60, 0.95) !important;
+        border-color: #00F0FF !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 0 16px rgba(0, 240, 255, 0.4) !important;
+        transform: translateY(-1px) scale(1.02) !important;
+    }}
+    .quantum-sync-btn:active {{
+        transform: translateY(0) scale(0.97) !important;
+    }}
+    .quantum-sync-btn .sync-icon {{
+        display: inline-block;
+        font-size: 0.8rem;
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }}
+    .quantum-sync-btn:hover .sync-icon {{
+        transform: rotate(90deg);
+    }}
+
+    /* ── QUANTUM REFRESH / PRECISION SYNC HUD OVERLAY ── */
+    #quantum-refresh-overlay {{
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 9999999;
+        pointer-events: none;
+        background: radial-gradient(circle at 50% 40%, rgba(5, 8, 17, 0.84) 0%, rgba(5, 8, 17, 0.96) 100%);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }}
+    #quantum-refresh-overlay.active {{
+        opacity: 1;
+        pointer-events: auto;
+    }}
+
+    /* Holographic radar sweep line */
+    #quantum-refresh-overlay .radar-sweep {{
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 3px;
+        background: linear-gradient(90deg, transparent 0%, #00F0FF 50%, transparent 100%);
+        box-shadow: 0 0 20px #00F0FF, 0 0 40px rgba(0, 240, 255, 0.5);
+        animation: radar-sweep-anim 1.6s ease-in-out infinite;
+        opacity: 0.9;
+    }}
+
+    @keyframes radar-sweep-anim {{
+        0% {{ top: 0%; opacity: 0; }}
+        15% {{ opacity: 1; }}
+        85% {{ opacity: 1; }}
+        100% {{ top: 100%; opacity: 0; }}
+    }}
+
+    /* Concentric Quantum Rings Portal */
+    .quantum-portal {{
+        position: relative;
+        width: 120px;
+        height: 120px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }}
+    .quantum-ring-outer {{
+        position: absolute;
+        width: 110px;
+        height: 110px;
+        border-radius: 50%;
+        border: 2px dashed rgba(0, 240, 255, 0.4);
+        border-top-color: #00F0FF;
+        border-bottom-color: #38BDF8;
+        box-shadow: 0 0 24px rgba(0, 240, 255, 0.25);
+        animation: quantum-spin 2.4s linear infinite;
+    }}
+    .quantum-ring-inner {{
+        position: absolute;
+        width: 76px;
+        height: 76px;
+        border-radius: 50%;
+        border: 2px solid transparent;
+        border-left-color: #05F292;
+        border-right-color: #00F0FF;
+        animation: quantum-spin-reverse 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }}
+    .quantum-core {{
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: radial-gradient(circle, #00F0FF 0%, rgba(0, 240, 255, 0.2) 65%, transparent 100%);
+        box-shadow: 0 0 30px #00F0FF, 0 0 60px rgba(0, 240, 255, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        animation: core-pulse 1.2s ease-in-out infinite alternate;
+    }}
+    @keyframes core-pulse {{
+        0% {{ transform: scale(0.92); filter: drop-shadow(0 0 8px #00F0FF); }}
+        100% {{ transform: scale(1.08); filter: drop-shadow(0 0 20px #00F0FF); }}
+    }}
+
+    /* Precision Telemetry HUD Badge */
+    .quantum-hud-text {{
+        margin-top: 24px;
+        text-align: center;
+        font-family: var(--font-mono);
+    }}
+    .quantum-hud-title {{
+        font-size: 0.85rem;
+        font-weight: 800;
+        letter-spacing: 2.5px;
+        text-transform: uppercase;
+        color: #F8FAFC;
+        text-shadow: 0 0 16px rgba(0, 240, 255, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }}
+    .quantum-hud-status {{
+        font-size: 0.72rem;
+        color: #00F0FF;
+        letter-spacing: 1px;
+        margin-top: 6px;
+        opacity: 0.9;
+        font-weight: 600;
+    }}
+
+    /* Data Refresh Subtle Scan Line (Trường hợp A: Refresh Dữ liệu cục bộ không che toàn màn hình) */
+    .data-refresh-sweep {{
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 2px;
+        background: linear-gradient(90deg, transparent 0%, #00F0FF 50%, transparent 100%);
+        box-shadow: 0 0 12px #00F0FF;
+        animation: data-sweep-anim 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        pointer-events: none;
+        z-index: 9999;
+    }}
+    @keyframes data-sweep-anim {{
+        0% {{ top: 0%; opacity: 0; }}
+        20% {{ opacity: 1; }}
+        80% {{ opacity: 1; }}
+        100% {{ top: 100%; opacity: 0; }}
+    }}
+
+    /* Prefers-reduced-motion accessibility */
+    @media (prefers-reduced-motion: reduce) {{
+        .quantum-ring-outer,
+        .quantum-ring-inner,
+        button.btn-reloading::after,
+        button.btn-reloading .sync-icon {{
+            animation: none !important;
+        }}
+        #quantum-refresh-overlay .radar-sweep,
+        .data-refresh-sweep {{
+            display: none !important;
+        }}
+        #quantum-refresh-overlay {{
+            transition: opacity 0.1s ease !important;
+        }}
+    }}
+
     /* ── BUTTON SYSTEM ── */
     .stButton,
     .stButton .stTooltipIcon,
@@ -1464,10 +1779,246 @@ st.components.v1.html("""
         } catch(e) {}
     }
 
+    function setupOverscrollLock() {
+        try {
+            const pWin = window.parent;
+            if (!pWin || !pWin.document) return;
+            const pDoc = pWin.document;
+            if (pWin.__lostFoundOverscrollLocked) return;
+            pWin.__lostFoundOverscrollLocked = true;
+
+            const applyLock = (el) => {
+                if (el && el.style) {
+                    el.style.setProperty('overscroll-behavior', 'none', 'important');
+                    el.style.setProperty('overscroll-behavior-x', 'none', 'important');
+                    el.style.setProperty('overscroll-behavior-y', 'none', 'important');
+                }
+            };
+
+            applyLock(pDoc.documentElement);
+            applyLock(pDoc.body);
+            applyLock(pDoc.getElementById('root'));
+            applyLock(pDoc.querySelector('.stApp'));
+            applyLock(pDoc.querySelector('[data-testid="stAppViewContainer"]'));
+            applyLock(pDoc.querySelector('[data-testid="stMain"]'));
+
+            // Passive guard to contain edge wheel bouncing
+            pDoc.addEventListener('wheel', function(e) {
+                // Legitimate internal scrolling is preserved
+            }, { passive: true });
+        } catch(e) {}
+    }
+
+    function setupReloadProtection() {
+        try {
+            const pWin = window.parent;
+            if (!pWin || !pWin.document) return;
+            const pDoc = pWin.document;
+
+            // 1. Restore scroll position if saved from prior reload
+            const savedScroll = pWin.sessionStorage.getItem('lf_scroll_pos');
+            if (savedScroll !== null) {
+                pWin.sessionStorage.removeItem('lf_scroll_pos');
+                const targetY = parseInt(savedScroll, 10);
+                if (targetY > 0) {
+                    const restoreScroll = () => {
+                        const stMain = pDoc.querySelector('[data-testid="stMain"]') || pDoc.querySelector('.main');
+                        if (stMain) stMain.scrollTop = targetY;
+                    };
+                    restoreScroll();
+                    setTimeout(restoreScroll, 80);
+                    setTimeout(restoreScroll, 220);
+                }
+            }
+
+            // 2. Remove any leftover overlay with smooth fade
+            const existingOverlay = pDoc.getElementById('quantum-refresh-overlay');
+            if (existingOverlay) {
+                existingOverlay.classList.remove('active');
+                setTimeout(() => { existingOverlay.remove(); }, 300);
+            }
+
+            if (pWin.__lostFoundReloadAttached) return;
+            pWin.__lostFoundReloadAttached = true;
+
+            // Mutex State on Parent Window
+            pWin.__lostFoundReloadState = {
+                isReloading: false,
+                lastReloadTime: 0,
+                cooldownMs: 1400,
+                watchdogTimer: null
+            };
+
+            function createOverlay(title, subtitle) {
+                let overlay = pDoc.getElementById('quantum-refresh-overlay');
+                if (!overlay) {
+                    overlay = pDoc.createElement('div');
+                    overlay.id = 'quantum-refresh-overlay';
+                    overlay.setAttribute('role', 'alert');
+                    overlay.setAttribute('aria-live', 'polite');
+                    overlay.innerHTML = `
+                        <div class="radar-sweep"></div>
+                        <div class="quantum-portal">
+                            <div class="quantum-ring-outer"></div>
+                            <div class="quantum-ring-inner"></div>
+                            <div class="quantum-core">🚌</div>
+                        </div>
+                        <div class="quantum-hud-text">
+                            <div class="quantum-hud-title">
+                                <span style="color: #00F0FF;">⚡</span>
+                                <span>${title || 'PRECISION SYNC // QUANTUM REFRESH'}</span>
+                            </div>
+                            <div class="quantum-hud-status" id="quantum-hud-status">
+                                ${subtitle || 'SYNCHRONIZING TELEMETRY STREAM & AUDIT LOGS...'}
+                            </div>
+                        </div>
+                    `;
+                    pDoc.body.appendChild(overlay);
+                }
+                void overlay.offsetWidth;
+                overlay.classList.add('active');
+                return overlay;
+            }
+
+            function clearOverlay() {
+                const overlay = pDoc.getElementById('quantum-refresh-overlay');
+                if (overlay) {
+                    const status = pDoc.getElementById('quantum-hud-status');
+                    if (status) status.textContent = '● SYNCHRONIZED [SUCCESS]';
+                    setTimeout(() => {
+                        overlay.classList.remove('active');
+                        setTimeout(() => overlay.remove(), 250);
+                    }, 250);
+                }
+            }
+
+            function executeProtectedRerun(sourceBtn, isFullReload = true) {
+                const state = pWin.__lostFoundReloadState;
+                const now = Date.now();
+
+                // Anti-spam & Cooldown check
+                if (state.isReloading) {
+                    return false;
+                }
+                if (now - state.lastReloadTime < state.cooldownMs) {
+                    return false;
+                }
+
+                state.isReloading = true;
+                state.lastReloadTime = now;
+
+                // Save scroll position
+                const stMain = pDoc.querySelector('[data-testid="stMain"]') || pDoc.querySelector('.main');
+                if (stMain) {
+                    pWin.sessionStorage.setItem('lf_scroll_pos', stMain.scrollTop);
+                }
+
+                // Add loading indicator on button
+                if (sourceBtn) {
+                    sourceBtn.classList.add('btn-reloading');
+                    sourceBtn.setAttribute('aria-busy', 'true');
+                }
+
+                // Activate Quantum Refresh HUD
+                if (isFullReload) {
+                    createOverlay('PRECISION SYNC // QUANTUM REFRESH', 'ĐỒNG BỘ TELEMETRY & TẢI LẠI TRẠNG THÁI...');
+                } else {
+                    const mainContainer = pDoc.querySelector('.block-container') || pDoc.body;
+                    const sweep = pDoc.createElement('div');
+                    sweep.className = 'data-refresh-sweep';
+                    mainContainer.appendChild(sweep);
+                    setTimeout(() => sweep.remove(), 950);
+                }
+
+                // Safety Watchdog Timer: 8s maximum
+                if (state.watchdogTimer) clearTimeout(state.watchdogTimer);
+                state.watchdogTimer = setTimeout(() => {
+                    state.isReloading = false;
+                    clearOverlay();
+                    if (sourceBtn) {
+                        sourceBtn.classList.remove('btn-reloading');
+                        sourceBtn.removeAttribute('aria-busy');
+                    }
+                }, 8000);
+
+                return true;
+            }
+
+            // Click interceptor
+            pDoc.addEventListener('click', function(e) {
+                const target = e.target;
+                if (!target) return;
+
+                // Header Quantum Sync Button
+                const headerBtn = target.closest('#header-reload-btn, .quantum-sync-btn');
+                if (headerBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (executeProtectedRerun(headerBtn, false)) {
+                        try {
+                            const clockEl = pDoc.getElementById("header-live-clock");
+                            if (clockEl) {
+                                const d = new Date();
+                                clockEl.textContent = d.toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false });
+                            }
+                        } catch(err) {}
+
+                        setTimeout(() => {
+                            clearOverlay();
+                            headerBtn.classList.remove('btn-reloading');
+                            headerBtn.removeAttribute('aria-busy');
+                            pWin.__lostFoundReloadState.isReloading = false;
+                        }, 750);
+                    }
+                    return;
+                }
+
+                // Any button containing 🔄 or reload/refresh text
+                const btn = target.closest('button, [role="button"]');
+                if (!btn) return;
+
+                const text = (btn.innerText || '').toLowerCase();
+                const isReloadBtn = text.includes('🔄') || text.includes('làm mới') || text.includes('cập nhật tiến độ') || text.includes('reopen');
+
+                if (isReloadBtn) {
+                    const state = pWin.__lostFoundReloadState;
+                    if (state.isReloading) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        return;
+                    }
+                    executeProtectedRerun(btn, true);
+                }
+            }, true);
+
+            // Keyboard shortcut protection (R key)
+            pDoc.addEventListener('keydown', function(e) {
+                if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
+                    return;
+                }
+                if (e.key === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    const state = pWin.__lostFoundReloadState;
+                    if (state.isReloading) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                    }
+                    executeProtectedRerun(null, true);
+                }
+            }, true);
+
+        } catch(e) {}
+    }
+
     setupSpotlightEngine();
     setupNavKeyboardAndBackdrop();
+    setupOverscrollLock();
+    setupReloadProtection();
     setTimeout(setupSpotlightEngine, 300);
     setTimeout(setupNavKeyboardAndBackdrop, 300);
+    setTimeout(setupOverscrollLock, 300);
+    setTimeout(setupReloadProtection, 300);
 })();
 </script>
 """, height=0, width=0)
@@ -1642,6 +2193,10 @@ def render_header(title: str, subtitle: str, mode: str = SystemMode.DEMO, alert_
                 <span style="font-size: 0.9rem;">⏱️</span>
                 <span style="color: #64748B; font-size: 0.72rem; font-family: var(--font-mono); font-weight: 600;">GMT+7</span>
                 <span id="header-live-clock" style="font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; color: #00F0FF; letter-spacing: 0.5px;" title="Múi giờ Việt Nam (GMT+7)">{now_str}</span>
+                <button id="header-reload-btn" class="quantum-sync-btn" title="Đồng bộ & Làm mới Telemetry (Precision Sync)" aria-label="Đồng bộ & Làm mới Telemetry">
+                    <span class="sync-icon">🔄</span>
+                    <span class="sync-text">SYNC</span>
+                </button>
             </div>
         </div>
         """, unsafe_allow_html=True)
