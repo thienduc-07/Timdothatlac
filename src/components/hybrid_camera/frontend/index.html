@@ -789,6 +789,96 @@
     }
 
     // ─────────────────────────────────────────────────────────────
+    // Seamless Parent Scroll Propagation (Fix Camera Monitor Scroll Lock)
+    // Forwards mouse wheel, trackpad, touch drag, and keyboard scroll gestures
+    // from inside the iframe to the parent container ([data-testid="stMain"]).
+    // ─────────────────────────────────────────────────────────────
+    function forwardScrollDelta(deltaY) {
+      if (!deltaY || isNaN(deltaY)) return;
+      try {
+        const pWin = window.parent;
+        if (pWin && pWin.document) {
+          const stMain = pWin.document.querySelector('[data-testid="stMain"]') || pWin.document.querySelector('.main');
+          if (stMain) {
+            stMain.scrollTop += deltaY;
+            return;
+          }
+        }
+      } catch (err) {}
+
+      // Cross-origin fallback via postMessage
+      try {
+        window.parent.postMessage({
+          isStreamlitMessage: false,
+          type: "transit:scrollDelta",
+          deltaY: deltaY
+        }, "*");
+      } catch (e) {}
+    }
+
+    // 1. Mouse Wheel & Trackpad forwarding
+    window.addEventListener("wheel", (e) => {
+      let dy = e.deltaY;
+      if (e.deltaMode === 1) dy *= 33; // DOM_DELTA_LINE
+      else if (e.deltaMode === 2) dy *= (window.innerHeight || 600); // DOM_DELTA_PAGE
+      forwardScrollDelta(dy);
+    }, { passive: true });
+
+    // 2. Touch dragging forwarding (Mobile / Tablet)
+    let touchStartY = null;
+    window.addEventListener("touchstart", (e) => {
+      if (e.touches && e.touches.length > 0) {
+        touchStartY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+
+    window.addEventListener("touchmove", (e) => {
+      if (e.touches && e.touches.length > 0 && touchStartY !== null) {
+        const currentY = e.touches[0].clientY;
+        const dy = touchStartY - currentY;
+        touchStartY = currentY;
+        forwardScrollDelta(dy);
+      }
+    }, { passive: true });
+
+    window.addEventListener("touchend", () => {
+      touchStartY = null;
+    }, { passive: true });
+
+    // 3. Keyboard Arrow / Page navigation when iframe is focused
+    window.addEventListener("keydown", (e) => {
+      const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : "";
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      const step = 60;
+      const pageStep = (window.innerHeight || 600) * 0.8;
+      if (e.key === "ArrowDown") {
+        forwardScrollDelta(step);
+      } else if (e.key === "ArrowUp") {
+        forwardScrollDelta(-step);
+      } else if (e.key === "PageDown") {
+        forwardScrollDelta(pageStep);
+      } else if (e.key === "PageUp") {
+        forwardScrollDelta(-pageStep);
+      } else if (e.key === "Home") {
+        try {
+          const pWin = window.parent;
+          const stMain = pWin.document.querySelector('[data-testid="stMain"]') || pWin.document.querySelector('.main');
+          if (stMain) stMain.scrollTop = 0;
+        } catch(err) {}
+      } else if (e.key === "End") {
+        try {
+          const pWin = window.parent;
+          const stMain = pWin.document.querySelector('[data-testid="stMain"]') || pWin.document.querySelector('.main');
+          if (stMain) stMain.scrollTop = stMain.scrollHeight;
+        } catch(err) {}
+      } else if (e.key === " " && !e.shiftKey) {
+        forwardScrollDelta(pageStep);
+      } else if (e.key === " " && e.shiftKey) {
+        forwardScrollDelta(-pageStep);
+      }
+    });
+
+    // ─────────────────────────────────────────────────────────────
     // Camera Device Enumeration
     // ─────────────────────────────────────────────────────────────
     async function loadCameras() {

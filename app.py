@@ -240,10 +240,11 @@ st.markdown(f"""
         overscroll-behavior-block: none !important;
     }}
 
-    /* Viewport-level horizontal stabilization */
+    /* Viewport-level horizontal stabilization & single-container scroll enforcement */
     html,
     body {{
         overflow-x: hidden !important;
+        overflow-y: hidden !important;
         width: 100% !important;
         max-width: 100vw !important;
         min-width: 0 !important;
@@ -1806,6 +1807,19 @@ st.components.v1.html("""
             pDoc.addEventListener('wheel', function(e) {
                 // Legitimate internal scrolling is preserved
             }, { passive: true });
+
+            // Cross-frame scroll synchronization from embedded iframes (e.g. camera component)
+            if (!pWin.__lostFoundScrollDeltaAttached) {
+                pWin.__lostFoundScrollDeltaAttached = true;
+                pWin.addEventListener('message', function(e) {
+                    if (e.data && e.data.type === 'transit:scrollDelta' && typeof e.data.deltaY === 'number') {
+                        const stMain = pDoc.querySelector('[data-testid="stMain"]') || pDoc.querySelector('.main');
+                        if (stMain) {
+                            stMain.scrollTop += e.data.deltaY;
+                        }
+                    }
+                }, { passive: true });
+            }
         } catch(e) {}
     }
 
